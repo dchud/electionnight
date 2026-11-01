@@ -117,9 +117,13 @@ def main() -> None:
         report("States rising", drawer_result(page))
         page.locator("#wire .wire-row").first.click()
         report("Live wire row", drawer_result(page))
+        # Rising lists only what is rising, so it can be empty.
         footnote = page.locator(".card .fn").first
-        footnote.click()
-        report("Storyline footnote", drawer_result(page))
+        if footnote.count():
+            footnote.click()
+            report("Storyline footnote", drawer_result(page))
+        else:
+            print("skip Storyline footnote: nothing is rising")
         brief_note = page.locator("#brief .fn").first
         if brief_note.count():
             brief_note.click()

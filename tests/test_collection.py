@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 import shlex
 import signal
 import sqlite3
@@ -1167,10 +1168,14 @@ def test_replay_check_reads_naive_times_as_eastern(
     [("prune", "--before"), ("replay-check", "--from")],
 )
 def test_help_says_naive_times_are_eastern(command, option):
-    result = CliRunner().invoke(app, [command, "--help"])
+    result = CliRunner().invoke(
+        app, [command, "--help"], env={"NO_COLOR": "1", "TERM": "dumb"}
+    )
     assert result.exit_code == 0
-    assert option in result.output
-    assert "Eastern" in result.output
+    # Help can carry color codes and wrap lines, depending on the terminal.
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert option in plain
+    assert "Eastern" in plain
 
 
 def test_prune_before_accepts_the_minute_form(monkeypatch, tmp_path):
