@@ -136,13 +136,18 @@ def web(
     host: str | None = typer.Option(None),
     port: int | None = typer.Option(None),
     lan: bool = typer.Option(False, help="Listen on all interfaces."),
+    reload: bool = typer.Option(
+        False,
+        "--reload",
+        help="Restart when web code changes, for live edits.",
+    ),
 ) -> None:
     """Run the read-only dashboard."""
     from monitor.web.app import serve
 
     settings = get_settings()
     bind = "0.0.0.0" if lan else (host or settings.web.host)
-    serve(settings, host=bind, port=port or settings.web.port)
+    serve(settings, host=bind, port=port or settings.web.port, reload=reload)
 
 
 @app.command()

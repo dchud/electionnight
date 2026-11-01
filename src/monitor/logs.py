@@ -48,8 +48,9 @@ def configure(process: str, log_dir: Path, level: int = logging.INFO) -> None:
     to_stderr.setFormatter(formatter)
     root.addHandler(to_file)
     root.addHandler(to_stderr)
-    for noisy in ("httpx", "httpcore", "httpx2", "trafilatura", "h2"):
+    for noisy in ("httpx", "httpcore", "httpx2", "h2", "botocore", "boto3"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    logging.getLogger("trafilatura").setLevel(logging.ERROR)
     structlog.contextvars.bind_contextvars(process=process)
 
 

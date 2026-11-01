@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import signal
+import subprocess
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -72,6 +73,21 @@ LAG_LOW_SECONDS = 60.0
 CORE_STAGES = {"lang", "classify_a", "embed", "dedupe", "storylines"}
 
 
+def running_commit() -> str:
+    """The checked-out commit, marked if the working tree has changes."""
+    try:
+        commit = subprocess.run(
+            ["git", "describe", "--always", "--dirty=*", "--exclude=*"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    return commit.stdout.strip()
+
+
 class Pipeline:
     """Holds the single lake connection and runs every periodic job."""
 
@@ -110,6 +126,7 @@ class Pipeline:
         self.rollups = RollupEngine(settings, self.writer)
         self.ref_state: dict[str, Any] = {}
         self.started_at = datetime.now(UTC)
+        self.commit = running_commit()
         self.last_maintenance: datetime | None = None
         self.last_backup: datetime | None = None
         self.last_rollup: datetime | None = None
@@ -334,6 +351,7 @@ class Pipeline:
         return {
             "updated_at": datetime.now(UTC),
             "started_at": self.started_at,
+            "commit": self.commit,
             "last_commit_at": self.writer.last_commit_at,
             "last_maintenance_at": self.last_maintenance,
             "last_backup_at": self.last_backup,

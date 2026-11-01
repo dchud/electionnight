@@ -60,7 +60,11 @@ def dir_size(path: Path) -> int:
         return 0
     if path.is_file():
         return path.stat().st_size
-    return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
+    return sum(
+        p.stat().st_size
+        for p in path.rglob("*")
+        if p.is_file() and not p.is_symlink()
+    )
 
 
 def lake_file_sizes(conn: duckdb.DuckDBPyConnection) -> tuple[int, int]:
