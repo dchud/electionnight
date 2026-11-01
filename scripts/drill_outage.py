@@ -120,6 +120,7 @@ class Drill:
         self.settings.poll.resume_stagger_seconds = 5.0
         self.settings.poll.min_gap_seconds = 1.0
         self.settings.poll.catch_up_min_gap_seconds = 1.0
+        self.settings.poll.allow_loopback = True
         init_lake(self.settings)
         self.conn = connect(self.settings)
         self.writer = BatchWriter(self.conn, self.settings)

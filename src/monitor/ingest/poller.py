@@ -16,7 +16,10 @@ import duckdb
 import httpx
 
 from monitor.archive import ArchiveWriter
+from monitor.ingest.download import build_client, download
 from monitor.ingest.feeds import (
+    FEED_MAX_BYTES,
+    SITEMAP_MAX_BYTES,
     FeedEntry,
     ParsedFeed,
     parse_feed,
@@ -34,6 +37,7 @@ log = get(__name__)
 
 MAX_BACKOFF_MULTIPLIER = 8
 MAX_SITEMAP_CHILDREN = 3
+MAX_ENTRIES_PER_POLL = 200
 
 
 @dataclass
@@ -153,11 +157,8 @@ class Poller:
         self.writer = writer
         self.seen = seen
         self.on_new_items = on_new_items
-        self.client: httpx.AsyncClient = client or httpx.AsyncClient(
-            follow_redirects=True,
-            timeout=httpx.Timeout(settings.poll.timeout_seconds),
-            headers={"User-Agent": settings.poll.user_agent},
-            limits=httpx.Limits(max_connections=64),
+        self.client: httpx.AsyncClient = client or build_client(
+            settings, settings.poll.timeout_seconds, 64
         )
         self.paused_tiers: set[int] = set()
         self.domain_limits: dict[str, asyncio.Semaphore] = defaultdict(
@@ -177,8 +178,13 @@ class Poller:
         state: FeedState,
         parse: Callable[[bytes], ParsedFeed] = parse_feed,
         since: datetime | None = None,
+        max_bytes: int = FEED_MAX_BYTES,
     ) -> int:
-        """Poll one URL. Returns new items. `since` drops older entries."""
+        """Poll one URL. Returns new items. `since` drops older entries.
+
+        One poll takes at most `MAX_ENTRIES_PER_POLL` entries that write a row.
+        A feed's remaining entries are read on its next polls.
+        """
         started = datetime.now(UTC)
         clock = monotonic()
         headers: dict[str, str] = {}
@@ -195,7 +201,13 @@ class Poller:
         details: dict[str, Any] | None = None
         try:
             async with self.domain_limits[domain]:
-                response = await self.client.get(state.url, headers=headers)
+                response = await download(
+                    self.client,
+                    state.url,
+                    max_bytes,
+                    self.settings.poll.download_deadline_seconds,
+                    headers=headers,
+                )
             status = response.status_code
             if status == 200:
                 feed = await asyncio.to_thread(parse, response.content)
@@ -207,6 +219,7 @@ class Poller:
                 n_entries = len(feed.entries)
                 now = datetime.now(UTC)
                 sighted = []
+                taken = 0
                 for entry in feed.entries:
                     if since is not None and (
                         entry.published_at is None
@@ -217,7 +230,20 @@ class Poller:
                     item_id = row["item_id"]
                     title_hash = hash_id(entry.title)
                     key = (item_id, state.url)
-                    if self.sightings.get(key) != title_hash:
+                    changed = self.sightings.get(key) != title_hash
+                    unseen = item_id not in self.seen
+                    if not changed and not unseen:
+                        continue
+                    if taken == MAX_ENTRIES_PER_POLL:
+                        log.warning(
+                            "feed_entries_capped",
+                            source_id=state.source.source_id,
+                            feed_url=state.url,
+                            n_entries=n_entries,
+                        )
+                        break
+                    taken += 1
+                    if changed:
                         self.sightings[key] = title_hash
                         sighted.append(
                             {
@@ -228,11 +254,12 @@ class Poller:
                                 "title_hash": title_hash,
                             }
                         )
-                    if item_id not in self.seen:
+                    if unseen:
                         self.seen.add(item_id)
                         new_rows.append(row)
                 self.writer.add("raw.sightings", sighted)
                 index_row = None
+                unchanged = self.archive.unchanged if self.archive else 0
                 if self.archive is not None:
                     index_row = self.archive.add(
                         "feeds",
@@ -248,8 +275,9 @@ class Poller:
                     "n_bytes": len(response.content),
                     "bozo": feed.bozo,
                     "content_type": response.headers.get("content-type"),
+                    # The archive also returns no row when it drops a body.
                     "unchanged": self.archive is not None
-                    and index_row is None,
+                    and self.archive.unchanged > unchanged,
                 }
                 n_new = len(new_rows)
                 if n_entries == 0:
@@ -300,12 +328,19 @@ class Poller:
         if not self.gate.is_online:
             return 0, 0
         try:
-            response = await self.client.get(url)
+            response = await download(
+                self.client,
+                url,
+                SITEMAP_MAX_BYTES,
+                self.settings.poll.download_deadline_seconds,
+            )
         except httpx.HTTPError:
             return 0, 0
         urls = [url]
         if response.status_code == 200:
-            children = sitemap_children(response.content)
+            children = await asyncio.to_thread(
+                sitemap_children, response.content
+            )
             if children:
                 urls = [child for child in children if same_site(url, child)][
                     :MAX_SITEMAP_CHILDREN
@@ -313,7 +348,10 @@ class Poller:
         new = 0
         for child in urls:
             new += await self.poll_once(
-                FeedState(source, child), parse_news_sitemap, since
+                FeedState(source, child),
+                parse_news_sitemap,
+                since,
+                SITEMAP_MAX_BYTES,
             )
         return len(urls), new
 
@@ -402,16 +440,25 @@ class Poller:
 
     async def run_feed(self, state: FeedState) -> None:
         # Spread the first poll across the tier so startup is not a burst.
-        index = min(state.source.poll_tier, 3) - 1
-        tier = self.settings.poll.tier_seconds[index]
+        tiers = self.settings.poll.tier_seconds
+        tier = tiers[min(state.source.poll_tier, len(tiers)) - 1]
         await asyncio.sleep(random.uniform(0, min(tier, 60)))
         stagger = self.settings.poll.resume_stagger_seconds
         while True:
-            # Feeds come back spread out so a weak network is not swamped.
-            if await self.gate.wait_online():
-                await asyncio.sleep(random.uniform(0, stagger))
-            if state.source.poll_tier not in self.paused_tiers:
-                await self.poll_once(state)
+            # One feed's failure must not stop this feed or any other.
+            try:
+                # Feeds come back spread out so a weak network is not swamped.
+                if await self.gate.wait_online():
+                    await asyncio.sleep(random.uniform(0, stagger))
+                if state.source.poll_tier not in self.paused_tiers:
+                    await self.poll_once(state)
+            except Exception as error:
+                log.exception(
+                    "feed_poll_failed",
+                    source_id=state.source.source_id,
+                    feed_url=state.url,
+                )
+                self._record(state, None, type(error).__name__, 0)
             delay = next_delay(self.settings, state)
             if await self.gate.sleep_or_resume(delay):
                 await asyncio.sleep(random.uniform(0, stagger))
