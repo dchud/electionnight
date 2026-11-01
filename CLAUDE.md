@@ -72,6 +72,9 @@ together; a test fails if they disagree.
   sends its request through `data/control/` while the pipeline runs.
 - Tests use a scratch lake under `tmp/`. Never point a test at `data/`.
 - Pipeline code changes take effect after a pipeline restart.
+- Outbound requests never carry the owner's email address, in any header or
+  body. Subagent briefs state this rule and relay the owner's decisions.
+- Never send email or attempt to, for any reason, through any tool or code.
 
 ## Conventions
 

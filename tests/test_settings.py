@@ -58,3 +58,10 @@ def test_cli_lists_every_command():
         "cost",
     ):
         assert command in result.output
+
+
+def test_user_agents_carry_no_email_address():
+    from monitor.ref.wiki import USER_AGENT
+
+    for agent in (Settings().poll.user_agent, USER_AGENT):
+        assert "@" not in agent
