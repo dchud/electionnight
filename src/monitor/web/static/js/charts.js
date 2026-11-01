@@ -78,6 +78,7 @@
       partyRep: css("--party-rep"),
       partyOther: css("--party-other"),
       toneAccent: css("--accent"),
+      ink: css("--text-1"),
       textSoft: css("--text-2"),
     };
     Object.entries(values).forEach(([name, value]) => {
@@ -131,7 +132,9 @@
     if (kind === "bucket" && datum.key) return `kind=bucket&key=${datum.key}`;
     if (kind === "storyline" && datum.storyline_id) {
       if (datum.storyline_id === "other") return null;
-      return `kind=storyline&key=${datum.storyline_id}`;
+      window.location.href =
+        `/story/${datum.storyline_id}?${Monitor.params().toString()}`;
+      return null;
     }
     if (kind === "topic" && datum.topic) {
       const start = new Date(datum.bin_start).toISOString();
@@ -141,8 +144,10 @@
       return `kind=entity&key=${datum.entity_id}`;
     }
     if (kind === "matrix" && datum.storyline_id) {
+      if (!datum.share) return null;
       const bucket = datum.bucket === "Non-US" ? "NA" : datum.bucket;
-      return `kind=storyline&key=${datum.storyline_id}&bucket=${bucket}`;
+      // Coverage counts every outlet's copy, so its evidence does too.
+      return `kind=storyline&key=${datum.storyline_id}&bucket=${bucket}&copies=all`;
     }
     if (kind === "language" && datum.language) {
       return `kind=language&key=${datum.language}`;

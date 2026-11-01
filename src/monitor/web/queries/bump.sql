@@ -1,7 +1,7 @@
--- Rank of the top 12 entities by mentions per 15-minute bin.
+-- Rank of the top 12 entities by mentions per time bin.
 WITH base AS (
     SELECT m.entity_id,
-           time_bucket(INTERVAL '15 minutes', f.first_seen_at) AS bin_start,
+           time_bucket(INTERVAL ({bin_minutes}) MINUTE, f.first_seen_at) AS bin_start,
            count(*) AS n
     FROM mentions m JOIN facts f USING (item_id)
     WHERE {where} AND m.entity_id IS NOT NULL

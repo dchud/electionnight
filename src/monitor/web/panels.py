@@ -32,6 +32,10 @@ BASELINE_END = datetime(2026, 11, 3, 12, 0, tzinfo=ET)
 LEAN_BUCKETS = ("L", "LL", "C", "LR", "R")
 LEAN_POSITION = {label: index for index, label in enumerate(LEAN_BUCKETS)}
 SPARK_BINS = 24
+# Rank bins widen with the window, so a day of data stays readable.
+BUMP_BIN_SHORT = 15
+BUMP_BIN_LONG = 60
+BUMP_LONG_SPAN = timedelta(hours=6)
 BIN_MINUTES = 5
 
 
@@ -620,10 +624,11 @@ class Panels:
 
     def bump(self, filters: Filters) -> list[dict[str, Any]]:
         where, params = self._where(filters)
+        span = filters.now - filters.window_start
+        minutes = BUMP_BIN_LONG if span > BUMP_LONG_SPAN else BUMP_BIN_SHORT
+        sql = load_sql("bump").replace("{where}", where)
         return self.model.query(
-            "bump",
-            load_sql("bump").replace("{where}", where),
-            params,
+            "bump", sql.replace("{bin_minutes}", str(minutes)), params
         )
 
     def tone_by_lean(self, filters: Filters) -> list[dict[str, Any]]:

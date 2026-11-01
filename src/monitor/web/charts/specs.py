@@ -71,6 +71,7 @@ def stream(stack: Any) -> dict[str, Any]:
                     symbolType="square",
                 ),
             ),
+            detail="storyline_id:N",
             order=alt.Order("total:Q", sort="descending"),
             opacity=alt.condition(highlight, alt.value(0.95), alt.value(0.35)),
             tooltip=[
@@ -146,12 +147,16 @@ def bump() -> dict[str, Any]:
             alt.Tooltip("bin_start:T", title="Bin", format="%-I:%M %p"),
         ],
     )
-    lines = base.mark_line(strokeWidth=2, interpolate="monotone")
-    points = base.mark_circle(size=64, opacity=1)
+    lines = base.mark_line(strokeWidth=2, interpolate="linear")
+    points = base.mark_circle(size=48, opacity=1)
     labels = (
         _named()
-        .transform_joinaggregate(last="max(bin_start)")
-        .transform_filter("datum.bin_start == datum.last")
+        .transform_window(
+            newest="row_number()",
+            groupby=["entity_id"],
+            sort=[alt.SortField("bin_start", order="descending")],
+        )
+        .transform_filter("datum.newest === 1")
         .mark_text(align="left", dx=8)
         .encode(
             x=alt.X("bin_start:T"),
@@ -160,43 +165,51 @@ def bump() -> dict[str, Any]:
         )
     )
     chart = alt.layer(lines, points, labels).properties(
-        width="container", height="container"
+        width="container",
+        height="container",
+        padding={"left": 5, "top": 5, "bottom": 5, "right": 140},
     )
-    chart = chart.configure_view(strokeWidth=0)
     return chart.to_dict()
 
 
 def tone_by_lean() -> dict[str, Any]:
+    """Lean is told apart by shape and position, never by color."""
     tone_scale = alt.Scale(domain=[-2, 2])
+    ink = alt.Scale(
+        domain=LEAN_ORDER,
+        range=[{"expr": "ink"}] * 5 + [{"expr": "toneAccent"}],
+    )
     base = _named().encode(
         y=alt.Y("entity:N", title=None),
         yOffset=alt.YOffset("bucket:N", sort=LEAN_ORDER),
     )
-    bars = base.mark_rule(strokeWidth=2).encode(
+    bars = base.mark_rule(strokeWidth=2, opacity=0.55).encode(
         x=alt.X("ci_low:Q", scale=tone_scale, title="Mean tone"),
         x2="ci_high:Q",
-        color=alt.Color("bucket:N", sort=LEAN_ORDER, legend=None),
+        color=alt.Color("bucket:N", scale=ink, legend=None),
     )
-    dots = base.mark_point(size=70, strokeWidth=2).encode(
+    dots = base.mark_point(size=80, strokeWidth=2, opacity=1).encode(
         x=alt.X("mean:Q", scale=tone_scale),
-        color=alt.Color(
+        color=alt.Color("bucket:N", scale=ink, legend=None),
+        shape=alt.Shape(
             "bucket:N",
-            sort=LEAN_ORDER,
             scale=alt.Scale(
                 domain=LEAN_ORDER,
                 range=[
-                    "#999999",
-                    "#777777",
-                    "#555555",
-                    "#3a3a3a",
-                    "#1f1f1f",
-                    {"expr": "toneAccent"},
+                    "circle",
+                    "square",
+                    "diamond",
+                    "triangle-up",
+                    "triangle-down",
+                    "cross",
                 ],
             ),
-            legend=alt.Legend(title=None, orient="bottom"),
+            legend=alt.Legend(title=None, orient="bottom", columns=6),
         ),
         fill=alt.condition(
-            "datum.low_n", alt.value("transparent"), alt.Color("bucket:N")
+            "datum.low_n",
+            alt.value("transparent"),
+            alt.Color("bucket:N", scale=ink, legend=None),
         ),
         tooltip=[
             alt.Tooltip("entity:N", title="Entity"),
