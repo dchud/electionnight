@@ -1,0 +1,88 @@
+[project]
+name = "monitor"
+version = "0.1.0"
+description = "Election night news monitor: feeds, parsers, DuckLake, dashboard"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "altair>=6.3.0",
+    "anthropic>=2.3.0",
+    "duckdb>=2.0.0",
+    "fastapi>=0.162.0",
+    "fastembed>=0.9.1",
+    "feedparser>=6.0.14",
+    "honcho>=2.0.0",
+    "httpx[http2]>=0.28.1",
+    "jinja2>=3.1.6",
+    "numpy>=2.5.4",
+    "pyarrow>=26.0.0",
+    "pydantic>=2.14.2",
+    "pydantic-settings>=2.16.2",
+    "python-dotenv>=1.2.4",
+    "pytz>=2026.6",
+    "pyyaml>=6.0.3",
+    "rapidfuzz>=3.14.6",
+    "sse-starlette>=3.6.0",
+    "structlog>=26.1.0",
+    "trafilatura>=2.3.1",
+    "typer>=0.27.3",
+    "uvicorn[standard]>=0.54.0",
+    "xxhash>=4.0.2",
+    "zstandard>=0.25.0",
+]
+
+[project.scripts]
+monitor = "monitor.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 79
+target-version = "py312"
+extend-exclude = ["src/monitor/web/static", "*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "SIM"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/monitor/cli.py" = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+  "-q",
+  "--basetemp=tmp/pytest",
+  "--disable-socket",
+  "--allow-unix-socket",
+  "-m", "not slow and not llm and not live",
+]
+markers = [
+  "slow: long-running soak and load tests",
+  "llm: calls the Claude API and costs money",
+  "live: reaches external sites",
+]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+packages = ["monitor"]
+ignore_missing_imports = true
+check_untyped_defs = false
+warn_unused_ignores = false
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1",
+    "pytest-socket>=0.8.1",
+    "ruff>=0.17.3",
+    "types-pytz>=2026.6.0.20261031",
+    "types-pyyaml>=6.0.12.20261030",
+]
