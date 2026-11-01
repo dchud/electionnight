@@ -579,11 +579,12 @@ def test_route_runs_a_select_and_escapes_results(client):
     ],
 )
 def test_console_refuses_other_hosts_and_origins(client, headers):
-    assert client.get("/under/sql", headers=headers).status_code == 403
+    # The server refuses a foreign Host first, and the console an Origin.
+    assert client.get("/under/sql", headers=headers).status_code in {400, 403}
     response = client.post(
         "/under/sql", data={"sql": "SELECT 1"}, headers=headers
     )
-    assert response.status_code == 403
+    assert response.status_code in {400, 403}
 
 
 def test_console_refuses_a_remote_peer(scratch):
