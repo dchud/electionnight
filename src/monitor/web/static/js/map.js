@@ -46,27 +46,139 @@
   }
 
   function legendFor(metric, color, domain) {
-    const stops = d3Stops(color, domain);
+    const stops = d3Stops(metric, color, domain);
     const low = domain[0];
     const high = domain[domain.length - 1];
+    const ticks = {
+      attention: ["0.25", "1.00", "4.00"],
+      volume: ["0", String(Math.round(high / 2)), String(Math.round(high))],
+      tone: ["-1", "0", "+1"],
+    }[metric];
     const words = {
       attention: ["below normal", "above normal"],
-      volume: [String(low), String(Math.round(high))],
+      volume: ["fewer stories", "more stories"],
       tone: ["negative", "positive"],
     }[metric];
+    const spans = (values) =>
+      values.map((value) => `<span>${value}</span>`).join("");
     return (
-      `<span>${words[0]}</span>` +
-      `<span class="map-legend-bar" style="background:linear-gradient(90deg,${stops})"></span>` +
-      `<span>${words[1]}</span>`
+      `<span class="map-legend-bar" data-low="${low}" data-high="${high}" ` +
+      `style="background:linear-gradient(90deg,${stops})"></span>` +
+      `<span class="map-legend-row num">${spans(ticks)}</span>` +
+      `<span class="map-legend-row">${spans(words)}</span>`
     );
   }
 
-  function d3Stops(color, domain) {
+  /* Attention's scale is logarithmic, so 1.00 falls at the bar's center. */
+  function d3Stops(metric, color, domain) {
     const low = domain[0];
     const high = domain[domain.length - 1];
-    return Array.from({ length: 8 }, (_, index) =>
-      color(low + ((high - low) * index) / 7)
-    ).join(",");
+    return Array.from({ length: 9 }, (_, index) => {
+      const t = index / 8;
+      return color(
+        metric === "attention"
+          ? low * (high / low) ** t
+          : low + (high - low) * t
+      );
+    }).join(",");
+  }
+
+  /* Hover text stays in one place on the card, where a large cursor cannot
+     cover it. It fades between places, and lingers while the pointer crosses
+     a border, so moving across the map does not flicker. */
+  const READOUT_FADE_MS = 110;
+  const READOUT_LINGER_MS = 220;
+
+  function makeReadout(slot, hint) {
+    let hintText = hint;
+    let current = null;
+    let drawn = "";
+    let swap = 0;
+    let linger = 0;
+
+    function render(content) {
+      drawn = JSON.stringify(content);
+      slot.textContent = "";
+      const line = document.createElement("div");
+      if (content.name) {
+        const name = document.createElement("strong");
+        name.textContent = content.name;
+        line.appendChild(name);
+        line.appendChild(document.createTextNode(` · ${content.text}`));
+        slot.appendChild(line);
+      }
+      if (content.note) {
+        const note = document.createElement("div");
+        note.className = "map-readout-note";
+        note.textContent = content.note;
+        slot.appendChild(note);
+      }
+    }
+
+    function show(key, content) {
+      clearTimeout(linger);
+      if (key === current) {
+        if (JSON.stringify(content) !== drawn) {
+          clearTimeout(swap);
+          slot.classList.remove("is-changing");
+          render(content);
+        }
+        return;
+      }
+      current = key;
+      clearTimeout(swap);
+      slot.classList.add("is-changing");
+      swap = setTimeout(() => {
+        render(content);
+        slot.classList.remove("is-changing");
+      }, READOUT_FADE_MS);
+    }
+
+    function clear() {
+      clearTimeout(linger);
+      linger = setTimeout(
+        () => show(null, { note: hintText }),
+        READOUT_LINGER_MS
+      );
+    }
+
+    function setHint(text) {
+      hintText = text;
+      if (current === null) render({ note: hintText });
+    }
+
+    render({ note: hintText });
+    return { show, clear, setHint };
+  }
+
+  function readoutBeside(el, hint) {
+    const slot = document.createElement("div");
+    slot.className = "map-readout";
+    el.parentElement.classList.add("has-readout");
+    el.parentElement.insertBefore(slot, el);
+    return makeReadout(slot, hint);
+  }
+
+  const MAP_HINTS = {
+    attention:
+      "Attention is a state's share of election coverage now, divided by " +
+      "its usual share since noon Nov 1. 1.00 is normal; 1.32 is 32% above " +
+      "normal.",
+    volume: "Stories naming each state in this window.",
+    tone:
+      "Mean tone of news stories naming each state, from -2 to +2. Opinion " +
+      "is left out.",
+  };
+
+  function attentionWords(value) {
+    const percent = Math.round(Math.abs(value - 1) * 100);
+    if (percent < 1) return "normal";
+    return `${percent}% ${value > 1 ? "above" : "below"} normal`;
+  }
+
+  function storyCount(count, label = "") {
+    const noun = count === 1 ? "story" : "stories";
+    return `${count} ${label}${noun}`;
   }
 
   function scaleFor(metric) {
@@ -108,7 +220,8 @@
     let map = null;
     let running = null;
     let again = false;
-    const tip = document.getElementById("tip");
+    const readoutSlot = document.getElementById("map-readout");
+    const readout = makeReadout(readoutSlot, MAP_HINTS[metric]);
     const legend = document.createElement("div");
     legend.className = "map-legend";
     const legendSlot = document.getElementById("map-legend");
@@ -168,6 +281,26 @@
       return row.tone;
     }
 
+    function stateWords(row) {
+      const value = valueOf(row);
+      const stories = storyCount(row ? row.n : 0);
+      if (metric === "tone") {
+        const toned = (row ? row.tone_n : 0) || 0;
+        if (value === null || value === undefined) {
+          return `Under 5 toned stories · ${stories}`;
+        }
+        const count = storyCount(toned, "toned ");
+        const low = row.tone_low_n ? " · low n" : "";
+        const shown = Number(value).toFixed(2);
+        return `Mean tone ${shown} · ${count}${low}`;
+      }
+      if (metric === "volume" || value === null || value === undefined) {
+        return stories;
+      }
+      const shown = Number(value).toFixed(2);
+      return `Attention ${shown}, ${attentionWords(value)} · ${stories}`;
+    }
+
     function paint(data) {
       const byState = new Map(data.states.map((row) => [row.usps, row]));
       const peak = Math.max(0, ...data.states.map((row) => row.n));
@@ -185,48 +318,19 @@
           "map-dim",
           (feature) => focus && !focus.has(USPS_BY_FIPS[feature.id])
         )
-        .on("pointermove", (event, feature) => {
+        .on("pointerenter pointermove", (_event, feature) => {
           const usps = USPS_BY_FIPS[feature.id];
           const row = byState.get(usps);
-          tip.hidden = false;
-          tip.style.left = event.clientX + 14 + "px";
-          tip.style.top = event.clientY + 14 + "px";
-          const value = valueOf(row);
-          const shown =
-            value === null || value === undefined
-              ? metric === "tone"
-                ? "n under 5"
-                : "no stories"
-              : Number(value).toFixed(metric === "volume" ? 0 : 2);
-          const words = {
-            attention: "Attention",
-            volume: "Stories",
-            tone: "Mean tone",
-          }[metric];
-          tip.textContent = "";
-          const title = document.createElement("strong");
-          title.textContent = usps;
-          tip.appendChild(title);
-          const counted =
-            metric === "tone" ? (row ? row.tone_n : 0) : row ? row.n : 0;
-          const lowN =
-            metric === "tone" && row && row.tone !== null && row.tone_low_n
-              ? " · low n"
-              : "";
-          tip.appendChild(
-            document.createTextNode(
-              ` · ${words} ${shown} · n=${counted}${lowN}`
-            )
-          );
-          if (row && row.top_storyline) {
-            const story = document.createElement("div");
-            story.textContent = row.top_storyline;
-            tip.appendChild(story);
-          }
+          readout.show(usps, {
+            name: feature.properties.name,
+            text: stateWords(row),
+            note:
+              row && row.top_storyline
+                ? `Top story: ${row.top_storyline}`
+                : "",
+          });
         })
-        .on("pointerleave", () => {
-          tip.hidden = true;
-        });
+        .on("pointerleave", readout.clear);
       const battleground = new Set(data.battleground);
       map.outlines
         .selectAll("path")
@@ -248,6 +352,7 @@
         const button = event.target.closest("button");
         if (!button) return;
         metric = button.dataset.metric;
+        readout.setHint(MAP_HINTS[metric]);
         metrics
           .querySelectorAll("button")
           .forEach((b) =>
@@ -288,24 +393,16 @@
     return { counts, peak, color };
   }
 
-  function bindVolumeTip(selection, nameOf, countOf) {
-    const tip = document.getElementById("tip");
+  function bindVolumeReadout(selection, readout, keyOf, nameOf, countOf) {
     selection
-      .on("pointermove", (event, feature) => {
-        tip.hidden = false;
-        tip.style.left = event.clientX + 14 + "px";
-        tip.style.top = event.clientY + 14 + "px";
-        tip.textContent = "";
-        const title = document.createElement("strong");
-        title.textContent = nameOf(feature);
-        tip.appendChild(title);
-        tip.appendChild(
-          document.createTextNode(` · Stories ${countOf(feature)}`)
-        );
+      .on("pointerenter pointermove", (_event, feature) => {
+        const count = countOf(feature);
+        readout.show(keyOf(feature), {
+          name: nameOf(feature),
+          text: storyCount(count),
+        });
       })
-      .on("pointerleave", () => {
-        tip.hidden = true;
-      });
+      .on("pointerleave", readout.clear);
   }
 
   function setNote(el, text) {
@@ -329,6 +426,7 @@
 
   function startStateMap(el) {
     let map = null;
+    const readout = readoutBeside(el, "Stories in this storyline, by state.");
     async function refresh() {
       try {
         if (!map) {
@@ -350,9 +448,11 @@
           return n ? color(n) : empty;
         });
         map.svg.classed("map-painted", true);
-        bindVolumeTip(
+        bindVolumeReadout(
           map.states,
-          (feature) => USPS_BY_FIPS[feature.id],
+          readout,
+          (feature) => feature.id,
+          (feature) => feature.properties.name,
           (feature) => counts.get(USPS_BY_FIPS[feature.id]) || 0
         );
       } catch (error) {
@@ -366,6 +466,7 @@
     const d3 = window.d3;
     const fips = el.dataset.fips;
     let map = null;
+    const readout = readoutBeside(el, "Stories naming each county.");
     async function draw() {
       const topology = await (
         await fetch("/static/topo/counties-albers-10m.json")
@@ -418,8 +519,10 @@
           return n ? color(n) : empty;
         });
         map.svg.classed("map-painted", true);
-        bindVolumeTip(
+        bindVolumeReadout(
           map.counties,
+          readout,
+          (feature) => feature.id,
           (feature) => feature.properties.name,
           (feature) => counts.get(feature.id) || 0
         );

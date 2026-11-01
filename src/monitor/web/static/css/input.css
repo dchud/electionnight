@@ -226,11 +226,20 @@ main { padding: .6rem 1rem 2rem; display: flex; flex-direction: column; gap: .6r
 #us-map { height: 100%; }
 .map-svg { width: 100%; height: 100%; display: block; opacity: 0; transition: opacity .25s ease-out; }
 .map-svg.map-painted { opacity: 1; }
-.map-state { fill: var(--surface-2); stroke: var(--surface-1); stroke-width: .6; cursor: pointer; transition: fill .3s, opacity .3s; }
+.map-state { fill: var(--surface-2); stroke: var(--surface-1); stroke-width: .6; cursor: pointer; transition: fill .3s, opacity .3s, stroke .12s; }
 .map-outline { fill: none; stroke: var(--text-1); stroke-width: calc(1.6px * var(--stroke-scale)); pointer-events: none; }
 .map-dim { opacity: .28; }
-.map-legend { font-size: .7rem; color: var(--text-2); display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .35rem; margin-bottom: .5rem; }
-.map-legend-bar { width: 100%; height: 10px; border-radius: 2px; order: -1; }
+.map-legend { font-size: .7rem; color: var(--text-2); display: flex; flex-direction: column; gap: .1rem; margin-bottom: .5rem; }
+.map-legend-bar { display: block; width: 100%; height: 10px; border-radius: 2px; }
+.map-legend-row { display: flex; justify-content: space-between; gap: .35rem; }
+.has-readout { display: flex; flex-direction: column; min-height: 0; }
+.has-readout > .map-wrap, .has-readout > .county-map, .has-readout > .mini-map { flex: 1; min-height: 0; height: auto; }
+.map-readout { flex: none; min-height: 2.75em; padding: 0 .25rem .3rem; font-size: .8rem; line-height: 1.35; color: var(--text-1); transition: opacity .11s ease; }
+.map-readout.is-changing { opacity: 0; }
+.map-readout-note { color: var(--text-2); }
+[data-projector] .map-readout { font-size: 1rem; }
+.map-state:hover { stroke: var(--text-1); stroke-width: 1.4; }
+.map-county:hover { stroke: var(--text-1); stroke-width: 2px; }
 .tip { position: fixed; z-index: 70; pointer-events: none; padding: .35rem .55rem; background: var(--surface-1); border: 1px solid var(--line); border-radius: 6px; font-size: .8rem; box-shadow: 0 6px 18px rgb(0 0 0 / .2); max-width: 20rem; }
 .rising-row { display: grid; grid-template-columns: 2rem 1fr 2.3rem; gap: .3rem; align-items: center; font-size: .75rem; padding: .1rem 0; cursor: pointer; }
 .rising-bar { height: .55rem; background: var(--accent); border-radius: 2px; }
@@ -396,7 +405,7 @@ pre.raw { font-size: .72rem; overflow: auto; background: var(--surface-2); paddi
 .mini-map-wrap { display: flex; flex-direction: column; gap: .3rem; overflow-y: auto; }
 .mini-map { flex: 1; min-height: 11rem; }
 .county-map { height: 100%; }
-.map-county { fill: var(--surface-2); stroke: var(--line); stroke-width: 1px; vector-effect: non-scaling-stroke; cursor: pointer; transition: fill .3s; }
+.map-county { fill: var(--surface-2); stroke: var(--line); stroke-width: 1px; vector-effect: non-scaling-stroke; cursor: pointer; transition: fill .3s, stroke .12s; }
 .map-note { position: absolute; left: .5rem; bottom: .2rem; padding: 0; }
 
 /* Breakpoints */
@@ -420,7 +429,7 @@ pre.raw { font-size: .72rem; overflow: auto; background: var(--surface-2); paddi
 /* Last, so it overrides every transition above. */
 @media (prefers-reduced-motion: reduce) {
   .fresh, .panel-arrive { animation: none; }
-  [hx-get], .chart, [data-chart], #us-map, .map-svg, .map-state, .map-county { transition: none; }
+  [hx-get], .chart, [data-chart], #us-map, .map-svg, .map-state, .map-county, .map-readout { transition: none; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none; }
 }
 @media (prefers-reduced-motion: no-preference) {
