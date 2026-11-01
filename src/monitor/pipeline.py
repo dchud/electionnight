@@ -57,6 +57,9 @@ LADDER_SECONDS = 15
 # Lag at which the pipeline sheds background work, and at which it resumes.
 LAG_HIGH_SECONDS = 120.0
 LAG_LOW_SECONDS = 60.0
+# Full-text fetching is paced per domain on purpose, so waiting there is not
+# the pipeline falling behind.
+CORE_STAGES = {"lang", "classify_a", "embed", "dedupe", "storylines"}
 
 
 class Pipeline:
@@ -229,7 +232,12 @@ class Pipeline:
     async def ladder_job(self) -> None:
         """Automatic degradation: shed background work when behind."""
         lag = max(
-            (stage.oldest_live_age() for stage in self.stages), default=0.0
+            (
+                stage.oldest_live_age()
+                for stage in self.stages
+                if stage.parser.name in CORE_STAGES
+            ),
+            default=0.0,
         )
         if not self.shedding and lag > LAG_HIGH_SECONDS:
             self.shedding = True

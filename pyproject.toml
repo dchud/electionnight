@@ -54,6 +54,8 @@ extend-immutable-calls = ["typer.Option", "typer.Argument"]
 "src/monitor/cli.py" = ["B008"]
 "src/monitor/control.py" = ["ASYNC240"]
 "src/monitor/parsers/storylines.py" = ["E501"]
+"src/monitor/parsers/briefs.py" = ["E501"]
+"src/monitor/parsers/entities.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
