@@ -17,8 +17,8 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
 | V10 | OpenFEC endpoint and filters for 2026 candidates | pass 2026-11-01: `/v1/candidates/` honors `election_year`, `cycle`, `candidate_status`, `is_active_candidate`, `has_raised_funds`, `state`, `district`, `incumbent_challenge`. `election_type=G` is ignored, so Wikipedia candidate tables decide who is on the ballot |
 | V11 | Race ratings sources reachable and parsed | pass 2026-11-01: Wikipedia `action=parse` on the 2026 Senate, governor, House, attorney general, secretary of state, lieutenant governor, and ballot measure pages. Sabato pages returned 403, so its ratings come from the Wikipedia column. Ratings not checked against raters' own sites |
 | V12 | Poll-closing times confirmed | pass 2026-11-01: https://www.270towin.com/poll-closing-times/, cross-checked with The Green Papers and Wikipedia. Differs from the spec on KS, SD, ND, NH, ID, OR, AK; see `config/poll_closings.yaml` |
-| V13 | Lean ratings confirmed with citations | pending owner review: `config/lean_ratings.csv` and `reports/lean_review.md` |
-| V14 | Battleground and close-race list confirmed | pending owner review: derived list AK FL GA IA KS ME MI MN NE NH NV OH OR SC TX WI |
+| V13 | Lean ratings confirmed with citations | owner confirmed national and analysis outlets 2026-11-01; 36 rows. State, local, and wire outlets stay `Unrated` |
+| V14 | Battleground and close-race list confirmed | owner confirmed 2026-11-01: AK AZ FL GA IA KS ME MI MN NC NE NH NV NY OH OR PA SC TX WI, which is the derived list plus overrides for NC, AZ, PA, NY |
 
 ## Differences from the spec
 

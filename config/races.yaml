@@ -9,10 +9,15 @@
 # rating: first available of Cook, Inside Elections, Sabato; see `ratings`.
 # close_race: rating is Toss-up, Tilt *, or Lean *.
 # watch: any rater puts the race in that set, or an override says so.
-overrides: []
+overrides:
+- {state: AZ, battleground: true}
+- {state: NC, battleground: true}
+- {state: NY, battleground: true}
+- {state: PA, battleground: true}
 generated_at: '2026-11-01T18:50:58+00:00'
 battleground_states:
 - AK
+- AZ
 - FL
 - GA
 - IA
@@ -20,11 +25,14 @@ battleground_states:
 - ME
 - MI
 - MN
+- NC
 - NE
 - NH
 - NV
+- NY
 - OH
 - OR
+- PA
 - SC
 - TX
 - WI
