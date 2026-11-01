@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ item.headline }} · Election Night Monitor{% endblock %}
+{% block content %}
+<main class="page page-narrow">
+  <article class="panel page-panel-body">
+    {% include "fragments/article.html" %}
+  </article>
+</main>
+{% endblock %}

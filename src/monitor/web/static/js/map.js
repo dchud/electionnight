@@ -232,9 +232,184 @@
     refresh();
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", start);
-  } else {
+  /* The smaller maps on drill-down pages share a volume scale and tooltip. */
+  function surfaceColor() {
+    return getComputedStyle(document.documentElement)
+      .getPropertyValue("--surface-2")
+      .trim();
+  }
+
+  async function fetchTable(chart, el) {
+    const params = Monitor.params();
+    new URLSearchParams(el.dataset.params || "").forEach((value, key) =>
+      params.set(key, value)
+    );
+    const response = await fetch(`/api/data/${chart}?${params}`);
+    if (!response.ok) throw new Error(`${chart}: ${response.status}`);
+    return (await response.json()).table || [];
+  }
+
+  function volumeFill(rows, key) {
+    const counts = new Map(rows.map((row) => [row[key], row.n]));
+    const peak = Math.max(1, ...rows.map((row) => row.n));
+    const color = window.d3
+      .scaleSequential(window.d3.interpolateViridis)
+      .domain([0, peak]);
+    return { counts, peak, color };
+  }
+
+  function bindVolumeTip(selection, nameOf, countOf) {
+    const tip = document.getElementById("tip");
+    selection
+      .on("pointermove", (event, feature) => {
+        tip.hidden = false;
+        tip.style.left = event.clientX + 14 + "px";
+        tip.style.top = event.clientY + 14 + "px";
+        tip.textContent = "";
+        const title = document.createElement("strong");
+        title.textContent = nameOf(feature);
+        tip.appendChild(title);
+        tip.appendChild(
+          document.createTextNode(` · Stories ${countOf(feature)}`)
+        );
+      })
+      .on("pointerleave", () => {
+        tip.hidden = true;
+      });
+  }
+
+  function setNote(el, text) {
+    let note = el.parentElement.querySelector(":scope > .empty");
+    if (text && !note) {
+      note = document.createElement("div");
+      note.className = "empty map-note";
+      el.parentElement.appendChild(note);
+    } else if (!text && note) {
+      note.remove();
+      return;
+    }
+    if (note) note.textContent = text;
+  }
+
+  function watchMap(refresh) {
+    Monitor.bus.addEventListener("refresh", refresh);
+    Monitor.bus.addEventListener("theme", refresh);
+    refresh();
+  }
+
+  function startStateMap(el) {
+    let map = null;
+    async function refresh() {
+      try {
+        if (!map) {
+          const topology = await (
+            await fetch("/static/topo/states-albers-10m.json")
+          ).json();
+          map = drawMap(el, {
+            topology,
+            onClick: (usps) => {
+              window.location.href = `/state/${usps}?${Monitor.params()}`;
+            },
+          });
+        }
+        const rows = await fetchTable("story_map", el);
+        const { counts, color } = volumeFill(rows, "usps");
+        const empty = surfaceColor();
+        map.states.attr("fill", (feature) => {
+          const n = counts.get(USPS_BY_FIPS[feature.id]);
+          return n ? color(n) : empty;
+        });
+        bindVolumeTip(
+          map.states,
+          (feature) => USPS_BY_FIPS[feature.id],
+          (feature) => counts.get(USPS_BY_FIPS[feature.id]) || 0
+        );
+      } catch (error) {
+        console.warn("state map refresh failed", error);
+      }
+    }
+    watchMap(refresh);
+  }
+
+  function startCountyMap(el) {
+    const d3 = window.d3;
+    const fips = el.dataset.fips;
+    let map = null;
+    async function draw() {
+      const topology = await (
+        await fetch("/static/topo/counties-albers-10m.json")
+      ).json();
+      const features = window.topojson
+        .feature(topology, topology.objects.counties)
+        .features.filter((feature) => feature.id.slice(0, 2) === fips);
+      if (!features.length) return { features };
+      const path = d3.geoPath();
+      const collection = { type: "FeatureCollection", features };
+      const [[x0, y0], [x1, y1]] = path.bounds(collection);
+      const pad = Math.max(x1 - x0, y1 - y0) * 0.03;
+      const svg = d3
+        .select(el)
+        .append("svg")
+        .attr("class", "map-svg")
+        .attr(
+          "viewBox",
+          `${x0 - pad} ${y0 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}`
+        )
+        .attr("preserveAspectRatio", "xMidYMid meet")
+        .attr("role", "img")
+        .attr("aria-label", `Map of counties in ${el.dataset.usps}`);
+      const counties = svg
+        .append("g")
+        .selectAll("path")
+        .data(features, (feature) => feature.id)
+        .join("path")
+        .attr("class", "map-county")
+        .attr("d", path)
+        .attr("data-fips", (feature) => feature.id)
+        .on("click", (_event, feature) => {
+          Monitor.openEvidence(`kind=county&key=${feature.id}`);
+        });
+      return { features, counties };
+    }
+    async function refresh() {
+      try {
+        if (!map) map = await draw();
+        if (!map.features.length) {
+          setNote(el, `No county map for ${el.dataset.usps}.`);
+          return;
+        }
+        const rows = await fetchTable("state_counties", el);
+        const { counts, color } = volumeFill(rows, "fips");
+        const empty = surfaceColor();
+        map.counties.attr("fill", (feature) => {
+          const n = counts.get(feature.id);
+          return n ? color(n) : empty;
+        });
+        bindVolumeTip(
+          map.counties,
+          (feature) => feature.properties.name,
+          (feature) => counts.get(feature.id) || 0
+        );
+        setNote(
+          el,
+          rows.length ? "" : "No stories name a county here for these filters."
+        );
+      } catch (error) {
+        console.warn("county map refresh failed", error);
+      }
+    }
+    watchMap(refresh);
+  }
+
+  function startAll() {
     start();
+    document.querySelectorAll("[data-state-map]").forEach(startStateMap);
+    document.querySelectorAll("[data-county-map]").forEach(startCountyMap);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startAll);
+  } else {
+    startAll();
   }
 })();

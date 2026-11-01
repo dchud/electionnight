@@ -24,6 +24,7 @@ from typing import Any
 
 import duckdb
 
+from monitor.disk import disk_figures
 from monitor.lake import connect
 from monitor.logs import get
 from monitor.settings import Settings
@@ -34,6 +35,7 @@ log = get(__name__)
 # each refresh looks back further than that.
 WATERMARK_OVERLAP = timedelta(minutes=3)
 READ_RETRIES = 3
+VECTOR_DIM = 384
 
 FACTS_COLUMNS = """
     item_id TEXT, source_id TEXT, language TEXT, title TEXT, headline TEXT,
@@ -117,7 +119,8 @@ FACTS_SELECT = """
                from_json(x.raw -> '$.race_keys', '["VARCHAR"]'), []
            ) AS race_keys,
            flatten([
-               [concat(st, '|', rt) FOR rt IN coalesce(c.race_types, [])]
+               [concat(st, '|', replace(rt, 'senate_special', 'senate'))
+                FOR rt IN coalesce(c.race_types, [])]
                FOR st IN coalesce(c.states, [])
            ]) AS state_races
     FROM lake.raw.items i
@@ -165,6 +168,36 @@ INCREMENTAL_TABLES = {
         "WHERE created_at >= $since QUALIFY row_number() OVER "
         "(PARTITION BY place_id ORDER BY created_at DESC) = 1",
     ),
+    "llm_calls": (
+        "call_id",
+        "SELECT call_id, purpose, model, input_tokens, cache_read_tokens, "
+        "cache_write_tokens, output_tokens, usd_est, latency_ms, status, "
+        "created_at FROM lake.nlp.llm_calls WHERE created_at >= $since "
+        "QUALIFY row_number() OVER (PARTITION BY call_id "
+        "ORDER BY created_at DESC) = 1",
+    ),
+    "fetch_log": (
+        "fetch_id",
+        "SELECT fetch_id, source_id, started_at, "
+        "error IS NOT NULL AS failed FROM lake.raw.fetches "
+        "WHERE created_at >= $since QUALIFY row_number() OVER "
+        "(PARTITION BY fetch_id ORDER BY created_at DESC) = 1",
+    ),
+}
+# The raw view of one item. Vectors and article text are left out: the first
+# is unreadable and the second is shown only as an extract.
+PARSER_TABLES = {
+    "raw.items": "*",
+    "raw.article_text": "* EXCLUDE (text)",
+    "nlp.lang": "*",
+    "nlp.classify_a": "*",
+    "nlp.embeddings": "* EXCLUDE (vec)",
+    "nlp.dup_groups": "*",
+    "nlp.storyline_assign": "*",
+    "nlp.extract_b": "*",
+    "nlp.mentions": "*",
+    "nlp.places": "*",
+    "nlp.race_calls": "*",
 }
 
 
@@ -382,6 +415,80 @@ class ReadModel:
                 dict(zip(columns, row, strict=True))
                 for row in result.fetchall()
             ]
+        finally:
+            cursor.close()
+
+    def column(
+        self, sql: str, params: dict[str, Any] | None = None
+    ) -> list[Any]:
+        """The first column of a query, without building a dict per row."""
+        cursor = self.db.cursor()
+        try:
+            return [
+                row[0] for row in cursor.execute(sql, params or {}).fetchall()
+            ]
+        finally:
+            cursor.close()
+
+    def article_text(self, item_id: str) -> dict[str, Any] | None:
+        """The newest fetch of one item's text, cached for the snapshot."""
+        key = (self.snapshot.snapshot_id, "article_text", item_id)
+        cached = self.cache.get(key)
+        if cached is not None:
+            return cached or None
+        rows = self._lake_rows(
+            """
+            SELECT text, n_chars, paywalled, http_status, extractor, fetched_at
+            FROM lake.raw.article_text WHERE item_id = $item_id
+            ORDER BY coalesce(text, '') <> '' DESC, created_at DESC LIMIT 1
+            """,
+            {"item_id": item_id},
+        ).to_pylist()
+        row = rows[0] if rows else {}
+        self.cache.put(key, row)
+        return row or None
+
+    def parser_outputs(self, item_id: str) -> dict[str, list[dict[str, Any]]]:
+        """Every parser's rows for one item, oldest first."""
+        return {
+            table: self._lake_rows(
+                f"SELECT {columns} FROM lake.{table} "
+                "WHERE item_id = $item_id ORDER BY created_at",
+                {"item_id": item_id},
+            ).to_pylist()
+            for table, columns in PARSER_TABLES.items()
+        }
+
+    def embeddings_since(self, since: datetime, model_name: str) -> Any:
+        """Arrow table of `id` and `vec`, newest row per item."""
+        return self._lake_rows(
+            """
+            SELECT item_id AS id, vec FROM lake.nlp.embeddings
+            WHERE created_at >= $since AND model = $model AND len(vec) = $dim
+            QUALIFY row_number() OVER (
+                PARTITION BY item_id ORDER BY created_at DESC) = 1
+            """,
+            {"since": since, "model": model_name, "dim": VECTOR_DIM},
+        )
+
+    def centroids_since(self, since: datetime) -> Any:
+        """Arrow table of `id` and `vec`, newest row per storyline."""
+        return self._lake_rows(
+            """
+            SELECT storyline_id AS id, centroid AS vec FROM lake.nlp.storylines
+            WHERE created_at >= $since AND len(centroid) = $dim
+            QUALIFY row_number() OVER (
+                PARTITION BY storyline_id
+                ORDER BY version DESC, created_at DESC) = 1
+            """,
+            {"since": since, "dim": VECTOR_DIM},
+        )
+
+    def disk_figures(self) -> dict[str, float]:
+        """Disk use per category, in GB."""
+        cursor = self.lake.cursor()
+        try:
+            return disk_figures(self.settings, cursor)
         finally:
             cursor.close()
 

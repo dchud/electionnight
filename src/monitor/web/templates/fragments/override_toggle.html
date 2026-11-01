@@ -1,0 +1,5 @@
+<span class="segmented override-toggle" title="Listed in reference data: {{ 'yes' if state.listed else 'no' }}">
+  <button type="button" aria-pressed="{{ 'true' if state.override is none else 'false' }}" hx-post="/watchlist/battleground?key={{ state.usps }}&value=default" hx-target="closest .override-toggle" hx-swap="outerHTML">Default ({{ 'on' if state.listed else 'off' }})</button>
+  <button type="button" aria-pressed="{{ 'true' if state.override is true else 'false' }}" hx-post="/watchlist/battleground?key={{ state.usps }}&value=in" hx-target="closest .override-toggle" hx-swap="outerHTML">On</button>
+  <button type="button" aria-pressed="{{ 'true' if state.override is false else 'false' }}" hx-post="/watchlist/battleground?key={{ state.usps }}&value=out" hx-target="closest .override-toggle" hx-swap="outerHTML">Off</button>
+</span>

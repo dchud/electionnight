@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
-from monitor.web.filters import Filters
+from monitor.web.filters import ET, Filters
 
 router = APIRouter(prefix="/frag")
 
@@ -28,11 +29,50 @@ def cite(request: Request, item_id: str) -> HTMLResponse:
 
 @router.get("/article/{item_id}", response_class=HTMLResponse)
 def article(request: Request, item_id: str) -> HTMLResponse:
+    """The article drawer, which shares its template with the article page."""
     web = _web(request)
-    item = web.panels.article(item_id)
+    filters = web.filters(request)
+    item = web.drill.article(item_id, filters, filters.query_string())
     if item is None:
+        return web.render(
+            request,
+            "fragments/missing.html",
+            filters,
+            status_code=404,
+            what="article",
+        )
+    return web.render(request, "fragments/article.html", filters, item=item)
+
+
+@router.get("/article/{item_id}/raw", response_class=HTMLResponse)
+def article_raw(request: Request, item_id: str) -> HTMLResponse:
+    """Every parser's rows for an item, loaded when the section is opened."""
+    web = _web(request)
+    if web.panels.article(item_id) is None:
         raise HTTPException(404, "no such item")
-    return web.render(request, "fragments/article.html", item=item)
+    return web.render(
+        request,
+        "fragments/article_raw.html",
+        raw_json=web.drill.parser_json(item_id),
+    )
+
+
+SECTION_PAGES = {"story", "entity", "state"}
+
+
+@router.get("/section/{page}/{key}/{name}", response_class=HTMLResponse)
+def section(request: Request, page: str, key: str, name: str) -> HTMLResponse:
+    """One refreshable section of a drill-down page."""
+    web = _web(request)
+    filters = web.filters(request)
+    if page not in SECTION_PAGES or not web.drill.exists(page, key):
+        raise HTTPException(404, "no such page")
+    context = web.drill.section(page, key, name, filters, request.query_params)
+    if context is None:
+        raise HTTPException(404, "no such section")
+    return web.render(
+        request, f"fragments/{page}_{name}.html", filters, **context
+    )
 
 
 @router.get("/kpis", response_class=HTMLResponse)
@@ -129,6 +169,18 @@ def translated(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/status", response_class=HTMLResponse)
+def status(request: Request) -> HTMLResponse:
+    web = _web(request)
+    filters = web.filters(request)
+    return web.render(
+        request,
+        "fragments/status_body.html",
+        filters,
+        **web.reference.status(filters),
+    )
+
+
 def _evidence_clause(
     kind: str, key: str, filters: Filters, bin_start: datetime | None
 ) -> tuple[str, dict, str]:
@@ -156,7 +208,38 @@ def _evidence_clause(
     if kind == "items":
         ids = [part for part in key.split(",") if part]
         return "f.item_id IN (SELECT unnest($ids))", {"ids": ids}, "claims"
+    if kind == "source":
+        return "f.source_id = $key", {"key": key}, f"outlet {key}"
+    if kind == "county":
+        clause = (
+            "f.item_id IN (SELECT item_id FROM places "
+            "WHERE county_fips = $key)"
+        )
+        return clause, {"key": key}, f"county {key}"
+    if kind == "primary":
+        return "f.primary_level = $key", {"key": key}, f"level {key}"
+    if kind == "dup":
+        return "f.dup_group_id = $key", {"key": key}, "syndication group"
     return "TRUE", {}, "all relevant stories"
+
+
+def _clock(value: datetime) -> str:
+    """A time of day in Eastern time, such as `8:05 pm`."""
+    moment = value if value.tzinfo else value.replace(tzinfo=UTC)
+    return moment.astimezone(ET).strftime("%-I:%M %p").lower()
+
+
+def _also_clause(
+    also: str, filters: Filters
+) -> tuple[str, dict[str, Any], str]:
+    """A second condition, written `kind:key`, such as `source:cnn`."""
+    kind, _, key = also.partition(":")
+    clause, extra, words = _evidence_clause(kind, key, filters, None)
+    return (
+        clause.replace("$key", "$also_key"),
+        {"also_key": extra["key"]} if "key" in extra else {},
+        words,
+    )
 
 
 @router.get("/evidence", response_class=HTMLResponse)
@@ -167,13 +250,29 @@ def evidence(
     bucket: str = "",
     bin_start: datetime | None = None,
     bin_minutes: int = 5,
+    also: str = "",
+    span: str = "",
+    rel: str = "",
     page: int = Query(0, ge=0),
 ) -> HTMLResponse:
-    """The stories behind any number on the dashboard."""
+    """The stories behind any number on the dashboard.
+
+    A count may cover more than the global window and the relevant items.
+    `span=all` drops the window and `rel=any` drops the relevance filter, so
+    the drawer lists what that count counted.
+    """
     web = _web(request)
     filters = web.filters(request)
     clause, extra, words = _evidence_clause(kind, key, filters, bin_start)
-    label = [words]
+    label = [web.drill.evidence_label(kind, key) or words]
+    if also:
+        also_clause, also_extra, also_words = _also_clause(also, filters)
+        clause = f"{clause} AND {also_clause}"
+        extra = {**extra, **also_extra}
+        also_kind, _, also_key = also.partition(":")
+        label.append(
+            web.drill.evidence_label(also_kind, also_key) or also_words
+        )
     if bucket:
         bucket_clause, bucket_extra, bucket_words = _evidence_clause(
             "bucket", bucket, filters, None
@@ -188,10 +287,20 @@ def evidence(
             "bin_a": bin_start,
             "bin_b": bin_start + timedelta(minutes=bin_minutes),
         }
-        label.append(f"{bin_start.strftime('%H:%M')} UTC, {bin_minutes} min")
+        end = bin_start + timedelta(minutes=bin_minutes)
+        label.append(f"{_clock(bin_start)}–{_clock(end)}")
     page_size = 50
+    windowed = span != "all"
+    if rel == "any":
+        label.append("including items not election relevant")
     items, total = web.panels.evidence(
-        filters, clause, extra, limit=page_size, offset=page * page_size
+        filters,
+        clause,
+        extra,
+        limit=page_size,
+        offset=page * page_size,
+        windowed=windowed,
+        relevant=rel != "any",
     )
     return web.render(
         request,
@@ -201,6 +310,6 @@ def evidence(
         total=total,
         page=page,
         page_size=page_size,
-        description=" · ".join([*label, filters.describe()]),
+        description=" · ".join([*label, filters.describe(windowed)]),
         next_params=str(request.query_params),
     )

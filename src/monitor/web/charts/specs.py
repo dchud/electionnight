@@ -15,6 +15,9 @@ import altair as alt
 PARTY_DOMAIN = ["Democratic", "Republican", "Other"]
 LEAN_ORDER = ["L", "LL", "C", "LR", "R", "All"]
 MATRIX_ORDER = ["L", "LL", "C", "LR", "R", "Non-US"]
+LEVEL_ORDER = ["National", "State", "Local", "Unclassified"]
+LEVEL_COLORS = ["#d95926", "#199e70", "#c98500", "#8f8f88"]
+DISTRIBUTION_ORDER = ["L", "LL", "C", "LR", "R", "Non-US", "Unrated"]
 TIME_AXIS = alt.Axis(
     format="%-I:%M %p", title=None, grid=False, labelFlush=False
 )
@@ -272,6 +275,235 @@ def global_press() -> dict[str, Any]:
     return chart.to_dict()
 
 
+def _full_domain() -> alt.Chart:
+    """An invisible layer holding every bin, so empty bins keep the axis."""
+    return (
+        _named()
+        .mark_point(opacity=0)
+        .encode(x=alt.X("bin_start:T", axis=TIME_AXIS))
+    )
+
+
+def story_volume() -> dict[str, Any]:
+    """Stacked rectangles. A bar with `x2` would be read as horizontal."""
+    bars = (
+        _named()
+        .transform_filter("datum.n > 0")
+        .transform_stack(
+            stack="n",
+            as_=["y0", "y1"],
+            groupby=["bin_start"],
+            sort=[alt.SortField("order", order="ascending")],
+        )
+        .mark_rect()
+        .encode(
+            x=alt.X("bin_start:T", axis=TIME_AXIS),
+            x2="bin_end:T",
+            y=alt.Y(
+                "y0:Q",
+                axis=alt.Axis(title="Stories", tickMinStep=1),
+            ),
+            y2="y1:Q",
+            color=alt.Color(
+                "level_name:N",
+                scale=alt.Scale(domain=LEVEL_ORDER, range=LEVEL_COLORS),
+                legend=alt.Legend(title=None, orient="bottom"),
+            ),
+            tooltip=[
+                alt.Tooltip("level_name:N", title="Level"),
+                alt.Tooltip("bin_start:T", title="Bin", format="%-I:%M %p"),
+                alt.Tooltip("n:Q", title="Stories"),
+            ],
+        )
+    )
+    chart = alt.layer(_full_domain(), bars, *_poll_rule_layers()).properties(
+        width="container", height="container"
+    )
+    return chart.to_dict()
+
+
+def entity_mentions() -> dict[str, Any]:
+    bars = (
+        _named()
+        .transform_filter("datum.n > 0")
+        .mark_rect(fill=alt.expr("toneAccent"))
+        .encode(
+            x=alt.X("bin_start:T", axis=TIME_AXIS),
+            x2="bin_end:T",
+            y=alt.Y("n:Q", axis=alt.Axis(title="Mentions", tickMinStep=1)),
+            y2=alt.datum(0),
+            tooltip=[
+                alt.Tooltip("bin_start:T", title="Bin", format="%-I:%M %p"),
+                alt.Tooltip("n:Q", title="Mentions"),
+            ],
+        )
+    )
+    chart = alt.layer(_full_domain(), bars, *_poll_rule_layers()).properties(
+        width="container", height="container"
+    )
+    return chart.to_dict()
+
+
+def entity_tone() -> dict[str, Any]:
+    tone_scale = alt.Scale(domain=[-2, 2])
+    tone_axis = alt.Axis(title="Mean tone", tickCount=5)
+    tooltip = [
+        alt.Tooltip("bin_start:T", title="Bin", format="%-I:%M %p"),
+        alt.Tooltip("mean:Q", title="Mean tone", format=".2f"),
+        alt.Tooltip("ci_low:Q", title="95% low", format=".2f"),
+        alt.Tooltip("ci_high:Q", title="95% high", format=".2f"),
+        alt.Tooltip("n:Q", title="n"),
+    ]
+    time = alt.X("bin_start:T", axis=TIME_AXIS)
+    band = (
+        _named()
+        .mark_area(color=alt.expr("toneAccent"), opacity=0.2)
+        .encode(
+            x=time,
+            y=alt.Y("ci_low:Q", scale=tone_scale, axis=tone_axis),
+            y2="ci_high:Q",
+        )
+    )
+    line = (
+        _named()
+        .mark_line(color=alt.expr("toneAccent"), strokeWidth=2)
+        .encode(x=time, y=alt.Y("mean:Q", scale=tone_scale))
+    )
+    solid = (
+        _named()
+        .transform_filter("!datum.low_n")
+        .mark_point(color=alt.expr("toneAccent"), filled=True, size=70)
+        .encode(x=time, y=alt.Y("mean:Q", scale=tone_scale), tooltip=tooltip)
+    )
+    hollow = (
+        _named()
+        .transform_filter("datum.low_n")
+        .mark_point(color=alt.expr("toneAccent"), filled=False, size=70)
+        .encode(x=time, y=alt.Y("mean:Q", scale=tone_scale), tooltip=tooltip)
+    )
+    zero = (
+        alt.Chart(alt.Data(values=[{"y": 0}]))
+        .mark_rule(opacity=0.5)
+        .encode(y="y:Q")
+    )
+    span = (
+        _named("span")
+        .mark_point(opacity=0)
+        .encode(x=alt.X("bin_start:T", axis=TIME_AXIS))
+    )
+    chart = alt.layer(
+        span, zero, band, line, solid, hollow, *_poll_rule_layers()
+    ).properties(width="container", height="container")
+    return chart.to_dict()
+
+
+def entity_tone_lean() -> dict[str, Any]:
+    tone_scale = alt.Scale(domain=[-2, 2])
+    bucket = alt.Y("bucket:N", sort=LEAN_ORDER, title=None)
+    tooltip = [
+        alt.Tooltip("bucket:N", title="Bucket"),
+        alt.Tooltip("mean:Q", title="Mean tone", format=".2f"),
+        alt.Tooltip("ci_low:Q", title="95% low", format=".2f"),
+        alt.Tooltip("ci_high:Q", title="95% high", format=".2f"),
+        alt.Tooltip("n:Q", title="n"),
+    ]
+    interval = (
+        _named()
+        .mark_rule(strokeWidth=2)
+        .encode(
+            y=bucket,
+            x=alt.X(
+                "ci_low:Q",
+                scale=tone_scale,
+                axis=alt.Axis(title="Mean tone", tickCount=5),
+            ),
+            x2="ci_high:Q",
+        )
+    )
+    solid = (
+        _named()
+        .transform_filter("!datum.low_n")
+        .mark_point(filled=True, size=80, color=alt.expr("textSoft"))
+        .encode(y=bucket, x=alt.X("mean:Q", scale=tone_scale), tooltip=tooltip)
+    )
+    hollow = (
+        _named()
+        .transform_filter("datum.low_n")
+        .mark_point(filled=False, size=80, color=alt.expr("textSoft"))
+        .encode(y=bucket, x=alt.X("mean:Q", scale=tone_scale), tooltip=tooltip)
+    )
+    zero = (
+        alt.Chart(alt.Data(values=[{"x": 0}]))
+        .mark_rule(opacity=0.5)
+        .encode(x="x:Q")
+    )
+    chart = alt.layer(zero, interval, solid, hollow).properties(
+        width="container", height="container"
+    )
+    return chart.to_dict()
+
+
+def state_attention() -> dict[str, Any]:
+    time = alt.X("bin_start:T", axis=TIME_AXIS)
+    line = (
+        _named()
+        .mark_line(color=alt.expr("toneAccent"), strokeWidth=2)
+        .encode(
+            x=time,
+            y=alt.Y(
+                "attention:Q",
+                scale=alt.Scale(zero=False),
+                axis=alt.Axis(title="Attention index"),
+            ),
+        )
+    )
+    points = (
+        _named()
+        .mark_point(color=alt.expr("toneAccent"), filled=True, size=50)
+        .encode(
+            x=time,
+            y=alt.Y("attention:Q"),
+            tooltip=[
+                alt.Tooltip("bin_start:T", title="Bin", format="%-I:%M %p"),
+                alt.Tooltip("attention:Q", title="Attention", format=".2f"),
+                alt.Tooltip("n:Q", title="State stories"),
+                alt.Tooltip("total:Q", title="All stories"),
+            ],
+        )
+    )
+    normal = (
+        alt.Chart(alt.Data(values=[{"y": 1}]))
+        .mark_rule(opacity=0.5, strokeDash=[2, 2])
+        .encode(y="y:Q")
+    )
+    chart = alt.layer(normal, line, points, *_poll_rule_layers()).properties(
+        width="container", height="container"
+    )
+    return chart.to_dict()
+
+
+def lean_distribution() -> dict[str, Any]:
+    chart = (
+        _named()
+        .mark_bar()
+        .encode(
+            x=alt.X(
+                "bucket:N",
+                sort=DISTRIBUTION_ORDER,
+                title=None,
+                axis=alt.Axis(labelAngle=0),
+            ),
+            y=alt.Y("n:Q", axis=alt.Axis(title="Outlets", tickMinStep=1)),
+            tooltip=[
+                alt.Tooltip("bucket:N", title="Lean"),
+                alt.Tooltip("n:Q", title="Outlets"),
+            ],
+        )
+        .properties(width="container", height="container")
+    )
+    return chart.to_dict()
+
+
 SPECS: dict[str, Callable[[], dict[str, Any]]] = {
     "stream": lambda: stream("center"),
     "stream:normalize": lambda: stream("normalize"),
@@ -280,6 +512,12 @@ SPECS: dict[str, Callable[[], dict[str, Any]]] = {
     "tone_by_lean": tone_by_lean,
     "coverage_matrix": coverage_matrix,
     "global_press": global_press,
+    "story_volume": story_volume,
+    "entity_mentions": entity_mentions,
+    "entity_tone": entity_tone,
+    "entity_tone_lean": entity_tone_lean,
+    "state_attention": state_attention,
+    "lean_distribution": lean_distribution,
 }
 
 

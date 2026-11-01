@@ -1,0 +1,3 @@
+<div class="wire-meta chip-list">
+  {% for row in states %}<span class="chip chip-number" data-evidence="kind=storyline&key={{ page_key }}&also=state:{{ row.usps }}" role="button" tabindex="0">{{ row.usps }} <span class="num">{{ row.n }}</span></span>{% else %}<span class="empty">No states named for these filters.</span>{% endfor %}
+</div>

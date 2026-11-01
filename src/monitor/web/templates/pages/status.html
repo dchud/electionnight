@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Status · Election Night Monitor{% endblock %}
+{% block content %}
+<main class="page" hx-get="/frag/status?{{ qs }}" hx-trigger="sse:status" hx-swap="innerHTML">
+  {% include "fragments/status_body.html" %}
+</main>
+{% endblock %}

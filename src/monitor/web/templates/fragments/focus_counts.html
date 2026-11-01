@@ -1,0 +1,6 @@
+<div class="stat-row">
+  <div class="stat" data-evidence="kind=all&focus=watchlist" role="button" tabindex="0"><span class="kpi-label">Focus: Watchlist, {{ WINDOWS[filters.window][0] }}</span><span class="kpi-value" id="count-watchlist">{{ focus_counts.watchlist }}</span><span class="panel-note">{{ watch_race_count }} races, {{ watch_state_count }} states</span></div>
+  <div class="stat" data-evidence="kind=all&focus=battleground" role="button" tabindex="0"><span class="kpi-label">Focus: Battlegrounds, {{ WINDOWS[filters.window][0] }}</span><span class="kpi-value" id="count-battleground">{{ focus_counts.battleground }}</span><span class="panel-note">{{ battleground_size }} states, plus close races</span></div>
+  <div class="stat" data-evidence="kind=all&focus=close" role="button" tabindex="0"><span class="kpi-label">Focus: Close races, {{ WINDOWS[filters.window][0] }}</span><span class="kpi-value" id="count-close">{{ focus_counts.close }}</span></div>
+  <div class="stat"><a class="text-link" href="/?{{ filters.query_string(focus='watchlist') }}">Open the dashboard with Focus on the watchlist</a></div>
+</div>

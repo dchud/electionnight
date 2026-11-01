@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 import sqlite3
 from dataclasses import dataclass, replace
@@ -12,6 +13,7 @@ from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
+LIVE_NOW_SECONDS = 10
 
 WINDOWS = {
     "15m": ("15 m", timedelta(minutes=15)),
@@ -33,6 +35,19 @@ FOCUSES = {
     "watchlist": "Watchlist",
 }
 STATE_RE = re.compile(r"^state:[A-Z]{2}$")
+UNWATCHED = "race_unwatched"
+
+
+def live_now() -> datetime:
+    """The current time, rounded up to 10 seconds.
+
+    Query results are cached by their parameters, and an exact timestamp would
+    never repeat. Rounding up keeps every item seen so far inside the window.
+    """
+    moment = datetime.now(UTC).timestamp()
+    return datetime.fromtimestamp(
+        math.ceil(moment / LIVE_NOW_SECONDS) * LIVE_NOW_SECONDS, UTC
+    )
 
 
 def since_4pm(as_of: datetime) -> datetime:
@@ -94,7 +109,7 @@ class Filters:
 
     @property
     def now(self) -> datetime:
-        return self.as_of or datetime.now(UTC)
+        return self.as_of or live_now()
 
     @property
     def window_start(self) -> datetime:
@@ -213,9 +228,9 @@ class Filters:
             params.update(focus_params)
         return " AND ".join(clauses), params
 
-    def describe(self) -> str:
+    def describe(self, windowed: bool = True) -> str:
         """The filter in words, shown at the top of evidence lists."""
-        parts = [WINDOWS[self.window][0]]
+        parts = [WINDOWS[self.window][0] if windowed else "all time"]
         parts.append("unique" if self.copies == "unique" else "all copies")
         focus = (
             f"state {self.focused_state}"
@@ -266,6 +281,27 @@ def set_watch(path: Path, kind: str, key: str, watched: bool) -> None:
             )
 
 
+def read_unwatched(path: Path) -> set[str]:
+    """Races the reference data watches and the owner removed."""
+    with sqlite3.connect(path) as db:
+        rows = db.execute(
+            "SELECT key FROM watch WHERE kind = ?", (UNWATCHED,)
+        ).fetchall()
+    return {key for (key,) in rows}
+
+
+def set_race_watch(
+    path: Path, key: str, watched: bool, listed: bool = False
+) -> None:
+    """Record a choice about one race.
+
+    `listed` means `ref.races` marks the race as watched. Removing such a race
+    needs its own row, because nothing in this database can change the lake.
+    """
+    set_watch(path, "race", key, watched)
+    set_watch(path, UNWATCHED, key, listed and not watched)
+
+
 def read_overrides(path: Path) -> dict[str, bool]:
     with sqlite3.connect(path) as db:
         rows = db.execute(
@@ -289,10 +325,16 @@ def set_override(path: Path, state: str, included: bool | None) -> None:
 
 RACE_TYPE_BY_OFFICE = {
     "SEN": "senate",
+    "SENATE": "senate",
     "GOV": "governor",
+    "GOVERNOR": "governor",
     "AG": "attorney_general",
+    "ATTORNEY_GENERAL": "attorney_general",
     "SOS": "secretary_of_state",
+    "SECRETARY_OF_STATE": "secretary_of_state",
     "LG": "lt_governor",
+    "LT_GOVERNOR": "lt_governor",
+    "BALLOT_MEASURE": "ballot_measure",
 }
 
 

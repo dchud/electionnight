@@ -1,0 +1,9 @@
+{% for row in comentions %}
+<div class="bar-row bar-row-short">
+  <a class="bar-label text-link" href="/entity/{{ row.entity_id }}?{{ qs }}">{% if row.party %}<span class="party-chip" data-party="{{ row.party }}"></span>{% endif %}{{ row.entity }}</a>
+  <span class="bar-track"><span class="bar-fill" style="width:{{ '%.0f' % row.width }}%"></span></span>
+  <span class="count-link num" data-evidence="kind=entity&key={{ page_key }}&also=entity:{{ row.entity_id }}" role="button" tabindex="0">{{ row.n }}</span>
+</div>
+{% else %}
+<div class="empty">No other entities appear with this one in this window.</div>
+{% endfor %}

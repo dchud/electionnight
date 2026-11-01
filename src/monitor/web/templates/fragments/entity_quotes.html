@@ -1,0 +1,10 @@
+<div class="quote-columns">
+  <div>
+    <h3 class="section-title">Most negative</h3>
+    {% for row in quotes_negative %}{% include "partials/quote.html" %}{% else %}<div class="empty">No negative evidence quotes in this window.</div>{% endfor %}
+  </div>
+  <div>
+    <h3 class="section-title">Most positive</h3>
+    {% for row in quotes_positive %}{% include "partials/quote.html" %}{% else %}<div class="empty">No positive evidence quotes in this window.</div>{% endfor %}
+  </div>
+</div>

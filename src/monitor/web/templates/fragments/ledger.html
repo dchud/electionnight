@@ -1,0 +1,26 @@
+{% if ledger %}
+<p class="m-0"><strong class="num">${{ '%.2f' % ledger_usd }}</strong> across <span class="num">{{ '{:,}'.format(ledger_calls) }}</span> calls.</p>
+<div class="table-scroll table-scroll-flat">
+<table class="table">
+  <thead><tr><th>Purpose</th><th>Model</th><th>Calls</th><th>Input</th><th>Cache read</th><th>Cache write</th><th>Output</th><th>USD</th><th>Not ok</th><th>Mean latency</th></tr></thead>
+  <tbody>
+  {% for row in ledger %}
+  <tr>
+    <td>{{ row.purpose }}</td>
+    <td class="nowrap">{{ row.model }}</td>
+    <td class="num">{{ row.calls }}</td>
+    <td class="num">{{ '{:,}'.format(row.input_tokens) }}</td>
+    <td class="num">{{ '{:,}'.format(row.cache_read_tokens) }}</td>
+    <td class="num">{{ '{:,}'.format(row.cache_write_tokens) }}</td>
+    <td class="num">{{ '{:,}'.format(row.output_tokens) }}</td>
+    <td class="num">${{ '%.3f' % row.usd }}</td>
+    <td class="num">{{ row.not_ok }}</td>
+    <td class="num">{{ '%.0f ms' % row.latency_ms if row.latency_ms is not none else '—' }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty">No LLM calls are recorded.</div>
+{% endif %}

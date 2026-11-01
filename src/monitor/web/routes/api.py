@@ -48,8 +48,15 @@ def data(request: Request, chart: str) -> JSONResponse:
     elif chart == "map":
         metric = request.query_params.get("metric", "attention")
         result = panels.map_data(filters, metric)
+    elif chart == "lean_distribution":
+        result = web.reference.lean_distribution()
     else:
-        raise HTTPException(404, f"no data named {chart}")
+        page_data = web.drill.chart_data(
+            chart, filters, request.query_params.get("key", "")
+        )
+        if page_data is None:
+            raise HTTPException(404, f"no data named {chart}")
+        result = page_data
     return JSONResponse(_jsonable(result))
 
 

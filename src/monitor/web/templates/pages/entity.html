@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ entity.canonical_name }} · Election Night Monitor{% endblock %}
+{% block content %}
+{% set live = 'sse:snapshot throttle:' ~ throttle ~ 's, replay-tick from:body' %}
+{% set base = '/frag/section/entity/' ~ page_key ~ '/' %}
+<main class="page">
+  <div hx-get="{{ base }}head?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/entity_head.html" %}</div>
+  <div class="page-grid">
+    <article class="panel span-6 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Mentions over time</h2></div>
+      <div class="panel-chart"><div class="chart" data-chart="entity_mentions" data-params="key={{ page_key }}" data-base-query="kind=entity&key={{ page_key }}" data-click="bin" data-time-axis="1" data-empty="No mentions for these filters. Mentions come from full-text extraction."></div></div>
+    </article>
+    <article class="panel span-6 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Tone over time</h2><span class="panel-note">95% CI band; bins under 5 hidden; hollow = n under 15; opinion excluded</span></div>
+      <div class="panel-chart"><div class="chart" data-chart="entity_tone" data-params="key={{ page_key }}" data-base-query="kind=entity&key={{ page_key }}" data-click="bin" data-time-axis="1" data-empty="Too few toned mentions for these filters. Each point needs at least 5."></div></div>
+    </article>
+    <article class="panel span-6 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Tone by outlet lean</h2><span class="panel-note">all copies; opinion excluded</span></div>
+      <div class="panel-chart"><div class="chart" data-chart="entity_tone_lean" data-params="key={{ page_key }}" data-base-query="kind=entity&key={{ page_key }}&copies=all" data-click="lean" data-empty="Too few toned mentions per lean bucket. Each point needs at least 5."></div></div>
+    </article>
+    <article class="panel span-6 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Tone by lean, numbers</h2></div>
+      <div class="panel-body" hx-get="{{ base }}lean?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/entity_lean.html" %}</div>
+    </article>
+    <article class="panel span-4 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Co-mentioned entities</h2></div>
+      <div class="panel-body" hx-get="{{ base }}comentions?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/entity_comentions.html" %}</div>
+    </article>
+    <article class="panel span-4 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Storylines</h2></div>
+      <div class="panel-body" hx-get="{{ base }}storylines?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/entity_storylines.html" %}</div>
+    </article>
+    <article class="panel span-4 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Race-call claims</h2></div>
+      <div class="claims-banner">Claims as reported by news outlets; not official results.</div>
+      <div class="panel-body" hx-get="{{ base }}calls?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/entity_calls.html" %}</div>
+    </article>
+    <article class="panel span-12 page-panel-xl">
+      <div class="panel-head"><h2 class="panel-title">Evidence quotes</h2><span class="panel-note">strongest tone in each direction; opinion excluded</span></div>
+      <div class="panel-body" hx-get="{{ base }}quotes?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/entity_quotes.html" %}</div>
+    </article>
+  </div>
+</main>
+{% endblock %}

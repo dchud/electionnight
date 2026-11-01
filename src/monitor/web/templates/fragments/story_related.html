@@ -1,0 +1,8 @@
+{% for row in related %}
+<div class="card">
+  <a class="card-label" href="/story/{{ row.storyline_id }}?{{ qs }}">{{ row.label }}</a>
+  <div class="card-row"><span class="num" title="Cosine similarity of centroids">{{ '%.3f' % row.score }}</span><span class="count-link num" data-evidence="kind=storyline&key={{ row.storyline_id }}&span=all" role="button" tabindex="0">{{ row.n_items }} {{ 'item' if row.n_items == 1 else 'items' }}</span><span>{{ row.status }}</span></div>
+</div>
+{% else %}
+<div class="empty">No related storylines.</div>
+{% endfor %}

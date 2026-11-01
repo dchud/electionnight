@@ -1,0 +1,18 @@
+<header class="page-head">
+  <h1>{% if entity.party %}<span class="party-chip party-chip-lg" data-party="{{ entity.party }}"></span>{% endif %}{{ entity.canonical_name }}</h1>
+  <dl class="profile">
+    <div><dt>Type</dt><dd>{{ entity.ent_type or '—' }}</dd></div>
+    <div><dt>Party</dt><dd>{{ entity.party or '—' }}</dd></div>
+    <div><dt>Office</dt><dd>{{ (entity.office or '—')|replace('_', ' ') }}</dd></div>
+    <div><dt>State</dt><dd>{% if entity.state %}<a class="text-link" href="/state/{{ entity.state }}?{{ qs }}">{{ entity.state }}</a>{% else %}—{% endif %}</dd></div>
+    <div><dt>Race</dt><dd>{% if race %}<a class="text-link" href="/state/{{ race.state }}?{{ qs }}">{{ race.label }}</a> <span class="panel-note">{{ race.rating or 'not rated' }}</span>{% else %}{{ entity.race_key or '—' }}{% endif %}</dd></div>
+    <div><dt>Incumbent</dt><dd>{{ 'Yes' if entity.incumbent else 'No' }}</dd></div>
+    {% if entity.aliases %}<div><dt>Also known as</dt><dd>{{ entity.aliases[:6]|join(', ') }}</dd></div>{% endif %}
+  </dl>
+  <div class="stat-row">
+    <div class="stat" data-evidence="kind=entity&key={{ page_key }}" role="button" tabindex="0"><span class="kpi-label">Stories mentioning, {{ WINDOWS[filters.window][0] }}</span><span class="kpi-value">{{ entity_totals.stories }}</span></div>
+    <div class="stat" data-evidence="kind=entity&key={{ page_key }}" role="button" tabindex="0"><span class="kpi-label">Mentions</span><span class="kpi-value">{{ entity_totals.mentions }}</span></div>
+    <div class="stat" data-evidence="kind=entity&key={{ page_key }}&span=all" role="button" tabindex="0"><span class="kpi-label">Stories, all time</span><span class="kpi-value">{{ entity_all_time }}</span></div>
+  </div>
+  {% if not entity_totals.stories %}<p class="filter-line">{% if entity_all_time %}No mentions in the {{ WINDOWS[filters.window][0] }} window. Widen it: <a class="text-link" href="?{{ filters.query_string(window='24h') }}">24 h</a>.{% else %}No stories mention this entity for these filters. Mentions come from full-text extraction.{% endif %}</p>{% endif %}
+</header>

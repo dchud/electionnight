@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Search · Election Night Monitor{% endblock %}
+{% block content %}
+<main class="page">
+  <h1>Search</h1>
+  <form class="search-form" method="get" action="/search" data-replay-form>
+    {% if filters.window != '1h' %}<input type="hidden" name="window" value="{{ filters.window }}">{% endif %}
+    {% if filters.focus != 'all' %}<input type="hidden" name="focus" value="{{ filters.focus }}">{% endif %}
+    {% if filters.lang != 'all' %}<input type="hidden" name="lang" value="{{ filters.lang }}">{% endif %}
+    {% if filters.copies != 'unique' %}<input type="hidden" name="copies" value="{{ filters.copies }}">{% endif %}
+    {% if filters.as_of %}<input type="hidden" name="as_of" value="{{ filters.as_of.isoformat() }}">{% endif %}
+    <div class="search-row">
+      <input class="field field-wide" type="search" name="q" value="{{ search.q }}" placeholder="Meaning, in any language" aria-label="Search query" autofocus>
+      <input class="field" type="search" name="kw" value="{{ search.kw }}" placeholder="Must contain keyword" aria-label="Keyword filter">
+      <button class="button" type="submit">Search</button>
+    </div>
+    <div class="search-row facets" data-autosubmit>
+      <label>Level
+        <select class="field" name="level">
+          <option value="all">All</option>
+          {% for key, label in LEVELS.items() if key != 'all' %}
+          <option value="{{ key }}" {{ 'selected' if filters.level == key else '' }}>{{ label }}{% for row in result.facets.get('level', []) if row.value == key %} ({{ row.n }}){% endfor %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>State
+        <select class="field" name="state">
+          <option value="">All</option>
+          {% for row in result.facets.get('state', []) %}<option value="{{ row.value }}" {{ 'selected' if search.state == row.value else '' }}>{{ row.value }} ({{ row.n }})</option>{% endfor %}
+          {% for usps in choices.states %}{% if not (result.facets.get('state', [])|selectattr('value', 'equalto', usps)|list) %}<option value="{{ usps }}" {{ 'selected' if search.state == usps else '' }}>{{ usps }}</option>{% endif %}{% endfor %}
+        </select>
+      </label>
+      <label>Outlet
+        <select class="field" name="source">
+          <option value="">All</option>
+          {% for row in result.facets.get('source', []) %}<option value="{{ row.value }}" {{ 'selected' if search.source == row.value else '' }}>{{ row.label }} ({{ row.n }})</option>{% endfor %}
+          {% for outlet in choices.outlets %}{% if not (result.facets.get('source', [])|selectattr('value', 'equalto', outlet.source_id)|list) %}<option value="{{ outlet.source_id }}" {{ 'selected' if search.source == outlet.source_id else '' }}>{{ outlet.name }}</option>{% endif %}{% endfor %}
+        </select>
+      </label>
+      <label>Lean
+        <select class="field" name="lean">
+          <option value="">All</option>
+          {% for lean in choices.leans %}
+          <option value="{{ lean.value }}" {{ 'selected' if search.lean == lean.value else '' }}>{{ lean.label }}{% for row in result.facets.get('lean', []) if row.value == lean.value %} ({{ row.n }}){% endfor %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Time
+        <select class="field" name="time">
+          <option value="any">Any time</option>
+          {% for key, value in WINDOWS.items() %}<option value="{{ key }}" {{ 'selected' if search.time == key else '' }}>{{ value[0] }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" name="all" value="1" {{ 'checked' if search.include_irrelevant else '' }}> Include items not election relevant</label>
+    </div>
+  </form>
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">Results</h2>
+      <span class="panel-note">
+        {% if result.mode == 'semantic' %}Ranked by cosine similarity over {{ result.n_vectors }} embedded items; facet counts cover the top {{ result.total }}
+        {% elif result.mode == 'keyword' %}Newest first; keyword match only
+        {% else %}{{ result.n_vectors }} embedded items{% endif %}
+      </span>
+    </div>
+    <div class="page-panel-body">
+      {% if result.mode == 'unavailable' %}
+      <div class="banner-warn">The embedding model could not be loaded, so semantic search is off. A keyword filter still works.</div>
+      {% elif result.mode == 'empty' %}
+      <div class="empty">Enter a query in any language. The query is embedded and compared with every stored item, so an Arabic or Spanish query finds English coverage.</div>
+      {% elif not result.items %}
+      <div class="empty">No items match this search and these filters. Clear a facet, widen the time, or turn off the Focus control.</div>
+      {% endif %}
+      {% for item in result.items %}
+      <div class="wire-row search-row-item" data-article="{{ item.item_id }}">
+        <span class="wire-time num">{% if result.mode == 'semantic' %}<span title="Cosine similarity">{{ '%.3f' % item.score }}</span>{% else %}{{ item.first_seen_at|et_time }}{% endif %}</span>
+        <span class="wire-head">{{ item.headline }}</span>
+        {% if item.summary %}<span class="search-snippet">{{ item.summary|truncate(220) }}</span>{% endif %}
+        <span class="wire-meta">
+          <span>{{ item.outlet }}</span>
+          {% if item.glyph %}<span class="glyph" title="{{ item.lean }}">{{ item.glyph }}</span>{% else %}<span class="glyph">{{ item.lean }}</span>{% endif %}
+          <span>{{ item.first_seen_at|et_datetime }}</span>
+          {% if item.language != 'en' %}<span class="badge">{{ item.language|upper }}</span>{% endif %}
+          {% if item.primary_level and item.primary_level != 'none' %}<span class="badge">{{ item.primary_level[0]|upper }}</span>{% endif %}
+          {% for state in item.states[:4] %}<span class="chip">{{ state }}</span>{% endfor %}
+        </span>
+      </div>
+      {% endfor %}
+      {% if result.total > (search.page + 1) * 50 %}
+      <p><a class="text-link" href="/search?{{ qs }}&{{ result_qs }}&page={{ search.page + 1 }}">Next 50</a></p>
+      {% endif %}
+    </div>
+  </section>
+</main>
+{% endblock %}

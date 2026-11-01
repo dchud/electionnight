@@ -1,0 +1,94 @@
+<h1>Status</h1>
+{% if not has_status %}
+<div class="banner-warn status-banner">The pipeline status file is missing. Feed, stage, and budget figures below are empty until the pipeline writes it.</div>
+{% elif status_stale %}
+<div class="banner-warn status-banner">The pipeline status file is {{ status_age|int if status_age is not none else 'an unknown number of' }} seconds old. The pipeline may have stopped.</div>
+{% endif %}
+{% if shedding %}
+<div class="banner-warn status-banner">Shedding load: the pipeline is behind, so backfill is paused and embedding is throttled.</div>
+{% endif %}
+<div class="stat-row">
+  <div class="stat"><span class="kpi-label">Started</span><span class="kpi-value stat-small">{{ started_at|et_datetime if started_at else '—' }}</span></div>
+  <div class="stat"><span class="kpi-label">Last commit</span><span class="kpi-value stat-small">{{ last_commit_at|et_datetime if last_commit_at else 'None recorded' }}</span></div>
+  <div class="stat"><span class="kpi-label">Last rollup</span><span class="kpi-value stat-small">{{ last_rollup_at|et_datetime if last_rollup_at else 'None recorded' }}</span></div>
+  <div class="stat"><span class="kpi-label">Last maintenance</span><span class="kpi-value stat-small">{{ last_maintenance_at|et_datetime if last_maintenance_at else 'None recorded' }}</span></div>
+  <div class="stat"><span class="kpi-label">Last backup</span><span class="kpi-value stat-small">{{ last_backup_at|et_datetime if last_backup_at else 'None recorded' }}</span></div>
+  <div class="stat"><span class="kpi-label">Shedding</span><span class="kpi-value stat-small">{% if shedding is none %}—{% elif shedding %}Yes{% else %}No{% endif %}</span></div>
+</div>
+<div class="page-grid">
+  <article class="panel span-7">
+    <div class="panel-head"><h2 class="panel-title">Stages</h2><span class="panel-note">lag and oldest live item in seconds</span></div>
+    <div class="table-scroll table-scroll-flat">
+    {% if stages %}
+    <table class="table">
+      <thead><tr><th>Parser</th><th>Version</th><th>Queue depth</th><th>Finished</th><th>Errors</th><th>Lag</th><th>Oldest live item</th><th>Paused</th><th>Backfill paused</th></tr></thead>
+      <tbody>
+      {% for stage in stages %}
+      <tr>
+        <td>{{ stage.parser }}</td>
+        <td class="num">{{ stage.version }}</td>
+        <td class="num">{{ stage.depth }}</td>
+        <td class="num">{{ stage.finished }}</td>
+        <td class="num">{{ stage.errors }}</td>
+        <td class="num">{{ stage.lag_seconds if stage.lag_seconds is not none else '—' }}</td>
+        <td class="num">{{ stage.oldest_live_age if stage.oldest_live_age is defined and stage.oldest_live_age is not none else '—' }}</td>
+        <td>{{ 'Yes' if stage.paused else 'No' }}</td>
+        <td>{% if stage.backfill_paused is defined and stage.backfill_paused is not none %}{{ 'Yes' if stage.backfill_paused else 'No' }}{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No stages reported.</div>
+    {% endif %}
+    </div>
+  </article>
+  <article class="panel span-5">
+    <div class="panel-head"><h2 class="panel-title">Disk</h2><span class="panel-note">level {{ disk_level or '—' }}</span></div>
+    <div class="page-panel-body">
+      {% for row in disk_rows %}
+      <div class="bar-row bar-row-short">
+        <span class="bar-label">{{ row.label }}</span>
+        <span class="bar-track"><span class="bar-fill bar-mono" style="width:{{ '%.0f' % row.width }}%"></span></span>
+        <span class="num">{{ '%.3f' % row.gb }} GB</span>
+      </div>
+      {% else %}
+      <div class="empty">Disk figures could not be read.</div>
+      {% endfor %}
+      {% if disk_free is not none %}<p class="m-0 mt-1"><strong class="num">{{ '%.1f' % disk_free }} GB</strong> free.</p>{% endif %}
+    </div>
+  </article>
+  <article class="panel span-5">
+    <div class="panel-head"><h2 class="panel-title">Feed health</h2><span class="panel-note">{{ feed_counts.ok }} ok · {{ feed_counts.failing }} failing · {{ feed_counts.down }} circuit open · {{ feed_counts.waiting }} waiting</span></div>
+    <div class="page-panel-body">
+      {% if feeds %}
+      <div class="feed-grid">
+        {% for feed in feeds %}<a class="feed-cell feed-{{ feed.state }}" href="/sources?{{ qs }}#{{ feed.source_id }}" title="{{ feed.source_id }} · {{ feed.state }} · {{ feed.feed_url }}{% if feed.last_error %} · {{ feed.last_error }}{% endif %}"><span class="sr-only">{{ feed.source_id }} {{ feed.state }}</span></a>{% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">No feeds reported.</div>
+      {% endif %}
+      {% if problem_feeds %}
+      <h3 class="section-title">Feeds needing attention</h3>
+      <div class="table-scroll table-scroll-flat table-scroll-short">
+      <table class="table">
+        <thead><tr><th>Outlet</th><th>State</th><th>Failures</th><th>Last success</th><th>Last error</th></tr></thead>
+        <tbody>
+        {% for feed in problem_feeds %}
+        <tr><td><a class="text-link" href="/sources?{{ qs }}#{{ feed.source_id }}">{{ feed.source_id }}</a></td><td>{{ feed.state }}</td><td class="num">{{ feed.failures }}</td><td class="num">{{ feed.last_success|et_datetime if feed.last_success else '—' }}</td><td>{{ feed.last_error or '—' }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% endif %}
+    </div>
+  </article>
+  <article class="panel span-7">
+    <div class="panel-head"><h2 class="panel-title">LLM spend by purpose</h2><span class="panel-note">{% if llm.disabled %}disabled{% elif llm.degraded %}degraded{% else %}budget {{ budget.state or '—' }}{% endif %}</span></div>
+    <div class="page-panel-body">
+      {% if budget %}<p class="m-0 panel-note">Spent today ${{ '%.2f' % (budget.spent_today or 0) }} of ${{ '%.2f' % (budget.daily_cap or 0) }}; total ${{ '%.2f' % (budget.spent_total or 0) }} of ${{ '%.2f' % (budget.hard_cap or 0) }}.</p>{% endif %}
+      {% if llm.last_error %}<p class="banner-warn m-0">{{ llm.last_error }}</p>{% endif %}
+      {% include "fragments/ledger.html" %}
+    </div>
+  </article>
+</div>

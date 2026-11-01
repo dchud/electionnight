@@ -1,0 +1,10 @@
+{% for bar in coverage %}
+<div class="bar-row">
+  <a class="bar-label" href="/sources?{{ qs }}">{% if bar.glyph %}<span class="glyph">{{ bar.glyph }}</span> {{ bar.bucket }}{% else %}<span class="lean-neutral">{{ bar.label }}</span>{% endif %}</a>
+  <span class="bar-track"><span class="bar-fill bar-mono" style="width:{{ '%.0f' % bar.width }}%"></span></span>
+  <span class="count-link num" data-evidence="kind=storyline&key={{ page_key }}&bucket={{ bar.bucket }}&copies=all" role="button" tabindex="0" title="{{ bar.n }} of {{ bar.total }} items in this bucket">{{ '%.1f' % (bar.share * 100) }}%</span>
+  <span class="bar-tone num">{{ bar.n }} of {{ bar.total }}</span>
+</div>
+{% else %}
+<div class="empty">No coverage in this window.</div>
+{% endfor %}

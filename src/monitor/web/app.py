@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,7 +19,8 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 
 from monitor.logs import configure, get
-from monitor.settings import Settings
+from monitor.settings import Settings, get_settings
+from monitor.web.drilldown import Drill
 from monitor.web.filters import (
     FOCUSES,
     LEVELS,
@@ -30,6 +31,8 @@ from monitor.web.filters import (
 from monitor.web.hub import Hub
 from monitor.web.panels import Panels, lean_glyph, lean_text
 from monitor.web.readmodel import ReadModel
+from monitor.web.reference import Reference
+from monitor.web.vectors import Vectors
 
 log = get(__name__)
 
@@ -110,11 +113,18 @@ def create_templates() -> Jinja2Templates:
 class Web:
     """Everything a route needs."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        load_embedding_model: Callable[[Settings], Any] | None = None,
+    ) -> None:
         self.settings = settings
         init_ui_db(settings.paths.ui_db)
         self.model = ReadModel(settings)
         self.panels = Panels(settings, self.model)
+        self.vectors = Vectors(settings, self.model, load_embedding_model)
+        self.drill = Drill(settings, self.model, self.panels, self.vectors)
+        self.reference = Reference(settings, self.model, self.panels)
         self.templates = create_templates()
         self.hub = Hub(self.model, settings)
 
@@ -128,13 +138,15 @@ class Web:
         request: Request,
         template: str,
         filters: Filters | None = None,
+        status_code: int = 200,
         **context: Any,
     ) -> HTMLResponse:
         filters = filters or self.filters(request)
         return self.templates.TemplateResponse(
             request,
             template,
-            {
+            status_code=status_code,
+            context={
                 "filters": filters,
                 "qs": filters.query_string(),
                 "now": datetime.now(UTC),
@@ -150,16 +162,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     web: Web = app.state.web
     await asyncio.to_thread(web.model.refresh, True)
     task = asyncio.ensure_future(web.hub.run())
+    warm = asyncio.ensure_future(asyncio.to_thread(web.vectors.refresh))
     yield
     task.cancel()
-    await asyncio.gather(task, return_exceptions=True)
+    await asyncio.gather(task, warm, return_exceptions=True)
 
 
-def create_app(settings: Settings) -> FastAPI:
+def create_app(
+    settings: Settings,
+    load_embedding_model: Callable[[Settings], Any] | None = None,
+) -> FastAPI:
+    """Build the app. `load_embedding_model` replaces the on-disk model."""
     from monitor.web.routes import api, fragments, pages, sse
 
     app = FastAPI(title="Election Night Monitor", lifespan=lifespan)
-    app.state.web = Web(settings)
+    app.state.web = Web(settings, load_embedding_model)
     app.mount(
         "/static",
         StaticFiles(directory=str(WEB_DIR / "static")),
@@ -172,9 +189,30 @@ def create_app(settings: Settings) -> FastAPI:
     return app
 
 
-def serve(settings: Settings, host: str, port: int) -> None:
+def create_app_from_env() -> FastAPI:
+    """App factory for auto-reload, which re-imports on every change."""
+    settings = get_settings()
     configure("web", settings.paths.logs)
-    log.info("web_starting", host=host, port=port)
+    return create_app(settings)
+
+
+def serve(
+    settings: Settings, host: str, port: int, reload: bool = False
+) -> None:
+    configure("web", settings.paths.logs)
+    log.info("web_starting", host=host, port=port, reload=reload)
+    if reload:
+        uvicorn.run(
+            "monitor.web.app:create_app_from_env",
+            factory=True,
+            host=host,
+            port=port,
+            log_level="warning",
+            reload=True,
+            reload_dirs=[str(WEB_DIR)],
+            reload_includes=["*.py", "*.sql"],
+        )
+        return
     uvicorn.run(
         create_app(settings), host=host, port=port, log_level="warning"
     )

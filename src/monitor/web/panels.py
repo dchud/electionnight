@@ -20,6 +20,7 @@ from monitor.web.filters import (
     FocusSets,
     race_state_pair,
     read_overrides,
+    read_unwatched,
     read_watch,
 )
 from monitor.web.readmodel import ReadModel
@@ -54,6 +55,22 @@ def lean_text(label: str | None, country: str | None = None) -> str:
     if label == "NA" or (country and country != "US"):
         return "Non-US outlet"
     return label or "Unrated"
+
+
+def safe_url(url: str | None) -> str:
+    """The URL when it is http or https. Feeds supply these, so check them."""
+    text = (url or "").strip()
+    return text if text.lower().startswith(("http://", "https://")) else ""
+
+
+def decorate_item(row: dict[str, Any]) -> dict[str, Any]:
+    """Add the lean glyph and text, and clear an unsafe link."""
+    return {
+        **row,
+        "url": safe_url(row.get("url")),
+        "glyph": lean_glyph(row.get("lean_label")),
+        "lean": lean_text(row.get("lean_label"), row.get("country")),
+    }
 
 
 def sparkline_points(
@@ -151,6 +168,7 @@ class Panels:
         ui_db = self.settings.paths.ui_db
         overrides = read_overrides(ui_db)
         watch_states, watch_keys = read_watch(ui_db)
+        unwatched = read_unwatched(ui_db)
         battleground = {
             row["usps"]
             for row in states
@@ -160,7 +178,8 @@ class Panels:
         watched = [
             row
             for row in races
-            if row["watch"] or row["race_key"] in watch_keys
+            if (row["watch"] and row["race_key"] not in unwatched)
+            or row["race_key"] in watch_keys
         ]
         return FocusSets(
             battleground_states=tuple(sorted(battleground)),
@@ -268,7 +287,7 @@ class Panels:
             load_sql("wire").replace("{where}", where),
             {**params, "limit": limit},
         )
-        return [self._decorate_item(row) for row in rows]
+        return [decorate_item(row) for row in rows]
 
     def recent_wire_ids(self, filters: Filters) -> set[str]:
         """Items already recent, which a new stream should not resend."""
@@ -294,14 +313,7 @@ class Panels:
                 "since": filters.now - timedelta(minutes=10),
             },
         )
-        return [self._decorate_item(row) for row in rows]
-
-    def _decorate_item(self, row: dict[str, Any]) -> dict[str, Any]:
-        return {
-            **row,
-            "glyph": lean_glyph(row.get("lean_label")),
-            "lean": lean_text(row.get("lean_label"), row.get("country")),
-        }
+        return [decorate_item(row) for row in rows]
 
     def rising(self, filters: Filters, limit: int = 6) -> list[dict[str, Any]]:
         where, params = self._where(filters, windowed=False)
@@ -560,16 +572,21 @@ class Panels:
         ]
 
     def race_calls(
-        self, filters: Filters, limit: int = 30
+        self,
+        filters: Filters,
+        limit: int = 30,
+        clause: str = "TRUE",
+        extra: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        """Claims by race and winner; `clause` may use the `rc` alias."""
         sets = self.focus_sets()
         where, params = filters.where(
             sets, windowed=False, unique=False, relevant=False
         )
         rows = self.model.query(
             "race_calls",
-            load_sql("race_calls").replace("{where}", where),
-            {**params, "limit": limit},
+            load_sql("race_calls").replace("{where}", f"{where} AND {clause}"),
+            {**params, **(extra or {}), "limit": limit},
         )
         return rows
 
@@ -708,13 +725,13 @@ class Panels:
             ),
             {**params, "limit": limit},
         )
-        return [self._decorate_item(row) for row in rows]
+        return [decorate_item(row) for row in rows]
 
     # Articles
 
     def article(self, item_id: str) -> dict[str, Any] | None:
         rows = self.model.rows(load_sql("article"), {"item_id": item_id})
-        return self._decorate_item(rows[0]) if rows else None
+        return decorate_item(rows[0]) if rows else None
 
     # Evidence
 
@@ -725,8 +742,12 @@ class Panels:
         extra: dict[str, Any],
         limit: int = 50,
         offset: int = 0,
+        windowed: bool = True,
+        relevant: bool = True,
     ) -> tuple[list[dict[str, Any]], int]:
-        where, params = self._where(filters)
+        where, params = self._where(
+            filters, windowed=windowed, relevant=relevant
+        )
         all_params = {**params, **extra}
         count = self.model.query(
             "evidence_count",
@@ -739,4 +760,4 @@ class Panels:
             + " OFFSET $offset",
             {**all_params, "limit": limit, "offset": offset},
         )
-        return [self._decorate_item(row) for row in rows], count
+        return [decorate_item(row) for row in rows], count

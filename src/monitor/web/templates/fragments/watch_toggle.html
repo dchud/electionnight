@@ -1,0 +1,1 @@
+<button class="watch-toggle" type="button" aria-pressed="{{ 'true' if watched else 'false' }}" hx-post="/watchlist/{{ kind }}?key={{ key|urlencode }}&watched={{ 'false' if watched else 'true' }}" hx-swap="outerHTML" title="{{ 'Remove from' if watched else 'Add to' }} the watchlist">{{ 'Watching' if watched else 'Watch' }}</button>

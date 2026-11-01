@@ -1,0 +1,13 @@
+<header class="page-head">
+  <h1>{{ story.label or 'Unlabeled storyline' }}</h1>
+  {% if story.summary %}<div class="page-lede">{{ story.summary|cited(story.citation_map) }}</div>{% else %}<p class="page-lede panel-note">This storyline has no summary. A storyline is labeled once it has enough items from enough outlets.</p>{% endif %}
+  <div class="stat-row">
+    <div class="stat" data-evidence="kind=storyline&key={{ page_key }}" role="button" tabindex="0"><span class="kpi-label">Stories, {{ WINDOWS[filters.window][0] }}, {{ 'unique' if filters.copies == 'unique' else 'all copies' }}</span><span class="kpi-value">{{ totals.n }}</span></div>
+    <div class="stat" data-evidence="kind=storyline&key={{ page_key }}&copies=all" role="button" tabindex="0"><span class="kpi-label">All copies</span><span class="kpi-value">{{ totals_copies.n }}</span></div>
+    <div class="stat" data-evidence="kind=storyline&key={{ page_key }}&copies=all" role="button" tabindex="0"><span class="kpi-label">Outlets</span><span class="kpi-value">{{ totals_copies.outlets }}</span></div>
+    <div class="stat" data-evidence="kind=storyline&key={{ page_key }}&span=all" role="button" tabindex="0"><span class="kpi-label">Stories, all time</span><span class="kpi-value">{{ totals_all_time.n }}</span></div>
+    <div class="stat"><span class="kpi-label">First seen</span><span class="kpi-value stat-small">{{ (first_report.first_seen_at if first_report else story.first_seen_at)|et_datetime }}</span>{% if first_report %}<span class="panel-note"><span class="text-link" data-article="{{ first_report.item_id }}" role="button" tabindex="0">{{ first_report.outlet }}</span></span>{% endif %}</div>
+    <div class="stat"><span class="kpi-label">Status</span><span class="kpi-value stat-small">{{ story.status }}</span></div>
+  </div>
+  {% if not totals.n and totals_all_time.n %}<p class="filter-line">No stories from this storyline fall in the {{ WINDOWS[filters.window][0] }} window. Widen it: <a class="text-link" href="?{{ filters.query_string(window='24h') }}">24 h</a>.</p>{% endif %}
+</header>

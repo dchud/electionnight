@@ -11,32 +11,32 @@
   <nav class="controls" aria-label="Global controls">
     <span class="control-group" title="Window (w)" data-cycle="window">
       {% for key, value in WINDOWS.items() %}
-      <a href="?{{ filters.query_string(window=key) }}" aria-current="{{ 'true' if filters.window == key else 'false' }}">{{ value[0] }}</a>
+      <a href="?{{ filters.query_string(window=key) }}{% if window_qs is defined %}{{ window_qs }}&time={{ key }}{% else %}{{ extra_qs }}{% endif %}" aria-current="{{ 'true' if filters.window == key else 'false' }}">{{ value[0] }}</a>
       {% endfor %}
     </span>
     <span class="control-group" title="Focus (f)" data-cycle="focus">
       {% for key, label in FOCUSES.items() %}
-      <a href="?{{ filters.query_string(focus=key) }}" aria-current="{{ 'true' if filters.focus == key else 'false' }}">{{ label }}</a>
+      <a href="?{{ filters.query_string(focus=key) }}{{ extra_qs }}" aria-current="{{ 'true' if filters.focus == key else 'false' }}">{{ label }}</a>
       {% endfor %}
       <select aria-label="Focus on one state" data-nav-select>
-        <option value="?{{ filters.query_string(focus='all') }}">State</option>
+        <option value="?{{ filters.query_string(focus='all') }}{{ extra_qs }}">State</option>
         {% for usps in ALL_STATES %}
-        <option value="?{{ filters.query_string(focus='state:' + usps) }}" {{ 'selected' if filters.focused_state == usps else '' }}>{{ usps }}</option>
+        <option value="?{{ filters.query_string(focus='state:' + usps) }}{{ extra_qs }}" {{ 'selected' if filters.focused_state == usps else '' }}>{{ usps }}</option>
         {% endfor %}
       </select>
     </span>
     <span class="control-group secondary-control">
       {% for key, label in LEVELS.items() %}
-      <a href="?{{ filters.query_string(level=key) }}" aria-current="{{ 'true' if filters.level == key else 'false' }}">{{ label if key != 'all' else 'All' }}</a>
+      <a href="?{{ filters.query_string(level=key) }}{{ extra_qs }}" aria-current="{{ 'true' if filters.level == key else 'false' }}">{{ label if key != 'all' else 'All' }}</a>
       {% endfor %}
     </span>
     <span class="control-group secondary-control">
-      <a href="?{{ filters.query_string(lang='en') }}" aria-current="{{ 'true' if filters.lang == 'en' else 'false' }}">EN</a>
-      <a href="?{{ filters.query_string(lang='all') }}" aria-current="{{ 'true' if filters.lang == 'all' else 'false' }}">All langs</a>
+      <a href="?{{ filters.query_string(lang='en') }}{{ extra_qs }}" aria-current="{{ 'true' if filters.lang == 'en' else 'false' }}">EN</a>
+      <a href="?{{ filters.query_string(lang='all') }}{{ extra_qs }}" aria-current="{{ 'true' if filters.lang == 'all' else 'false' }}">All langs</a>
     </span>
     <span class="control-group secondary-control">
-      <a href="?{{ filters.query_string(copies='unique') }}" aria-current="{{ 'true' if filters.copies == 'unique' else 'false' }}">Unique</a>
-      <a href="?{{ filters.query_string(copies='all') }}" aria-current="{{ 'true' if filters.copies == 'all' else 'false' }}">All copies</a>
+      <a href="?{{ filters.query_string(copies='unique') }}{{ extra_qs }}" aria-current="{{ 'true' if filters.copies == 'unique' else 'false' }}">Unique</a>
+      <a href="?{{ filters.query_string(copies='all') }}{{ extra_qs }}" aria-current="{{ 'true' if filters.copies == 'all' else 'false' }}">All copies</a>
     </span>
     <span class="control-group">
       <button data-toggle-projector title="Projector mode (p)">Projector</button>

@@ -410,3 +410,12 @@ def test_render_cited_links_known_citations_and_escapes():
 def test_first_sentence_keeps_citations():
     assert first_sentence("One.[^1] Two.[^2]") == "One.[^1]"
     assert first_sentence(None) == ""
+
+
+def test_live_time_repeats_within_ten_seconds_and_never_runs_behind():
+    before = datetime.now(UTC)
+    first, second = Filters().now, Filters().now
+    assert first >= before
+    assert first - before <= timedelta(seconds=10)
+    assert first.second % 10 == 0
+    assert second - first <= timedelta(seconds=10)

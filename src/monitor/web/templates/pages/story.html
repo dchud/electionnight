@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ story.label or 'Storyline' }} · Election Night Monitor{% endblock %}
+{% block content %}
+{% set live = 'sse:snapshot throttle:' ~ throttle ~ 's, replay-tick from:body' %}
+{% set base = '/frag/section/story/' ~ page_key ~ '/' %}
+<main class="page">
+  <div hx-get="{{ base }}head?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/story_head.html" %}</div>
+  <div class="page-grid">
+    <article class="panel span-8 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Volume by level</h2><span class="panel-note">click a bar for its stories</span></div>
+      <div class="panel-chart"><div class="chart" data-chart="story_volume" data-params="key={{ page_key }}" data-base-query="kind=storyline&key={{ page_key }}" data-click="level_bin" data-time-axis="1" data-empty="No stories in this storyline for these filters."></div></div>
+    </article>
+    <article class="panel span-4 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">States involved</h2></div>
+      <div class="panel-chart mini-map-wrap">
+        <div class="mini-map" data-state-map data-params="key={{ page_key }}"></div>
+        <div hx-get="{{ base }}states?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/story_states.html" %}</div>
+      </div>
+    </article>
+    <article class="panel span-4 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Outlets</h2><span class="panel-note">earliest report first; all copies</span></div>
+      <div class="panel-body" hx-get="{{ base }}outlets?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/story_outlets.html" %}</div>
+    </article>
+    <article class="panel span-4 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Entities</h2><span class="panel-note">by mentions, with mean tone</span></div>
+      <div class="panel-body" hx-get="{{ base }}entities?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/story_entities.html" %}</div>
+    </article>
+    <article class="panel span-4 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Coverage by lean</h2><span class="panel-note">share of each bucket's election coverage</span></div>
+      <div class="panel-body" hx-get="{{ base }}coverage?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/story_coverage.html" %}</div>
+    </article>
+    <article class="panel span-8 page-panel-xl">
+      <div class="panel-head">
+        <h2 class="panel-title">Articles</h2>
+        <form class="inline-filter" id="story-filter" onsubmit="return false">
+          <input class="field" type="search" name="kw" value="{{ articles_kw }}" placeholder="Filter headlines" aria-label="Filter headlines" hx-get="{{ base }}articles?{{ qs }}" hx-trigger="input changed delay:300ms" hx-target="#story-articles" hx-include="#story-filter">
+          <select class="field" name="lean" aria-label="Filter by lean" hx-get="{{ base }}articles?{{ qs }}" hx-trigger="change" hx-target="#story-articles" hx-include="#story-filter">
+            <option value="">All leans</option>
+            {% for lean in lean_choices %}<option value="{{ lean.value }}" {{ 'selected' if articles_lean == lean.value else '' }}>{{ lean.label }}</option>{% endfor %}
+          </select>
+        </form>
+      </div>
+      <div class="panel-body" id="story-articles" hx-get="{{ base }}articles?{{ qs }}" hx-trigger="{{ live }}" hx-include="#story-filter">{% include "fragments/story_articles.html" %}</div>
+    </article>
+    <article class="panel span-4 page-panel-xl">
+      <div class="panel-head"><h2 class="panel-title">Related storylines</h2><span class="panel-note">nearest by centroid</span></div>
+      <div class="panel-body" hx-get="{{ base }}related?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/story_related.html" %}</div>
+    </article>
+  </div>
+</main>
+{% endblock %}

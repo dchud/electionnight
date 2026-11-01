@@ -87,6 +87,12 @@
     }
     const link = target.closest("a");
     if (link) return;
+    /* A count inside a row opens its own evidence, not the row's article. */
+    const evidence = target.closest("[data-evidence]");
+    if (evidence) {
+      Monitor.openEvidence(evidence.dataset.evidence);
+      return;
+    }
     const article = target.closest("[data-article]");
     if (article) {
       loadDrawer("/frag/article/" + article.dataset.article);
@@ -95,12 +101,79 @@
     const claims = target.closest("[data-claims]");
     if (claims) {
       Monitor.openEvidence("kind=items&key=" + claims.dataset.claims);
-      return;
     }
-    const evidence = target.closest("[data-evidence]");
-    if (evidence) {
-      Monitor.openEvidence(evidence.dataset.evidence);
+  });
+
+  /* Sortable tables: click a heading; numbers sort from `data-value`. */
+  function cellValue(row, index, numeric) {
+    const cell = row.cells[index];
+    const text = cell.dataset.value ?? cell.textContent.trim();
+    if (!numeric) return text.toLowerCase();
+    const number = Number(text);
+    return Number.isNaN(number) ? -Infinity : number;
+  }
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("th[data-sort] button");
+    if (!button) return;
+    const heading = button.closest("th");
+    const table = heading.closest("table");
+    const index = heading.cellIndex;
+    const numeric = heading.dataset.sort === "number";
+    const ascending = heading.getAttribute("aria-sort") !== "ascending";
+    const tbody = table.tBodies[0];
+    const rows = [...tbody.rows].sort((a, b) => {
+      const left = cellValue(a, index, numeric);
+      const right = cellValue(b, index, numeric);
+      if (left < right) return ascending ? -1 : 1;
+      if (left > right) return ascending ? 1 : -1;
+      return 0;
+    });
+    tbody.append(...rows);
+    table
+      .querySelectorAll("th[aria-sort]")
+      .forEach((other) => other.removeAttribute("aria-sort"));
+    heading.setAttribute("aria-sort", ascending ? "ascending" : "descending");
+  });
+
+  /* Row filters: a text box, and optionally rows whose toggle is pressed. */
+  function applyRowFilter(control) {
+    const rows = document.querySelector(control.dataset.rowFilter);
+    if (!rows) return;
+    const text = control.querySelector("[data-filter-text]");
+    const pressed = control.querySelector("[data-filter-pressed]");
+    const words = (text ? text.value : "").toLowerCase().split(/\s+/);
+    [...rows.rows].forEach((row) => {
+      const haystack = row.dataset.filterRow.toLowerCase();
+      const matches = words.every((word) => haystack.includes(word));
+      const on =
+        !pressed ||
+        !pressed.checked ||
+        row.querySelector('[aria-pressed="true"]');
+      row.hidden = !(matches && on);
+    });
+  }
+  document.addEventListener("input", (event) => {
+    const control = event.target.closest("[data-row-filter]");
+    if (control) applyRowFilter(control);
+  });
+
+  /* Facets submit their form on change. */
+  document.addEventListener("change", (event) => {
+    if (event.target.closest("[data-autosubmit]")) {
+      event.target.form.requestSubmit();
     }
+  });
+  document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!form.matches("[data-replay-form]") || !Monitor.replay.active) return;
+    let field = form.querySelector('input[name="as_of"]');
+    if (!field) {
+      field = document.createElement("input");
+      field.type = "hidden";
+      field.name = "as_of";
+      form.appendChild(field);
+    }
+    field.value = new Date(Monitor.replay.asOf).toISOString();
   });
 
   document.addEventListener("change", (event) => {
@@ -161,6 +234,16 @@
     const swapped = event.detail.target || event.target;
     paintDots(swapped);
     if (swapped.id === "drawer-body") openDrawer();
+  });
+  /* A missing item still explains itself in the drawer. */
+  document.addEventListener("htmx:beforeSwap", (event) => {
+    if (
+      event.detail.xhr.status === 404 &&
+      event.detail.target.id === "drawer-body"
+    ) {
+      event.detail.shouldSwap = true;
+      event.detail.isError = false;
+    }
   });
   document.addEventListener("htmx:configRequest", (event) => {
     if (Monitor.replay.active && Monitor.replay.asOf) {
@@ -388,6 +471,10 @@
     const tag = (event.target.tagName || "").toLowerCase();
     if (["input", "textarea", "select"].includes(tag) || event.metaKey) return;
     const key = event.key;
+    if (key === "Enter" && event.target.matches('[role="button"][tabindex]')) {
+      event.target.click();
+      return;
+    }
     if (key === "Escape") {
       closeDrawer();
       if (tour.on) toggleTour();

@@ -53,6 +53,7 @@
       header: { labelFontSize: label, labelColor: soft, titleColor: soft },
       text: { fontSize: label, color: strong },
       rule: { color: soft },
+      bar: { fill: soft },
       signals: [],
     };
   }
@@ -77,6 +78,7 @@
       partyRep: css("--party-rep"),
       partyOther: css("--party-other"),
       toneAccent: css("--accent"),
+      textSoft: css("--text-2"),
     };
     Object.entries(values).forEach(([name, value]) => {
       params.push({ name, value });
@@ -101,13 +103,32 @@
   }
 
   async function fetchData(chart) {
-    const url = `/api/data/${chart.name}?${Monitor.params().toString()}`;
+    const params = Monitor.params();
+    new URLSearchParams(chart.el.dataset.params || "").forEach((value, key) =>
+      params.set(key, value)
+    );
+    const url = `/api/data/${chart.name}?${params.toString()}`;
     const response = await fetch(url);
     if (!response.ok) throw new Error(`${url}: ${response.status}`);
     return response.json();
   }
 
-  function clickQuery(kind, datum) {
+  function binQuery(datum) {
+    if (!datum.bin_start) return "";
+    const start = new Date(datum.bin_start).toISOString();
+    const minutes = datum.bin_minutes || 5;
+    return `&bin_start=${encodeURIComponent(start)}&bin_minutes=${minutes}`;
+  }
+
+  function clickQuery(kind, datum, base) {
+    if (kind === "bin" && datum.bin_start) return base + binQuery(datum);
+    if (kind === "level_bin" && datum.bin_start && datum.level) {
+      return `${base}&also=primary:${datum.level}${binQuery(datum)}`;
+    }
+    if (kind === "lean" && datum.bucket) {
+      return datum.bucket === "All" ? base : `${base}&bucket=${datum.bucket}`;
+    }
+    if (kind === "bucket" && datum.key) return `kind=bucket&key=${datum.key}`;
     if (kind === "storyline" && datum.storyline_id) {
       if (datum.storyline_id === "other") return null;
       return `kind=storyline&key=${datum.storyline_id}`;
@@ -154,7 +175,11 @@
     if (kind) {
       result.view.addEventListener("click", (_event, item) => {
         if (!item || !item.datum) return;
-        const query = clickQuery(kind, item.datum.datum || item.datum);
+        const query = clickQuery(
+          kind,
+          item.datum.datum || item.datum,
+          chart.el.dataset.baseQuery || ""
+        );
         if (query) Monitor.openEvidence(query);
       });
     }
@@ -165,7 +190,7 @@
   async function pushData(chart, data) {
     const view = chart.view;
     if (!view) return;
-    const dataNames = ["table", "rules"];
+    const dataNames = ["table", "rules", "span"];
     for (const name of dataNames) {
       if (name in data) {
         try {
@@ -210,7 +235,8 @@
       note.className = "empty";
       note.style.position = "absolute";
       note.style.inset = "0";
-      note.textContent = "No data for these filters yet.";
+      note.textContent =
+        chart.el.dataset.empty || "No data for these filters yet.";
       chart.el.parentElement.appendChild(note);
     } else if (!empty && note) {
       note.remove();
