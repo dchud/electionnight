@@ -1,0 +1,66 @@
+# Closed vocabularies for classification. Models choose from these lists and
+# may add up to three free tags.
+topics:
+  - control_senate
+  - control_house
+  - governor_races
+  - senate_race
+  - house_race
+  - state_legislature
+  - local_race
+  - ballot_measure_abortion
+  - ballot_measure_redistricting
+  - ballot_measure_elections
+  - ballot_measure_economy
+  - ballot_measure_drugs
+  - ballot_measure_other
+  - turnout
+  - early_vote_mail
+  - polling_place_ops
+  - lines_wait_times
+  - voting_hours_extended
+  - machine_or_tech_issue
+  - vote_counting
+  - results_projection
+  - concession_victory
+  - recount_close_race
+  - legal_challenge
+  - misinformation_claims
+  - election_security_threats
+  - violence_intimidation
+  - foreign_interference
+  - exit_polls
+  - polls_forecasts
+  - issue_economy
+  - issue_immigration
+  - issue_abortion
+  - issue_health
+  - issue_crime
+  - issue_democracy
+  - issue_foreign_policy
+  - campaign_finance
+  - candidate_controversy
+  - endorsements
+  - redistricting_maps
+  - trump_factor
+  - party_strategy
+  - international_reaction
+  - markets_reaction
+race_types:
+  - senate
+  - senate_special
+  - house
+  - governor
+  - lt_governor
+  - attorney_general
+  - secretary_of_state
+  - state_supreme_court
+  - state_legislature
+  - mayor
+  - county
+  - ballot_measure
+  - other
+levels:
+  - national
+  - state
+  - local
