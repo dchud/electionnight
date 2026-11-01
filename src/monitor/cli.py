@@ -216,6 +216,22 @@ def backup(
     typer.echo(backup_catalog(get_settings()))
 
 
+@app.command()
+def offload(
+    lake: bool = typer.Option(
+        False, "--lake", help="Also upload the current Parquet files."
+    ),
+) -> None:
+    """Copy archives and catalog backups to the configured S3 bucket."""
+    from monitor.offload import Offloader, is_configured
+
+    settings = get_settings()
+    if not is_configured(settings):
+        raise typer.BadParameter("no S3 bucket is configured in .env")
+    offloader = Offloader(settings)
+    typer.echo(offloader.upload_lake() if lake else offloader.run())
+
+
 @app.command("replay-check")
 def replay_check(
     from_: datetime = typer.Option(..., "--from"),

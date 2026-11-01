@@ -92,6 +92,7 @@ def disk_figures(
         "awaiting_cleanup": max(total_lake - live, 0) / GB,
         "catalog": catalog / GB,
         "backups": dir_size(paths.backups) / GB,
+        "archive": dir_size(paths.archive) / GB,
         "models": dir_size(paths.models) / GB,
         "reference": dir_size(paths.ref) / GB,
         "logs": dir_size(paths.logs) / GB,
@@ -113,6 +114,7 @@ def report_disk(settings: Settings) -> str:
             f"{'compacted, awaiting cleanup':<28}"
             f"{figures['awaiting_cleanup']:>5.3f} GB",
             f"{'catalog':<24}{figures['catalog']:>9.3f} GB",
+            f"{'archive':<24}{figures['archive']:>9.3f} GB",
             f"{'backups':<24}{figures['backups']:>9.3f} GB",
             f"{'models':<24}{figures['models']:>9.3f} GB",
             f"{'reference data':<24}{figures['reference']:>9.3f} GB",

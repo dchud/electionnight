@@ -14,6 +14,7 @@ from urllib.robotparser import RobotFileParser
 import httpx
 import trafilatura
 
+from monitor.archive import ArchiveWriter
 from monitor.disk import DiskGuard
 from monitor.ingest.feeds import canonicalize_url
 from monitor.ingest.sources import Source
@@ -101,8 +102,10 @@ class FetchTextParser:
         sources: dict[str, Source],
         guard: DiskGuard,
         client: httpx.AsyncClient | None = None,
+        archive: ArchiveWriter | None = None,
     ) -> None:
         self.settings = settings
+        self.archive = archive
         self.sources = sources
         self.guard = guard
         self.interval = settings.nlp.fetch_domain_interval_seconds
@@ -169,20 +172,20 @@ class FetchTextParser:
 
     async def _fetch(
         self, item: Item, domain: str
-    ) -> tuple[int | None, str | None, str]:
-        """Returns (status, page, skip reason)."""
+    ) -> tuple[int | None, str | None, str, bytes | None]:
+        """Returns (status, page, skip reason, original bytes)."""
         async with self.locks[domain]:
             if time.monotonic() < self.blocked_until.get(domain, 0):
-                return None, None, "domain backing off"
+                return None, None, "domain backing off", None
             robots = await self._robots(item.url, domain)
             if not robots.can_fetch(self.agent_token, item.url):
-                return None, None, "robots.txt disallows"
+                return None, None, "robots.txt disallows", None
             await self._pace(domain)
             response = await self.client.get(item.url)
             self._note_refusal(domain, response.status_code)
         if len(response.content) > MAX_PAGE_BYTES:
-            return response.status_code, None, "page too large"
-        return response.status_code, response.text, ""
+            return response.status_code, None, "page too large", None
+        return response.status_code, response.text, "", response.content
 
     async def run(self, batch: list[Item]) -> ParserOutput:
         output = ParserOutput()
@@ -200,7 +203,7 @@ class FetchTextParser:
             return
         domain = urlsplit(item.url).hostname or ""
         try:
-            status, page, reason = await self._fetch(item, domain)
+            status, page, reason, body = await self._fetch(item, domain)
         except Exception as error:
             output.mark(item.item_id, "skipped", type(error).__name__)
             return
@@ -213,6 +216,16 @@ class FetchTextParser:
             text = await asyncio.to_thread(extract_text, page, item.url)
             canonical = canonical_from_html(page)
         item.text = text or None
+        if self.archive is not None and body and status == 200:
+            index_row = self.archive.add(
+                "pages",
+                item.item_id,
+                item.source_id,
+                body,
+                {"url": item.url, "http_status": status},
+            )
+            if index_row:
+                output.add("raw.archive_index", index_row)
         row: dict[str, Any] = {
             "item_id": item.item_id,
             "fetched_at": utcnow(),
