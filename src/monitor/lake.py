@@ -365,11 +365,13 @@ def writer_lock(settings: Settings) -> Iterator[None]:
     """Hold the single-writer lock for the life of the block."""
     path: Path = settings.paths.writer_lock
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w") as handle:
+    with path.open("a+") as handle:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
             raise WriterBusy(str(path)) from error
+        handle.seek(0)
+        handle.truncate()
         handle.write(str(os.getpid()))
         handle.flush()
         yield

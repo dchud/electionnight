@@ -152,3 +152,10 @@ def test_writer_lock_is_exclusive(settings):
 def test_hash_id_is_deterministic():
     assert hash_id("a", 1) == hash_id("a", 1)
     assert hash_id("a", 1) != hash_id("a", 2)
+
+
+def test_busy_check_keeps_the_holder_pid(settings):
+    with writer_lock(settings):
+        pid = settings.paths.writer_lock.read_text()
+        assert writer_is_running(settings) is True
+        assert settings.paths.writer_lock.read_text() == pid != ""

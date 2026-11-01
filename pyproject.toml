@@ -13,6 +13,7 @@ dependencies = [
     "honcho>=2.0.0",
     "httpx[http2]>=0.28.1",
     "jinja2>=3.1.6",
+    "lingua-language-detector>=2.2.0",
     "numpy>=2.5.4",
     "pyarrow>=26.0.0",
     "pydantic>=2.14.2",
@@ -44,13 +45,14 @@ extend-exclude = ["src/monitor/web/static", "*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "SIM"]
-ignore = ["SIM905", "SIM117"]
+ignore = ["SIM905", "SIM117", "SIM102", "ASYNC109"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["typer.Option", "typer.Argument"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/monitor/cli.py" = ["B008"]
+"src/monitor/parsers/storylines.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

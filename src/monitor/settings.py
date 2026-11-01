@@ -25,6 +25,7 @@ class Paths(BaseModel):
     ref: Path = Path("data/ref/")
     control: Path = Path("data/control/")
     last_commit: Path = Path("data/last_commit.json")
+    status: Path = Path("data/status.json")
     writer_lock: Path = Path("data/writer.lock")
     logs: Path = Path("logs/")
     reports: Path = Path("reports/")
@@ -42,6 +43,7 @@ class Paths(BaseModel):
             ref=root / "ref",
             control=root / "control",
             last_commit=root / "last_commit.json",
+            status=root / "status.json",
             writer_lock=root / "writer.lock",
             logs=root / "logs",
             reports=root / "reports",
