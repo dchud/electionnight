@@ -1,0 +1,364 @@
+# Known feed URLs by homepage host (host plus path where one host serves
+# several outlets). `monitor sources discover` tries these before searching.
+upi.com:
+  - https://rss.upi.com/news/top_news.rss
+  - https://rss.upi.com/news/us_news.rss
+bloomberg.com:
+  - https://feeds.bloomberg.com/politics/news.rss
+nytimes.com:
+  - https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml
+  - https://rss.nytimes.com/services/xml/rss/nyt/US.xml
+washingtonpost.com:
+  - https://feeds.washingtonpost.com/rss/politics
+  - https://feeds.washingtonpost.com/rss/national
+wsj.com:
+  - https://feeds.content.dowjones.io/public/rss/socialpoliticsfeed
+  - https://feeds.content.dowjones.io/public/rss/RSSUSnews
+usatoday.com:
+  - https://rssfeeds.usatoday.com/usatoday-newstopstories&x=1
+  - https://www.usatoday.com/news/politics/rss/
+cnn.com:
+  - http://rss.cnn.com/rss/cnn_allpolitics.rss
+  - http://rss.cnn.com/rss/cnn_us.rss
+foxnews.com:
+  - https://moxie.foxnews.com/google-publisher/politics.xml
+  - https://moxie.foxnews.com/google-publisher/us.xml
+nbcnews.com:
+  - https://feeds.nbcnews.com/nbcnews/public/politics
+  - https://feeds.nbcnews.com/nbcnews/public/news
+cbsnews.com:
+  - https://www.cbsnews.com/latest/rss/politics
+  - https://www.cbsnews.com/latest/rss/us
+abcnews.go.com:
+  - https://abcnews.go.com/abcnews/politicsheadlines
+  - https://abcnews.go.com/abcnews/usheadlines
+npr.org:
+  - https://feeds.npr.org/1014/rss.xml
+  - https://feeds.npr.org/139482413/rss.xml
+  - https://feeds.npr.org/1001/rss.xml
+pbs.org/newshour:
+  - https://www.pbs.org/newshour/feeds/rss/politics
+  - https://www.pbs.org/newshour/feeds/rss/headlines
+ms.now:
+  - https://www.ms.now/feed
+  - https://www.ms.now/rss
+cnbc.com:
+  - https://www.cnbc.com/id/10000113/device/rss/rss.html
+politico.com:
+  - https://rss.politico.com/politics-news.xml
+  - https://rss.politico.com/congress.xml
+  - https://rss.politico.com/playbook.xml
+thehill.com:
+  - https://thehill.com/homenews/campaign/feed/
+  - https://thehill.com/homenews/feed/
+  - https://thehill.com/homenews/senate/feed/
+axios.com:
+  - https://api.axios.com/feed/
+rollcall.com:
+  - https://rollcall.com/category/elections/feed/
+  - https://rollcall.com/feed/
+notus.org:
+  - https://www.notus.org/rss
+semafor.com:
+  - https://www.semafor.com/rss.xml
+newsweek.com:
+  - https://www.newsweek.com/rss
+time.com:
+  - https://time.com/feed/
+theatlantic.com:
+  - https://www.theatlantic.com/feed/channel/politics/
+vox.com:
+  - https://www.vox.com/rss/politics/index.xml
+  - https://www.vox.com/rss/index.xml
+19thnews.org:
+  - https://19thnews.org/feed/
+csmonitor.com:
+  - https://rss.csmonitor.com/feeds/usa
+  - https://rss.csmonitor.com/feeds/politics
+businessinsider.com:
+  - https://feeds.businessinsider.com/custom/all
+nationalreview.com:
+  - https://www.nationalreview.com/news/feed/
+  - https://www.nationalreview.com/corner/feed/
+thedispatch.com:
+  - https://thedispatch.com/feed/
+washingtonexaminer.com:
+  - https://www.washingtonexaminer.com/section/politics/feed/
+  - https://www.washingtonexaminer.com/feed/
+thefp.com:
+  - https://www.thefp.com/feed
+reason.com:
+  - https://reason.com/tag/politics/feed/
+  - https://reason.com/feed/
+nypost.com:
+  - https://nypost.com/politics/feed/
+  - https://nypost.com/us-news/feed/
+washingtontimes.com:
+  - https://www.washingtontimes.com/rss/headlines/news/politics/
+  - https://www.washingtontimes.com/rss/headlines/news/
+freebeacon.com:
+  - https://freebeacon.com/feed/
+thebulwark.com:
+  - https://www.thebulwark.com/feed
+realclearpolitics.com:
+  - https://www.realclearpolitics.com/index.xml
+deseret.com:
+  - https://www.deseret.com/politics/rss
+  - https://www.deseret.com/rss/index.xml
+stateline.org:
+  - https://stateline.org/feed/
+votebeat.org:
+  - https://www.votebeat.org/arc/outboundfeeds/rss/?outputType=xml
+boltsmag.org:
+  - https://boltsmag.org/feed/
+cookpolitical.com:
+  - https://www.cookpolitical.com/rss.xml
+centerforpolitics.org/crystalball:
+  - https://centerforpolitics.org/crystalball/feed/
+insideelections.com:
+  - https://insideelections.com/rss.xml
+news.ballotpedia.org:
+  - https://news.ballotpedia.org/feed/
+decisiondeskhq.com:
+  - https://decisiondeskhq.com/feed/
+split-ticket.org:
+  - https://split-ticket.org/feed/
+natesilver.net:
+  - https://www.natesilver.net/feed
+electionlawblog.org:
+  - https://electionlawblog.org/?feed=rss2
+univision.com/noticias:
+  - https://www.univision.com/feeds/noticias
+telemundo.com/noticias:
+  - https://www.telemundo.com/noticias/feed
+laopinion.com:
+  - https://laopinion.com/feed/
+  - https://laopinion.com/categoria/politica/feed/
+elnuevoherald.com:
+  - https://www.elnuevoherald.com/noticias/estados-unidos/?widgetName=rssfeed&widgetContentId=712015&getXmlFeed=true
+bbc.com/news:
+  - https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml
+theguardian.com:
+  - https://www.theguardian.com/us-news/us-politics/rss
+  - https://www.theguardian.com/us-news/us-elections-2026/rss
+  - https://www.theguardian.com/us-news/rss
+ft.com:
+  - https://www.ft.com/us-politics?format=rss
+economist.com:
+  - https://www.economist.com/united-states/rss.xml
+thetimes.com:
+  - https://www.thetimes.com/world/us-world/rss
+telegraph.co.uk:
+  - https://www.telegraph.co.uk/us/politics/rss.xml
+  - https://www.telegraph.co.uk/us/rss.xml
+independent.co.uk:
+  - https://www.independent.co.uk/news/world/americas/us-politics/rss
+news.sky.com:
+  - https://feeds.skynews.com/feeds/rss/us.xml
+aljazeera.com:
+  - https://www.aljazeera.com/xml/rss/all.xml
+dw.com/en:
+  - https://rss.dw.com/rdf/rss-en-world
+  - https://rss.dw.com/rdf/rss-en-all
+france24.com/en:
+  - https://www.france24.com/en/americas/rss
+  - https://www.france24.com/en/rss
+euronews.com:
+  - https://www.euronews.com/rss?level=theme&name=news
+politico.eu:
+  - https://www.politico.eu/feed/
+irishtimes.com:
+  - https://www.irishtimes.com/arc/outboundfeeds/feed-world/
+cbc.ca/news:
+  - https://www.cbc.ca/webfeed/rss/rss-world
+  - https://www.cbc.ca/webfeed/rss/rss-politics
+theglobeandmail.com:
+  - https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/world/
+abc.net.au/news:
+  - https://www.abc.net.au/news/feed/2942460/rss.xml
+  - https://www.abc.net.au/news/feed/52278/rss.xml
+smh.com.au:
+  - https://www.smh.com.au/rss/world.xml
+rnz.co.nz:
+  - https://www.rnz.co.nz/rss/world.xml
+timesofindia.indiatimes.com:
+  - https://timesofindia.indiatimes.com/rssfeeds/30359486.cms
+  - https://timesofindia.indiatimes.com/rssfeeds/296589292.cms
+thehindu.com:
+  - https://www.thehindu.com/news/international/feeder/default.rss
+dawn.com:
+  - https://www.dawn.com/feeds/world
+japantimes.co.jp:
+  - https://www.japantimes.co.jp/feed/
+www3.nhk.or.jp/nhkworld:
+  - https://www3.nhk.or.jp/nhkworld/data/en/news/backstories/rss.xml
+  - https://www3.nhk.or.jp/rss/news/cat6.xml
+asia.nikkei.com:
+  - https://asia.nikkei.com/rss/feed/nar
+scmp.com:
+  - https://www.scmp.com/rss/322262/feed
+  - https://www.scmp.com/rss/91/feed
+straitstimes.com:
+  - https://www.straitstimes.com/news/world/rss.xml
+koreaherald.com:
+  - https://www.koreaherald.com/rss/newsAll
+haaretz.com:
+  - https://www.haaretz.com/srv/haaretz-latest-headlines
+  - https://www.haaretz.com/srv/us-news-rss
+timesofisrael.com:
+  - https://www.timesofisrael.com/feed/
+kyivindependent.com:
+  - https://kyivindependent.com/news-archive/rss/
+  - https://kyivindependent.com/feed/
+dailymaverick.co.za:
+  - https://www.dailymaverick.co.za/dmrss/
+nation.africa:
+  - https://nation.africa/kenya/rss.xml
+bbc.com/arabic:
+  - https://feeds.bbci.co.uk/arabic/rss.xml
+aljazeera.net:
+  - https://www.aljazeera.net/aljazeerarss/a7c186be-1baa-4bd4-9d80-a84db769f779/73d0e1b4-532f-45ef-b135-bfdff8b8cab9
+france24.com/ar:
+  - https://www.france24.com/ar/rss
+dw.com/ar:
+  - https://rss.dw.com/rdf/rss-ar-all
+aawsat.com:
+  - https://aawsat.com/feed
+  - https://aawsat.com/feed/world
+bbc.com/zhongwen:
+  - https://feeds.bbci.co.uk/zhongwen/simp/rss.xml
+zaobao.com.sg:
+  - https://www.zaobao.com.sg/rss/realtime/world
+  - https://www.zaobao.com.sg/realtime/world/rss.xml
+dw.com/zh:
+  - https://rss.dw.com/rdf/rss-chi-all
+rfi.fr/cn:
+  - https://www.rfi.fr/cn/%E5%9B%BD%E9%99%85/rss
+  - https://www.rfi.fr/cn/rss
+cna.com.tw:
+  - https://feeds.feedburner.com/rsscna/intworld
+  - https://feeds.feedburner.com/rsscna/politics
+lemonde.fr:
+  - https://www.lemonde.fr/ameriques/rss_full.xml
+  - https://www.lemonde.fr/international/rss_full.xml
+lefigaro.fr:
+  - https://www.lefigaro.fr/rss/figaro_international.xml
+liberation.fr:
+  - https://www.liberation.fr/arc/outboundfeeds/rss-all/category/international/?outputType=xml
+  - https://www.liberation.fr/arc/outboundfeeds/rss-all/?outputType=xml
+france24.com/fr:
+  - https://www.france24.com/fr/am%C3%A9riques/rss
+  - https://www.france24.com/fr/rss
+ici.radio-canada.ca:
+  - https://ici.radio-canada.ca/rss/96
+  - https://ici.radio-canada.ca/rss/4159
+ledevoir.com:
+  - https://www.ledevoir.com/rss/section/monde.xml
+  - https://www.ledevoir.com/rss/manchettes.xml
+bbc.com/russian:
+  - https://feeds.bbci.co.uk/russian/rss.xml
+meduza.io:
+  - https://meduza.io/rss/all
+dw.com/ru:
+  - https://rss.dw.com/rdf/rss-ru-all
+novayagazeta.eu:
+  - https://novayagazeta.eu/feed/rss
+kommersant.ru:
+  - https://www.kommersant.ru/RSS/section-world.xml
+  - https://www.kommersant.ru/RSS/news.xml
+elpais.com:
+  - https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada
+  - https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/estados_unidos/portada
+elmundo.es:
+  - https://e00-elmundo.uecdn.es/elmundo/rss/internacional.xml
+bbc.com/mundo:
+  - https://feeds.bbci.co.uk/mundo/rss.xml
+cnnespanol.cnn.com:
+  - https://cnnespanol.cnn.com/feed/
+infobae.com:
+  - https://www.infobae.com/arc/outboundfeeds/rss/category/estados-unidos/?outputType=xml
+  - https://www.infobae.com/arc/outboundfeeds/rss/?outputType=xml
+clarin.com:
+  - https://www.clarin.com/rss/mundo/
+eluniversal.com.mx:
+  - https://www.eluniversal.com.mx/rss/mundo.xml
+latimes.com:
+  - https://www.latimes.com/politics/rss2.0.xml
+  - https://www.latimes.com/california/rss2.0.xml
+calmatters.org:
+  - https://calmatters.org/category/politics/feed/
+  - https://calmatters.org/feed/
+sfchronicle.com:
+  - https://www.sfchronicle.com/politics/feed/politics-feed-4.php
+kqed.org:
+  - https://www.kqed.org/news/feed
+denverpost.com:
+  - https://www.denverpost.com/politics/feed/
+coloradosun.com:
+  - https://coloradosun.com/feed/
+ctmirror.org:
+  - https://ctmirror.org/feed/
+tampabay.com:
+  - https://www.tampabay.com/arc/outboundfeeds/rss/category/news/florida-politics/?outputType=xml
+ajc.com:
+  - https://www.ajc.com/arc/outboundfeeds/rss/category/politics/?outputType=xml
+chicagotribune.com:
+  - https://www.chicagotribune.com/politics/feed/
+chicago.suntimes.com:
+  - https://chicago.suntimes.com/rss/politics/index.xml
+  - https://chicago.suntimes.com/rss/index.xml
+bostonglobe.com:
+  - https://www.bostonglobe.com/arc/outboundfeeds/rss/category/nation/politics/?outputType=xml
+wbur.org:
+  - https://www.wbur.org/news/politics/feed
+  - https://www.wbur.org/feed
+detroitnews.com:
+  - https://www.detroitnews.com/arc/outboundfeeds/rss/category/politics/?outputType=xml
+bridgemi.com:
+  - https://www.bridgemi.com/rss.xml
+startribune.com:
+  - https://www.startribune.com/politics/index.rss2
+mprnews.org:
+  - https://www.mprnews.org/feed/politics
+  - https://www.mprnews.org/feed
+adn.com:
+  - https://www.adn.com/arc/outboundfeeds/rss/category/politics/?outputType=xml
+  - https://www.adn.com/arc/outboundfeeds/rss/?outputType=xml
+inquirer.com:
+  - https://www.inquirer.com/arcio/rss/category/politics/
+spotlightpa.org:
+  - https://www.spotlightpa.org/feeds/full.xml
+texastribune.org:
+  - https://www.texastribune.org/feeds/rss/
+  - https://feeds.texastribune.org/feeds/main/
+seattletimes.com:
+  - https://www.seattletimes.com/seattle-news/politics/feed/
+  - https://www.seattletimes.com/feed/
+reviewjournal.com:
+  - https://www.reviewjournal.com/news/politics-and-government/feed/
+  - https://www.reviewjournal.com/feed/
+thenevadaindependent.com:
+  - https://thenevadaindependent.com/feed
+civilbeat.org:
+  - https://www.civilbeat.org/feed/
+opb.org:
+  - https://www.opb.org/arc/outboundfeeds/rss/category/politics/?outputType=xml
+  - https://www.opb.org/arc/outboundfeeds/rss/?outputType=xml
+oregonlive.com:
+  - https://www.oregonlive.com/arc/outboundfeeds/rss/category/politics/?outputType=xml
+  - https://www.oregonlive.com/arc/outboundfeeds/rss/?outputType=xml
+nj.com:
+  - https://www.nj.com/arc/outboundfeeds/rss/category/politics/?outputType=xml
+  - https://www.nj.com/arc/outboundfeeds/rss/?outputType=xml
+al.com:
+  - https://www.al.com/arc/outboundfeeds/rss/category/politics/?outputType=xml
+  - https://www.al.com/arc/outboundfeeds/rss/?outputType=xml
+cleveland.com:
+  - https://www.cleveland.com/arc/outboundfeeds/rss/category/open/?outputType=xml
+  - https://www.cleveland.com/arc/outboundfeeds/rss/?outputType=xml
+gothamist.com:
+  - https://api-prod.gothamist.com/api/v2/feeds/rss
+  - https://gothamist.com/feed
+sltrib.com:
+  - https://www.sltrib.com/arc/outboundfeeds/rss/category/news/politics/?outputType=xml
+  - https://www.sltrib.com/arc/outboundfeeds/rss/?outputType=xml

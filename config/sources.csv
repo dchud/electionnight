@@ -1,0 +1,274 @@
+source_id,name,homepage,feed_urls,scope,home_state,country,language,lean_label,lean_source,lean_source_url,lean_retrieved_on,reliability_note,ownership,state_affiliated,paywall,poll_tier,enabled,notes
+associated-press,Associated Press,https://apnews.com,,wire,,US,en,Unrated,,,,,,false,none,1,false,No official public RSS; try politics section feed discovery; else rely on syndication
+reuters,Reuters,https://www.reuters.com,,wire,,US,en,Unrated,,,,,,false,metered,1,false,Public RSS discontinued; discovery may fail - acceptable
+upi,UPI,https://www.upi.com,https://rss.upi.com/news/top_news.rss|https://rss.upi.com/news/us_news.rss|https://rss.upi.com/news/news.rss,wire,,US,en,Unrated,,,,,,false,none,2,true,
+bloomberg,Bloomberg,https://www.bloomberg.com,https://www.bloomberg.com/feeds/politics/news.rss,national,,US,en,Unrated,,,,,,false,hard,2,true,Politics feed if available; headlines only
+the-new-york-times,The New York Times,https://www.nytimes.com,https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml|https://rss.nytimes.com/services/xml/rss/nyt/US.xml,national,,US,en,Unrated,,,,,,false,metered,1,true,Use Politics + US feeds (rss.nytimes.com)
+the-washington-post,The Washington Post,https://www.washingtonpost.com,,national,,US,en,Unrated,,,,,,false,metered,1,false,Politics feed
+the-wall-street-journal,The Wall Street Journal,https://www.wsj.com,https://feeds.content.dowjones.io/public/rss/socialpoliticsfeed|https://feeds.content.dowjones.io/public/rss/RSSUSnews,national,,US,en,Unrated,,,,,,false,hard,1,true,News (not opinion) feeds; headlines/summaries only
+usa-today,USA Today,https://www.usatoday.com,,national,,US,en,Unrated,,,,,,false,none,1,false,
+cnn,CNN,https://www.cnn.com,,national,,US,en,Unrated,,,,,,false,none,1,false,Politics feed
+fox-news,Fox News,https://www.foxnews.com,https://moxie.foxnews.com/google-publisher/politics.xml|https://moxie.foxnews.com/google-publisher/us.xml,national,,US,en,Unrated,,,,,,false,none,1,true,Politics feed (moxie.foxnews.com)
+nbc-news,NBC News,https://www.nbcnews.com,https://feeds.nbcnews.com/nbcnews/public/politics|https://feeds.nbcnews.com/nbcnews/public/news,national,,US,en,Unrated,,,,,,false,none,1,true,Politics feed
+cbs-news,CBS News,https://www.cbsnews.com,https://www.cbsnews.com/latest/rss/politics|https://www.cbsnews.com/latest/rss/us,national,,US,en,Unrated,,,,,,false,none,1,true,Politics feed
+abc-news,ABC News,https://abcnews.go.com,https://abcnews.com/abcnews/politicsheadlines|https://abcnews.com/abcnews/usheadlines,national,,US,en,Unrated,,,,,,false,none,1,true,Politics feed
+npr,NPR,https://www.npr.org,https://feeds.npr.org/1014/rss.xml|https://feeds.npr.org/139482413/rss.xml|https://feeds.npr.org/1001/rss.xml,national,,US,en,Unrated,,,,,,false,none,1,true,Politics + Elections feeds
+pbs-news,PBS News,https://www.pbs.org/newshour,https://www.pbs.org/newshour/feeds/rss/politics|https://www.pbs.org/newshour/feeds/rss/headlines,national,,US,en,Unrated,,,,,,false,none,1,true,Politics feed
+ms-now-formerly-msnbc,MS NOW (formerly MSNBC),https://www.ms.now,https://www.ms.now/category/politics/feed|https://www.ms.now/feed,national,,US,en,Unrated,,,,,,false,none,2,true,VERIFY domain after 2025 rebrand
+cnbc,CNBC,https://www.cnbc.com,https://www.cnbc.com/id/10000113/device/rss/rss.html,national,,US,en,Unrated,,,,,,false,none,2,true,Politics feed
+politico,Politico,https://www.politico.com,https://rss.politico.com/congress.xml|https://rss.politico.com/politics-news.xml|https://rss.politico.com/playbook.xml,national,,US,en,Unrated,,,,,,false,none,1,true,Politics + Congress feeds
+the-hill,The Hill,https://thehill.com,https://thehill.com/homenews/campaign/feed/|https://thehill.com/homenews/feed/|https://thehill.com/homenews/senate/feed/,national,,US,en,Unrated,,,,,,false,none,1,true,Campaign + Homenews feeds
+axios,Axios,https://www.axios.com,https://api.axios.com/feed/,national,,US,en,Unrated,,,,,,false,none,1,true,Politics feed
+punchbowl-news,Punchbowl News,https://punchbowl.news,https://punchbowl.news/feed/,national,,US,en,Unrated,,,,,,false,metered,2,true,
+roll-call,Roll Call,https://rollcall.com,https://rollcall.com/category/elections/feed/|https://rollcall.com/feed/,national,,US,en,Unrated,,,,,,false,none,1,true,Elections feed
+notus,NOTUS,https://www.notus.org,https://www.washingtonsun.com/index.rss|https://www.washingtonsun.com/index.rss?redirected=notus_org,national,,US,en,Unrated,,,,,,false,none,2,true,
+semafor,Semafor,https://www.semafor.com,https://www.semafor.com/rss.xml,national,,US,en,Unrated,,,,,,false,none,2,true,Politics vertical
+newsweek,Newsweek,https://www.newsweek.com,https://www.newsweek.com/rss.xml,national,,US,en,Unrated,,,,,,false,none,2,true,
+time,Time,https://time.com,https://time.com/politics/feed/|https://time.com/feed/|https://time.com/rss/,national,,US,en,Unrated,,,,,,false,metered,2,true,Politics feed
+the-atlantic,The Atlantic,https://www.theatlantic.com,https://www.theatlantic.com/feed/channel/politics/,national,,US,en,Unrated,,,,,,false,metered,3,true,Politics feed; analysis-heavy
+vox,Vox,https://www.vox.com,https://www.vox.com/rss/politics/index.xml|https://www.vox.com/rss/index.xml,national,,US,en,Unrated,,,,,,false,none,3,true,Politics feed
+the-19th,The 19th,https://19thnews.org,https://19thnews.org/feed/,national,,US,en,Unrated,,,,,,false,none,2,true,
+christian-science-monitor,Christian Science Monitor,https://www.csmonitor.com,https://rss.csmonitor.com/feeds/politics|https://rss.csmonitor.com/feeds/usa,national,,US,en,Unrated,,,,,,false,metered,2,true,USA/Politics feed
+business-insider,Business Insider,https://www.businessinsider.com,https://feeds.businessinsider.com/custom/all,national,,US,en,Unrated,,,,,,false,metered,3,true,Politics feed
+national-review,National Review,https://www.nationalreview.com,https://www.nationalreview.com/elections/feed/|https://www.nationalreview.com/news/feed/|https://www.nationalreview.com/corner/feed/,national,,US,en,Unrated,,,,,,false,metered,2,true,News + Corner
+the-dispatch,The Dispatch,https://thedispatch.com,https://thedispatch.com/category/politics/feed/|https://thedispatch.com/feed/,national,,US,en,Unrated,,,,,,false,metered,2,true,
+washington-examiner,Washington Examiner,https://www.washingtonexaminer.com,https://www.washingtonexaminer.com/section/politics/feed/|https://www.washingtonexaminer.com/feed/,national,,US,en,Unrated,,,,,,false,none,1,true,Politics/campaigns feed
+the-free-press,The Free Press,https://www.thefp.com,https://www.thefp.com/feed|https://www.thefp.com/feed.xml,national,,US,en,Unrated,,,,,,false,metered,3,true,
+reason,Reason,https://reason.com,https://reason.com/tag/politics/feed/|https://reason.com/feed/,national,,US,en,Unrated,,,,,,false,none,3,true,Politics feed
+new-york-post,New York Post,https://nypost.com,https://nypost.com/politics/feed/|https://nypost.com/us-news/feed/,national,,US,en,Unrated,,,,,,false,none,1,true,Politics/US news feed
+the-washington-times,The Washington Times,https://www.washingtontimes.com,https://www.washingtontimes.com/rss/headlines/news/politics/|https://www.washingtontimes.com/rss/headlines/news/,national,,US,en,Unrated,,,,,,false,none,2,true,Politics feed
+washington-free-beacon,Washington Free Beacon,https://freebeacon.com,https://freebeacon.com/feed/,national,,US,en,Unrated,,,,,,false,none,3,true,
+the-bulwark,The Bulwark,https://www.thebulwark.com,https://www.thebulwark.com/feed|https://www.thebulwark.com/feed.xml,national,,US,en,Unrated,,,,,,false,metered,3,true,
+realclearpolitics,RealClearPolitics,https://www.realclearpolitics.com,https://www.realclearpolitics.com/index.xml,analysis,,US,en,Unrated,,,,,,false,none,2,true,Mostly aggregator: keep only original articles if feed allows; else disable
+deseret-news-national-politics,Deseret News (national politics),https://www.deseret.com,https://www.deseret.com/rss/politics.rss|https://www.deseret.com/rss/latest.rss,national,UT,US,en,Unrated,,,,,,false,none,2,true,Also counts for UT
+stateline,Stateline,https://stateline.org,https://stateline.org/feed/|https://stateline.org/feed/localFeed/,state,,US,en,Unrated,,,,,,false,none,1,true,Multi-state; home_state blank
+votebeat,Votebeat,https://www.votebeat.org,https://www.votebeat.org/arc/outboundfeeds/rss/?outputType=xml|https://www.votebeat.org/arc/outboundfeeds/rss/,analysis,,US,en,Unrated,,,,,,false,none,1,true,Election administration specialist
+bolts,Bolts,https://boltsmag.org,https://boltsmag.org/feed/,analysis,,US,en,Unrated,,,,,,false,none,2,true,State/local races
+cook-political-report,Cook Political Report,https://www.cookpolitical.com,,analysis,,US,en,Unrated,,,,,,false,metered,2,false,Ratings source too
+sabato-s-crystal-ball,Sabato's Crystal Ball,https://centerforpolitics.org/crystalball,,analysis,,US,en,Unrated,,,,,,false,none,2,false,Ratings source too
+inside-elections,Inside Elections,https://insideelections.com,https://insideelections.com/feed/,analysis,,US,en,Unrated,,,,,,false,metered,3,true,
+ballotpedia-news,Ballotpedia News,https://news.ballotpedia.org,https://news.ballotpedia.org/feed/,analysis,,US,en,Unrated,,,,,,false,none,2,true,Ballot measures and down-ballot
+decision-desk-hq,Decision Desk HQ,https://decisiondeskhq.com,,analysis,,US,en,Unrated,,,,,,false,none,1,false,Race calls are reported by others too
+split-ticket,Split Ticket,https://split-ticket.org,,analysis,,US,en,Unrated,,,,,,false,none,3,false,
+silver-bulletin,Silver Bulletin,https://www.natesilver.net,https://www.natesilver.net/feed|https://www.natesilver.net/feed.xml,analysis,,US,en,Unrated,,,,,,false,metered,3,true,Substack feed
+election-law-blog,Election Law Blog,https://electionlawblog.org,https://electionlawblog.org/feed/,analysis,,US,en,Unrated,,,,,,false,none,2,true,Legal challenges
+univision-noticias,Univision Noticias,https://www.univision.com/noticias,,national,,US,es,Unrated,,,,,,false,none,2,false,US Spanish-language
+telemundo-noticias,Telemundo Noticias,https://www.telemundo.com/noticias,,national,,US,es,Unrated,,,,,,false,none,2,false,US Spanish-language
+la-opinion,La Opinión,https://laopinion.com,https://laopinion.com/categoria/politica/feed/|https://laopinion.com/feed/,local,CA,US,es,Unrated,,,,,,false,none,2,true,US Spanish-language
+el-nuevo-herald,El Nuevo Herald,https://www.elnuevoherald.com,,local,FL,US,es,Unrated,,,,,,false,metered,2,false,US Spanish-language
+bbc-news,BBC News,https://www.bbc.com/news,https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml|https://feeds.bbci.co.uk/news/rss.xml,international,,GB,en,NA,,,,,,false,none,2,true,US & Canada feed
+the-guardian,The Guardian,https://www.theguardian.com,https://www.theguardian.com/us-news/us-politics/rss|https://www.theguardian.com/us-news/rss,international,,GB,en,NA,,,,,,false,none,1,true,US politics feed (strong US desk)
+financial-times,Financial Times,https://www.ft.com,https://www.ft.com/political-fix?format=rss|https://www.ft.com/rss/home/international,international,,GB,en,NA,,,,,,false,hard,2,true,US politics feed; headlines only
+the-economist,The Economist,https://www.economist.com,https://www.economist.com/united-states/rss.xml,international,,GB,en,NA,,,,,,false,hard,3,true,United States section
+the-times-uk,The Times (UK),https://www.thetimes.com,,international,,GB,en,NA,,,,,,false,hard,3,false,
+the-telegraph,The Telegraph,https://www.telegraph.co.uk,https://www.telegraph.co.uk/rss.xml,international,,GB,en,NA,,,,,,false,metered,3,true,US politics feed
+the-independent,The Independent,https://www.independent.co.uk,https://www.independent.co.uk/news/world/americas/us-politics/rss,international,,GB,en,NA,,,,,,false,none,2,true,US politics feed
+sky-news,Sky News,https://news.sky.com,https://feeds.skynews.com/feeds/rss/us.xml,international,,GB,en,NA,,,,,,false,none,3,true,US feed
+al-jazeera-english,Al Jazeera English,https://www.aljazeera.com,https://www.aljazeera.com/xml/rss/all.xml,international,,QA,en,NA,,,,,,true,none,2,true,Qatari state-funded; editorially distinct - keep; flag on Sources page
+deutsche-welle-english,Deutsche Welle (English),https://www.dw.com/en,https://rss.dw.com/rdf/rss-en-world|https://rss.dw.com/rdf/rss-en-all,international,,DE,en,NA,,,,,,false,none,3,true,Public broadcaster
+france-24-english,France 24 (English),https://www.france24.com/en,https://www.france24.com/en/americas/rss|https://www.france24.com/en/rss,international,,FR,en,NA,,,,,,false,none,3,true,Public broadcaster
+euronews,Euronews,https://www.euronews.com,https://www.euronews.com/rss?level=theme&name=news|https://www.euronews.com/rss,international,,FR,en,NA,,,,,,false,none,3,true,
+politico-europe,Politico Europe,https://www.politico.eu,https://www.politico.eu/feed/,international,,BE,en,NA,,,,,,false,none,3,true,
+irish-times,Irish Times,https://www.irishtimes.com,https://www.irishtimes.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.irishtimes.com/arc/outboundfeeds/feed-world/|https://www.irishtimes.com/arc/outboundfeeds/rss/?outputType=xml,international,,IE,en,NA,,,,,,false,metered,3,true,World feed
+cbc-news,CBC News,https://www.cbc.ca/news,https://www.cbc.ca/webfeed/rss/rss-politics|https://www.cbc.ca/webfeed/rss/rss-world,international,,CA,en,NA,,,,,,false,none,2,true,World/politics feed
+the-globe-and-mail,The Globe and Mail,https://www.theglobeandmail.com,https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/world/|https://www.theglobeandmail.com/arc/outboundfeeds/rss/?outputType=xml,international,,CA,en,NA,,,,,,false,metered,3,true,
+abc-news-australia,ABC News (Australia),https://www.abc.net.au/news,https://www.abc.net.au/news/feed/2942460/rss.xml,international,,AU,en,NA,,,,,,false,none,3,true,World feed
+sydney-morning-herald,Sydney Morning Herald,https://www.smh.com.au,https://www.smh.com.au/rss/politics/federal.xml|https://www.smh.com.au/rss/world.xml|https://www.smh.com.au/rss/feed.xml,international,,AU,en,NA,,,,,,false,metered,3,true,World feed
+rnz,RNZ,https://www.rnz.co.nz,,international,,NZ,en,NA,,,,,,false,none,3,false,World feed
+the-times-of-india,The Times of India,https://timesofindia.indiatimes.com,https://timesofindia.indiatimes.com/rssfeeds/296589292.cms|https://timesofindia.indiatimes.com/rssfeeds/30359486.cms,international,,IN,en,NA,,,,,,false,none,3,true,World/US feed
+the-hindu,The Hindu,https://www.thehindu.com,https://www.thehindu.com/elections/feeder/default.rss|https://www.thehindu.com/news/international/feeder/default.rss|https://www.thehindu.com/feeder/default.rss,international,,IN,en,NA,,,,,,false,metered,3,true,World feed
+dawn,Dawn,https://www.dawn.com,https://www.dawn.com/feeds/world|https://www.dawn.com/feeds/home/|https://www.dawn.com/feeds/home,international,,PK,en,NA,,,,,,false,none,3,true,World feed
+the-japan-times,The Japan Times,https://www.japantimes.co.jp,https://www.japantimes.co.jp/feed/,international,,JP,en,NA,,,,,,false,metered,3,true,
+nhk-world,NHK World,https://www3.nhk.or.jp/nhkworld,,international,,JP,en,NA,,,,,,false,none,3,false,Public broadcaster
+nikkei-asia,Nikkei Asia,https://asia.nikkei.com,https://asia.nikkei.com/rss/feed/nar,international,,JP,en,NA,,,,,,false,hard,3,true,
+south-china-morning-post,South China Morning Post,https://www.scmp.com,https://www.scmp.com/rss/322262/feed/|https://www.scmp.com/rss/91/feed/|https://www.scmp.com/rss/feed/,international,,HK,en,NA,,,,,,false,metered,3,true,US/World feed
+the-straits-times,The Straits Times,https://www.straitstimes.com,https://www.straitstimes.com/news/world/rss.xml,international,,SG,en,NA,,,,,,false,metered,3,true,World feed
+korea-herald,Korea Herald,https://www.koreaherald.com,https://www.koreaherald.com/rss/newsAll,international,,KR,en,NA,,,,,,false,none,3,true,
+haaretz,Haaretz,https://www.haaretz.com,https://www.haaretz.com/srv/haaretz-latest-headlines,international,,IL,en,NA,,,,,,false,metered,3,true,US news feed
+the-times-of-israel,The Times of Israel,https://www.timesofisrael.com,https://www.timesofisrael.com/feed/,international,,IL,en,NA,,,,,,false,none,3,true,
+kyiv-independent,Kyiv Independent,https://kyivindependent.com,https://kyivindependent.com/news-archive/rss/,international,,UA,en,NA,,,,,,false,none,3,true,
+daily-maverick,Daily Maverick,https://www.dailymaverick.co.za,https://www.dailymaverick.co.za/dmrss/,international,,ZA,en,NA,,,,,,false,none,3,true,
+nation-kenya,Nation (Kenya),https://nation.africa,https://nation.africa/kenya/rss.xml,international,,KE,en,NA,,,,,,false,metered,3,true,
+bbc-news-arabic,BBC News Arabic,https://www.bbc.com/arabic,https://feeds.bbci.co.uk/arabic/rss.xml,international,,GB,ar,NA,,,,,,false,none,3,true,
+al-jazeera-arabic,Al Jazeera Arabic,https://www.aljazeera.net,https://www.aljazeera.net/aljazeerarss/a7c186be-1baa-4bd4-9d80-a84db769f779/73d0e1b4-532f-45ef-b135-bfdff8b8cab9,international,,QA,ar,NA,,,,,,true,none,3,true,Qatari state-funded; flag
+france-24-arabic,France 24 Arabic,https://www.france24.com/ar,https://www.france24.com/ar/rss,international,,FR,ar,NA,,,,,,false,none,3,true,
+dw-arabic,DW Arabic,https://www.dw.com/ar,https://rss.dw.com/rdf/rss-ar-all,international,,DE,ar,NA,,,,,,false,none,3,true,
+asharq-al-awsat,Asharq Al-Awsat,https://aawsat.com,https://aawsat.com/feed,international,,SA,ar,NA,,,,,,true,none,3,true,Saudi-linked ownership; flag
+bbc-news-chinese,BBC News Chinese,https://www.bbc.com/zhongwen,https://feeds.bbci.co.uk/zhongwen/trad/rss.xml,international,,GB,zh,NA,,,,,,false,none,3,true,Simplified feed
+lianhe-zaobao,Lianhe Zaobao,https://www.zaobao.com.sg,,international,,SG,zh,NA,,,,,,false,none,3,false,
+dw-chinese,DW Chinese,https://www.dw.com/zh,https://rss.dw.com/rdf/rss-chi-all,international,,DE,zh,NA,,,,,,false,none,3,true,
+rfi-chinese,RFI Chinese,https://www.rfi.fr/cn,https://www.rfi.fr/cn/rss,international,,FR,zh,NA,,,,,,false,none,3,true,
+central-news-agency-taiwan,Central News Agency (Taiwan),https://www.cna.com.tw,https://feeds.feedburner.com/rsscna/politics|https://feeds.feedburner.com/rsscna/intworld,international,,TW,zh,NA,,,,,,true,none,3,true,National news agency (state-owned; democratic govt); flag
+le-monde,Le Monde,https://www.lemonde.fr,https://www.lemonde.fr/international/rss_full.xml|https://www.lemonde.fr/ameriques/rss_full.xml|https://www.lemonde.fr/rss/une.xml,international,,FR,fr,NA,,,,,,false,metered,3,true,International / Amériques feed
+le-figaro,Le Figaro,https://www.lefigaro.fr,https://www.lefigaro.fr/rss/figaro_international.xml,international,,FR,fr,NA,,,,,,false,metered,3,true,International feed
+liberation,Libération,https://www.liberation.fr,https://www.liberation.fr/arc/outboundfeeds/rss-all/category/international/?outputType=xml|https://www.liberation.fr/arc/outboundfeeds/rss-all/?outputType=xml|https://www.liberation.fr/arc/outboundfeeds/rss/?outputType=xml,international,,FR,fr,NA,,,,,,false,metered,3,true,International feed
+france-24-french,France 24 (French),https://www.france24.com/fr,https://www.france24.com/fr/am%C3%A9riques/rss|https://www.france24.com/fr/rss,international,,FR,fr,NA,,,,,,false,none,3,true,
+radio-canada,Radio-Canada,https://ici.radio-canada.ca,https://ici.radio-canada.ca/info/rss/international/en-continu|https://ici.radio-canada.ca/info/rss/info/a-la-une,international,,CA,fr,NA,,,,,,false,none,3,true,International feed
+le-devoir,Le Devoir,https://www.ledevoir.com,https://www.ledevoir.com/rss/section/monde.xml|https://www.ledevoir.com/rss/manchettes.xml,international,,CA,fr,NA,,,,,,false,metered,3,true,International feed
+bbc-news-russian,BBC News Russian,https://www.bbc.com/russian,https://feeds.bbci.co.uk/russian/rss.xml,international,,GB,ru,NA,,,,,,false,none,3,true,
+meduza,Meduza,https://meduza.io,https://meduza.io/rss/all|https://meduza.io/rss/news,international,,LV,ru,NA,,,,,,false,none,3,true,Independent; exiled
+dw-russian,DW Russian,https://www.dw.com/ru,https://rss.dw.com/rdf/rss-ru-all,international,,DE,ru,NA,,,,,,false,none,3,true,
+novaya-gazeta-europe,Novaya Gazeta Europe,https://novayagazeta.eu,https://novayagazeta.eu/feed/rss,international,,LV,ru,NA,,,,,,false,none,3,true,Independent; exiled
+kommersant,Kommersant,https://www.kommersant.ru,https://www.kommersant.ru/rss/section-world.xml|https://www.kommersant.ru/rss/news.xml,international,,RU,ru,NA,,,,,,false,metered,3,true,Russian domestic press under censorship; note on Sources page
+el-pais,El País,https://elpais.com,https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/us/portada|https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada,international,,ES,es,NA,,,,,,false,metered,3,true,Internacional / EEUU feed
+el-mundo,El Mundo,https://www.elmundo.es,https://e00-elmundo.uecdn.es/elmundo/rss/internacional.xml|https://www.elmundo.es/rss/googlenews/portada.xml,international,,ES,es,NA,,,,,,false,metered,3,true,Internacional feed
+bbc-news-mundo,BBC News Mundo,https://www.bbc.com/mundo,https://feeds.bbci.co.uk/mundo/rss.xml,international,,GB,es,NA,,,,,,false,none,3,true,
+cnn-en-espanol,CNN en Español,https://cnnespanol.cnn.com,,international,,US,es,NA,,,,,,false,none,3,false,
+infobae,Infobae,https://www.infobae.com,https://www.infobae.com/arc/outboundfeeds/rss/category/estados-unidos/?outputType=xml|https://www.infobae.com/arc/outboundfeeds/rss/category/estados-unidos/|https://www.infobae.com/arc/outboundfeeds/rss/?outputType=xml,international,,AR,es,NA,,,,,,false,none,3,true,América/EEUU feed
+clarin,Clarín,https://www.clarin.com,https://www.clarin.com/rss/mundo/|https://www.clarin.com/rss/lo-ultimo/|https://www.clarin.com/rss/lo-ultimo,international,,AR,es,NA,,,,,,false,metered,3,true,Mundo feed
+el-universal-mexico,El Universal (México),https://www.eluniversal.com.mx,https://www.eluniversal.com.mx/arc/outboundfeeds/rss/?outputType=xml,international,,MX,es,NA,,,,,,false,none,3,true,Mundo feed
+alabama-reflector,Alabama Reflector,https://alabamareflector.com,https://alabamareflector.com/feed/localFeed/|https://alabamareflector.com/feed/,state,AL,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+al-com,AL.com,https://www.al.com,https://www.al.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.al.com/arc/outboundfeeds/rss/?outputType=xml,local,AL,US,en,Unrated,,,,,,false,none,2,true,Politics feed
+alabama-daily-news,Alabama Daily News,https://www.aldailynews.com,https://aldailynews.com/feed/,state,AL,US,en,Unrated,,,,,,false,none,3,true,
+alaska-beacon,Alaska Beacon,https://alaskabeacon.com,https://alaskabeacon.com/feed/localFeed/|https://alaskabeacon.com/feed/,state,AK,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground (Senate)
+anchorage-daily-news,Anchorage Daily News,https://www.adn.com,https://www.adn.com/arc/outboundfeeds/rss/?outputType=xml,local,AK,US,en,Unrated,,,,,,false,metered,1,true,Politics feed
+alaska-public-media,Alaska Public Media,https://alaskapublic.org,https://alaskapublic.org/news/politics.rss|https://alaskapublic.org/news/politics/elections.rss,state,AK,US,en,Unrated,,,,,,false,none,2,true,
+arizona-mirror,Arizona Mirror,https://azmirror.com,https://azmirror.com/feed/localFeed/|https://azmirror.com/feed/,state,AZ,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground
+the-arizona-republic,The Arizona Republic,https://www.azcentral.com,,local,AZ,US,en,Unrated,,,,,,false,metered,1,false,Politics feed
+kjzz,KJZZ,https://kjzz.org,https://www.kjzz.org/tags/politics.rss|https://www.kjzz.org/kjzz-news.rss,local,AZ,US,en,Unrated,,,,,,false,none,2,true,Public radio
+arkansas-advocate,Arkansas Advocate,https://arkansasadvocate.com,https://arkansasadvocate.com/feed/localFeed/|https://arkansasadvocate.com/feed/,state,AR,US,en,Unrated,,,,,,false,none,3,true,States Newsroom
+arkansas-democrat-gazette,Arkansas Democrat-Gazette,https://www.arkansasonline.com,,local,AR,US,en,Unrated,,,,,,false,metered,3,false,
+calmatters,CalMatters,https://calmatters.org,https://calmatters.org/feed/,state,CA,US,en,Unrated,,,,,,false,none,1,true,
+los-angeles-times,Los Angeles Times,https://www.latimes.com,https://www.latimes.com/politics/rss2.0.xml|https://www.latimes.com/california/rss2.0.xml,local,CA,US,en,Unrated,,,,,,false,metered,1,true,Politics + California feeds
+san-francisco-chronicle,San Francisco Chronicle,https://www.sfchronicle.com,,local,CA,US,en,Unrated,,,,,,false,metered,2,false,
+kqed,KQED,https://www.kqed.org,https://ww2.kqed.org/news/feed/,local,CA,US,en,Unrated,,,,,,false,none,2,true,Public radio
+the-sacramento-bee,The Sacramento Bee,https://www.sacbee.com,,local,CA,US,en,Unrated,,,,,,false,metered,2,false,Capitol coverage
+colorado-newsline,Colorado Newsline,https://coloradonewsline.com,https://coloradonewsline.com/feed/localFeed/|https://coloradonewsline.com/feed/,state,CO,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+the-colorado-sun,The Colorado Sun,https://coloradosun.com,https://coloradosun.com/category/politics/feed/|https://coloradosun.com/tag/politics/feed/|https://coloradosun.com/feed/,state,CO,US,en,Unrated,,,,,,false,none,2,true,
+the-denver-post,The Denver Post,https://www.denverpost.com,,local,CO,US,en,Unrated,,,,,,false,metered,2,false,Politics feed
+cpr-news,CPR News,https://www.cpr.org,https://www.cpr.org/feed/|https://www.cpr.org/rss/,state,CO,US,en,Unrated,,,,,,false,none,3,true,Public radio
+ct-mirror,CT Mirror,https://ctmirror.org,https://ctmirror.org/news/politics/feed/|https://ctmirror.org/feed/,state,CT,US,en,Unrated,,,,,,false,none,2,true,
+ct-insider,CT Insider,https://www.ctinsider.com,,local,CT,US,en,Unrated,,,,,,false,metered,3,false,
+connecticut-public,Connecticut Public,https://www.ctpublic.org,https://www.ctpublic.org/news/politics.rss,state,CT,US,en,Unrated,,,,,,false,none,3,true,
+spotlight-delaware,Spotlight Delaware,https://spotlightdelaware.org,https://spotlightdelaware.org/feed/,state,DE,US,en,Unrated,,,,,,false,none,3,true,
+delaware-online,Delaware Online,https://www.delawareonline.com,,local,DE,US,en,Unrated,,,,,,false,metered,3,false,
+florida-phoenix,Florida Phoenix,https://floridaphoenix.com,https://floridaphoenix.com/feed/localFeed/|https://floridaphoenix.com/feed/,state,FL,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+tampa-bay-times,Tampa Bay Times,https://www.tampabay.com,https://www.tampabay.com/arc/outboundfeeds/rss/?outputType=xml,local,FL,US,en,Unrated,,,,,,false,metered,2,true,Politics feed
+miami-herald,Miami Herald,https://www.miamiherald.com,,local,FL,US,en,Unrated,,,,,,false,metered,2,false,Politics feed
+wlrn,WLRN,https://www.wlrn.org,,local,FL,US,en,Unrated,,,,,,false,none,3,false,Public radio
+georgia-recorder,Georgia Recorder,https://georgiarecorder.com,https://georgiarecorder.com/feed/localFeed/|https://georgiarecorder.com/feed/,state,GA,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground
+atlanta-journal-constitution,Atlanta Journal-Constitution,https://www.ajc.com,,local,GA,US,en,Unrated,,,,,,false,metered,1,false,Politics feed
+gpb-news,GPB News,https://www.gpb.org/news,https://www.gpb.org/rss.xml,state,GA,US,en,Unrated,,,,,,false,none,1,true,Public broadcaster
+honolulu-civil-beat,Honolulu Civil Beat,https://www.civilbeat.org,https://www.civilbeat.org/feed/|https://www.civilbeat.org/feed|https://www.civilbeat.org/rss,state,HI,US,en,Unrated,,,,,,false,none,3,true,
+honolulu-star-advertiser,Honolulu Star-Advertiser,https://www.staradvertiser.com,https://www.staradvertiser.com/tag/politics/feed/|https://www.staradvertiser.com/feed/,local,HI,US,en,Unrated,,,,,,false,metered,3,true,
+idaho-capital-sun,Idaho Capital Sun,https://idahocapitalsun.com,https://idahocapitalsun.com/feed/localFeed/|https://idahocapitalsun.com/feed/,state,ID,US,en,Unrated,,,,,,false,none,3,true,States Newsroom
+idaho-statesman,Idaho Statesman,https://www.idahostatesman.com,,local,ID,US,en,Unrated,,,,,,false,metered,3,false,
+capitol-news-illinois,Capitol News Illinois,https://capitolnewsillinois.com,https://capitolnewsillinois.com/feed/,state,IL,US,en,Unrated,,,,,,false,none,2,true,
+chicago-tribune,Chicago Tribune,https://www.chicagotribune.com,,local,IL,US,en,Unrated,,,,,,false,metered,2,false,Politics feed
+chicago-sun-times,Chicago Sun-Times,https://chicago.suntimes.com,https://chicago.suntimes.com/rss/politics/index.xml|https://chicago.suntimes.com/rss/index.xml,local,IL,US,en,Unrated,,,,,,false,none,2,true,Politics feed
+wbez,WBEZ,https://www.wbez.org,https://www.wbez.org/rss/politics/index.xml|https://www.wbez.org/rss/index.xml,local,IL,US,en,Unrated,,,,,,false,none,3,true,Public radio
+indiana-capital-chronicle,Indiana Capital Chronicle,https://indianacapitalchronicle.com,https://indianacapitalchronicle.com/feed/localFeed/|https://indianacapitalchronicle.com/feed/,state,IN,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+indystar,IndyStar,https://www.indystar.com,,local,IN,US,en,Unrated,,,,,,false,metered,2,false,
+iowa-capital-dispatch,Iowa Capital Dispatch,https://iowacapitaldispatch.com,https://iowacapitaldispatch.com/feed/localFeed/|https://iowacapitaldispatch.com/feed/,state,IA,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground
+des-moines-register,Des Moines Register,https://www.desmoinesregister.com,,local,IA,US,en,Unrated,,,,,,false,metered,1,false,Politics feed
+iowa-public-radio,Iowa Public Radio,https://www.iowapublicradio.org,https://www.iowapublicradio.org/tags/politics.rss|https://www.iowapublicradio.org/news.rss,state,IA,US,en,Unrated,,,,,,false,none,2,true,
+kansas-reflector,Kansas Reflector,https://kansasreflector.com,https://kansasreflector.com/feed/localFeed/|https://kansasreflector.com/feed/,state,KS,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; governor race
+the-kansas-city-star,The Kansas City Star,https://www.kansascity.com,,local,MO,US,en,Unrated,,,,,,false,metered,2,false,Covers KS + MO
+kcur,KCUR,https://www.kcur.org,https://www.kcur.org/election-2026.rss,local,MO,US,en,Unrated,,,,,,false,none,3,true,Public radio; KS + MO
+kentucky-lantern,Kentucky Lantern,https://kentuckylantern.com,https://kentuckylantern.com/category/politics/feed/|https://kentuckylantern.com/feed/localFeed/|https://kentuckylantern.com/feed/,state,KY,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+louisville-courier-journal,Louisville Courier Journal,https://www.courier-journal.com,,local,KY,US,en,Unrated,,,,,,false,metered,2,false,
+lexington-herald-leader,Lexington Herald-Leader,https://www.kentucky.com,,local,KY,US,en,Unrated,,,,,,false,metered,3,false,
+louisiana-illuminator,Louisiana Illuminator,https://lailluminator.com,https://lailluminator.com/feed/localFeed/|https://lailluminator.com/feed/,state,LA,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+the-advocate-baton-rouge,The Advocate (Baton Rouge),https://www.theadvocate.com,https://www.theadvocate.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc,local,LA,US,en,Unrated,,,,,,false,metered,3,true,
+the-times-picayune-nola-com,The Times-Picayune | NOLA.com,https://www.nola.com,https://www.nola.com/search/?f=rss&t=article&c=news/politics&l=50&s=start_time&sd=desc,local,LA,US,en,Unrated,,,,,,false,metered,3,true,
+maine-morning-star,Maine Morning Star,https://mainemorningstar.com,https://mainemorningstar.com/feed/localFeed/|https://mainemorningstar.com/feed/,state,ME,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground (Senate)
+portland-press-herald,Portland Press Herald,https://www.pressherald.com,https://www.pressherald.com/politics/feed/|https://www.pressherald.com/politics/elections/feed/|https://www.pressherald.com/feed/,local,ME,US,en,Unrated,,,,,,false,metered,1,true,Politics feed
+bangor-daily-news,Bangor Daily News,https://www.bangordailynews.com,https://www.bangordailynews.com/category/politics/feed/|https://www.bangordailynews.com/feed/,local,ME,US,en,Unrated,,,,,,false,metered,1,true,Politics feed
+maine-public,Maine Public,https://www.mainepublic.org,https://www.mainepublic.org/politics.rss,state,ME,US,en,Unrated,,,,,,false,none,2,true,
+maryland-matters,Maryland Matters,https://marylandmatters.org,https://marylandmatters.org/category/politics/feed/|https://marylandmatters.org/feed/localFeed/|https://marylandmatters.org/feed/,state,MD,US,en,Unrated,,,,,,false,none,2,true,
+the-baltimore-banner,The Baltimore Banner,https://www.thebaltimorebanner.com,https://www.thebanner.com/arc/outboundfeeds/rss/?outputType=xml,local,MD,US,en,Unrated,,,,,,false,metered,2,true,
+the-baltimore-sun,The Baltimore Sun,https://www.baltimoresun.com,,local,MD,US,en,Unrated,,,,,,false,metered,3,false,
+the-boston-globe,The Boston Globe,https://www.bostonglobe.com,https://www.bostonglobe.com/arc/outboundfeeds/rss/?outputType=xml,local,MA,US,en,Unrated,,,,,,false,metered,2,true,Politics + NH/RI coverage
+wbur,WBUR,https://www.wbur.org,https://rss.wbur.org/wbur/rss,local,MA,US,en,Unrated,,,,,,false,none,2,true,Public radio
+commonwealth-beacon,CommonWealth Beacon,https://commonwealthbeacon.org,https://commonwealthbeacon.org/category/politics/feed/|https://commonwealthbeacon.org/tag/politics/feed/|https://commonwealthbeacon.org/feed/,state,MA,US,en,Unrated,,,,,,false,none,3,true,
+michigan-advance,Michigan Advance,https://michiganadvance.com,https://michiganadvance.com/category/politics/feed/|https://michiganadvance.com/feed/localFeed/|https://michiganadvance.com/feed/,state,MI,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground
+detroit-free-press,Detroit Free Press,https://www.freep.com,,local,MI,US,en,Unrated,,,,,,false,metered,1,false,Politics feed
+the-detroit-news,The Detroit News,https://www.detroitnews.com,,local,MI,US,en,Unrated,,,,,,false,metered,1,false,Politics feed
+bridge-michigan,Bridge Michigan,https://www.bridgemi.com,https://bridgemi.com/feed/?partner-feed=latest-articles|https://bridgemi.com/feed/,state,MI,US,en,Unrated,,,,,,false,none,1,true,
+michigan-public,Michigan Public,https://www.michiganpublic.org,https://www.michiganpublic.org/tags/election-2026.rss|https://www.michiganpublic.org/index.rss,state,MI,US,en,Unrated,,,,,,false,none,2,true,
+minnesota-reformer,Minnesota Reformer,https://minnesotareformer.com,https://minnesotareformer.com/feed/localFeed/|https://minnesotareformer.com/feed/,state,MN,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground (Senate)
+star-tribune,Star Tribune,https://www.startribune.com,https://www.startribune.com/rss,local,MN,US,en,Unrated,,,,,,false,metered,1,true,Politics feed
+mpr-news,MPR News,https://www.mprnews.org,https://www.mprnews.org/feed/politics,state,MN,US,en,Unrated,,,,,,false,none,1,true,Public radio
+mississippi-today,Mississippi Today,https://mississippitoday.org,https://mississippitoday.org/topic/politics/feed/|https://mississippitoday.org/feed/,state,MS,US,en,Unrated,,,,,,false,none,3,true,
+clarion-ledger,Clarion Ledger,https://www.clarionledger.com,,local,MS,US,en,Unrated,,,,,,false,metered,3,false,
+missouri-independent,Missouri Independent,https://missouriindependent.com,https://missouriindependent.com/feed/localFeed/|https://missouriindependent.com/feed/,state,MO,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+st-louis-post-dispatch,St. Louis Post-Dispatch,https://www.stltoday.com,https://www.stltoday.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc,local,MO,US,en,Unrated,,,,,,false,metered,2,true,
+st-louis-public-radio,St. Louis Public Radio,https://www.stlpr.org,https://www.stlpr.org/news.rss,local,MO,US,en,Unrated,,,,,,false,none,3,true,
+daily-montanan,Daily Montanan,https://dailymontanan.com,https://dailymontanan.com/feed/localFeed/|https://dailymontanan.com/feed/,state,MT,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+montana-free-press,Montana Free Press,https://montanafreepress.org,https://montanafreepress.org/feed/,state,MT,US,en,Unrated,,,,,,false,none,2,true,
+nebraska-examiner,Nebraska Examiner,https://nebraskaexaminer.com,https://nebraskaexaminer.com/feed/localFeed/|https://nebraskaexaminer.com/feed/,state,NE,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground (Senate)
+omaha-world-herald,Omaha World-Herald,https://omaha.com,https://omaha.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc,local,NE,US,en,Unrated,,,,,,false,metered,1,true,
+flatwater-free-press,Flatwater Free Press,https://flatwaterfreepress.org,https://flatwaterfreepress.org/feed/,state,NE,US,en,Unrated,,,,,,false,none,3,true,
+nevada-current,Nevada Current,https://nevadacurrent.com,https://nevadacurrent.com/feed/localFeed/|https://nevadacurrent.com/feed/,state,NV,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground (Gov)
+the-nevada-independent,The Nevada Independent,https://thenevadaindependent.com,https://thenevadaindependent.com/feed|https://thenevadaindependent.com/feed/,state,NV,US,en,Unrated,,,,,,false,none,1,true,
+las-vegas-review-journal,Las Vegas Review-Journal,https://www.reviewjournal.com,https://www.reviewjournal.com/news/politics-and-government/feed/|https://www.reviewjournal.com/feed/,local,NV,US,en,Unrated,,,,,,false,metered,1,true,Politics feed
+new-hampshire-bulletin,New Hampshire Bulletin,https://newhampshirebulletin.com,https://newhampshirebulletin.com/feed/localFeed/|https://newhampshirebulletin.com/feed/,state,NH,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground
+nhpr,NHPR,https://www.nhpr.org,https://www.nhpr.org/politics.rss|https://www.nhpr.org/tags/elections-2026.rss,state,NH,US,en,Unrated,,,,,,false,none,1,true,Public radio
+new-hampshire-union-leader,New Hampshire Union Leader,https://www.unionleader.com,https://www.unionleader.com/rss.xml,local,NH,US,en,Unrated,,,,,,false,metered,2,true,
+new-jersey-monitor,New Jersey Monitor,https://newjerseymonitor.com,https://newjerseymonitor.com/category/politics/feed/|https://newjerseymonitor.com/feed/localFeed/|https://newjerseymonitor.com/feed/,state,NJ,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+nj-com,NJ.com,https://www.nj.com,https://www.nj.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.nj.com/arc/outboundfeeds/rss/?outputType=xml,local,NJ,US,en,Unrated,,,,,,false,metered,2,true,Politics feed
+nj-spotlight-news,NJ Spotlight News,https://www.njspotlightnews.org,https://www.njspotlightnews.org/politics/feed/|https://www.njspotlightnews.org/feed/,state,NJ,US,en,Unrated,,,,,,false,none,3,true,
+source-nm,Source NM,https://sourcenm.com,https://sourcenm.com/feed/localFeed/|https://sourcenm.com/feed/,state,NM,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+santa-fe-new-mexican,Santa Fe New Mexican,https://www.santafenewmexican.com,https://www.santafenewmexican.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc,local,NM,US,en,Unrated,,,,,,false,metered,3,true,
+albuquerque-journal,Albuquerque Journal,https://www.abqjournal.com,,local,NM,US,en,Unrated,,,,,,false,metered,3,false,
+new-york-focus,New York Focus,https://nysfocus.com,https://nysfocus.com/feed|https://nysfocus.com/feed/|https://nysfocus.com/feed.xml,state,NY,US,en,Unrated,,,,,,false,none,2,true,
+city-state-new-york,City & State New York,https://www.cityandstateny.com,https://www.cityandstateny.com/rss/politics/,state,NY,US,en,Unrated,,,,,,false,none,2,true,
+times-union-albany,Times Union (Albany),https://www.timesunion.com,,local,NY,US,en,Unrated,,,,,,false,metered,2,false,
+gothamist,Gothamist,https://gothamist.com,https://gothamist.com/feed,local,NY,US,en,Unrated,,,,,,false,none,2,true,WNYC
+nc-newsline,NC Newsline,https://ncnewsline.com,https://ncnewsline.com/feed/localFeed/|https://ncnewsline.com/feed/,state,NC,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground
+the-news-observer,The News & Observer,https://www.newsobserver.com,,local,NC,US,en,Unrated,,,,,,false,metered,1,false,Politics feed
+the-charlotte-observer,The Charlotte Observer,https://www.charlotteobserver.com,,local,NC,US,en,Unrated,,,,,,false,metered,1,false,
+wunc,WUNC,https://www.wunc.org,https://www.wunc.org/politics.rss|https://www.wunc.org/tags/elections.rss,state,NC,US,en,Unrated,,,,,,false,none,1,true,Public radio
+north-dakota-monitor,North Dakota Monitor,https://northdakotamonitor.com,https://northdakotamonitor.com/feed/localFeed/|https://northdakotamonitor.com/feed/,state,ND,US,en,Unrated,,,,,,false,none,3,true,States Newsroom
+bismarck-tribune,Bismarck Tribune,https://bismarcktribune.com,https://bismarcktribune.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc,local,ND,US,en,Unrated,,,,,,false,metered,3,true,
+ohio-capital-journal,Ohio Capital Journal,https://ohiocapitaljournal.com,https://ohiocapitaljournal.com/feed/localFeed/|https://ohiocapitaljournal.com/feed/,state,OH,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground (Senate special)
+cleveland-com,Cleveland.com,https://www.cleveland.com,https://www.cleveland.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.cleveland.com/arc/outboundfeeds/rss/?outputType=xml|https://www.cleveland.com/arc/outboundfeeds/rss/category/open/?outputType=xml,local,OH,US,en,Unrated,,,,,,false,metered,1,true,Politics feed
+the-columbus-dispatch,The Columbus Dispatch,https://www.dispatch.com,,local,OH,US,en,Unrated,,,,,,false,metered,1,false,
+statehouse-news-bureau-ohio,Statehouse News Bureau (Ohio),https://www.statenews.org,https://www.statenews.org/news.rss,state,OH,US,en,Unrated,,,,,,false,none,2,true,Public radio
+oklahoma-voice,Oklahoma Voice,https://oklahomavoice.com,https://oklahomavoice.com/feed/localFeed/|https://oklahomavoice.com/feed/,state,OK,US,en,Unrated,,,,,,false,none,3,true,States Newsroom
+the-oklahoman,The Oklahoman,https://www.oklahoman.com,,local,OK,US,en,Unrated,,,,,,false,metered,3,false,
+oklahoma-watch,Oklahoma Watch,https://oklahomawatch.org,https://oklahomawatch.org/category/politics/feed/|https://oklahomawatch.org/feed/,state,OK,US,en,Unrated,,,,,,false,none,3,true,
+oregon-capital-chronicle,Oregon Capital Chronicle,https://oregoncapitalchronicle.com,https://oregoncapitalchronicle.com/category/politics/feed/|https://oregoncapitalchronicle.com/feed/localFeed/|https://oregoncapitalchronicle.com/feed/,state,OR,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+oregonlive,OregonLive,https://www.oregonlive.com,https://www.oregonlive.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.oregonlive.com/arc/outboundfeeds/rss/?outputType=xml,local,OR,US,en,Unrated,,,,,,false,metered,2,true,
+opb,OPB,https://www.opb.org,https://www.opb.org/arc/outboundfeeds/rss/?outputType=xml,state,OR,US,en,Unrated,,,,,,false,none,2,true,Public broadcaster
+pennsylvania-capital-star,Pennsylvania Capital-Star,https://penncapital-star.com,https://penncapital-star.com/feed/localFeed/|https://penncapital-star.com/feed/,state,PA,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground (Gov)
+the-philadelphia-inquirer,The Philadelphia Inquirer,https://www.inquirer.com,https://www.inquirer.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.inquirer.com/arc/outboundfeeds/rss/?outputType=xml,local,PA,US,en,Unrated,,,,,,false,metered,1,true,Politics feed
+spotlight-pa,Spotlight PA,https://www.spotlightpa.org,https://www.spotlightpa.org/feeds/full.xml,state,PA,US,en,Unrated,,,,,,false,none,1,true,
+whyy,WHYY,https://whyy.org,https://whyy.org/feed/,local,PA,US,en,Unrated,,,,,,false,none,2,true,Public radio
+pittsburgh-post-gazette,Pittsburgh Post-Gazette,https://www.post-gazette.com,https://www.post-gazette.com/rss,local,PA,US,en,Unrated,,,,,,false,metered,2,true,
+rhode-island-current,Rhode Island Current,https://rhodeislandcurrent.com,https://rhodeislandcurrent.com/feed/localFeed/|https://rhodeislandcurrent.com/feed/,state,RI,US,en,Unrated,,,,,,false,none,3,true,States Newsroom
+the-providence-journal,The Providence Journal,https://www.providencejournal.com,,local,RI,US,en,Unrated,,,,,,false,metered,3,false,
+sc-daily-gazette,SC Daily Gazette,https://scdailygazette.com,https://scdailygazette.com/feed/localFeed/|https://scdailygazette.com/feed/,state,SC,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+the-post-and-courier,The Post and Courier,https://www.postandcourier.com,https://www.postandcourier.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc,local,SC,US,en,Unrated,,,,,,false,metered,2,true,
+the-state-columbia,The State (Columbia),https://www.thestate.com,,local,SC,US,en,Unrated,,,,,,false,metered,3,false,
+south-dakota-searchlight,South Dakota Searchlight,https://southdakotasearchlight.com,https://southdakotasearchlight.com/feed/localFeed/|https://southdakotasearchlight.com/feed/,state,SD,US,en,Unrated,,,,,,false,none,3,true,States Newsroom
+south-dakota-public-broadcasting,South Dakota Public Broadcasting,https://www.sdpb.org,https://www.sdpb.org/elections.rss|https://www.sdpb.org/politics.rss,state,SD,US,en,Unrated,,,,,,false,none,3,true,
+tennessee-lookout,Tennessee Lookout,https://tennesseelookout.com,https://tennesseelookout.com/category/politics/feed/|https://tennesseelookout.com/feed/localFeed/|https://tennesseelookout.com/feed/,state,TN,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+the-tennessean,The Tennessean,https://www.tennessean.com,,local,TN,US,en,Unrated,,,,,,false,metered,2,false,
+wpln,WPLN,https://wpln.org,https://wpln.org/wpln-news/politics/feed/|https://wpln.org/feed/,local,TN,US,en,Unrated,,,,,,false,none,3,true,Public radio
+the-texas-tribune,The Texas Tribune,https://www.texastribune.org,https://www.texastribune.org/tag/politics/feed/|https://feeds.texastribune.org/feeds/main/,state,TX,US,en,Unrated,,,,,,false,none,1,true,Battleground (Senate)
+houston-chronicle,Houston Chronicle,https://www.houstonchronicle.com,,local,TX,US,en,Unrated,,,,,,false,metered,1,false,Politics feed
+the-dallas-morning-news,The Dallas Morning News,https://www.dallasnews.com,,local,TX,US,en,Unrated,,,,,,false,metered,1,false,Politics feed
+san-antonio-express-news,San Antonio Express-News,https://www.expressnews.com,,local,TX,US,en,Unrated,,,,,,false,metered,2,false,
+kut,KUT,https://www.kut.org,https://www.kut.org/politics.rss,local,TX,US,en,Unrated,,,,,,false,none,2,true,Public radio (Austin)
+utah-news-dispatch,Utah News Dispatch,https://utahnewsdispatch.com,https://utahnewsdispatch.com/feed/localFeed/|https://utahnewsdispatch.com/feed/,state,UT,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+the-salt-lake-tribune,The Salt Lake Tribune,https://www.sltrib.com,https://www.sltrib.com/arc/outboundfeeds/rss/?outputType=xml,local,UT,US,en,Unrated,,,,,,false,metered,2,true,
+vtdigger,VTDigger,https://vtdigger.org,https://vtdigger.org/feed/,state,VT,US,en,Unrated,,,,,,false,none,3,true,
+vermont-public,Vermont Public,https://www.vermontpublic.org,https://www.vermontpublic.org/election-2026.rss,state,VT,US,en,Unrated,,,,,,false,none,3,true,
+virginia-mercury,Virginia Mercury,https://virginiamercury.com,https://virginiamercury.com/feed/localFeed/|https://virginiamercury.com/feed/,state,VA,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+richmond-times-dispatch,Richmond Times-Dispatch,https://richmond.com,https://richmond.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc,local,VA,US,en,Unrated,,,,,,false,metered,2,true,
+cardinal-news,Cardinal News,https://cardinalnews.org,https://cardinalnews.org/category/politics/feed/|https://cardinalnews.org/tag/politics/feed/|https://cardinalnews.org/feed/,local,VA,US,en,Unrated,,,,,,false,none,3,true,
+vpm-news,VPM News,https://www.vpm.org,https://www.vpm.org/tag/politics/feed/|https://www.vpm.org/feed/|https://www.vpm.org/category/news/feed/,state,VA,US,en,Unrated,,,,,,false,none,3,true,Public radio
+washington-state-standard,Washington State Standard,https://washingtonstatestandard.com,https://washingtonstatestandard.com/category/politics/feed/|https://washingtonstatestandard.com/feed/localFeed/|https://washingtonstatestandard.com/feed/,state,WA,US,en,Unrated,,,,,,false,none,2,true,States Newsroom
+the-seattle-times,The Seattle Times,https://www.seattletimes.com,https://www.seattletimes.com/seattle-news/politics/feed/|https://www.seattletimes.com/feed/,local,WA,US,en,Unrated,,,,,,false,metered,2,true,Politics feed
+kuow,KUOW,https://www.kuow.org,https://www.kuow.org/elections.rss,local,WA,US,en,Unrated,,,,,,false,none,3,true,Public radio
+west-virginia-watch,West Virginia Watch,https://westvirginiawatch.com,https://westvirginiawatch.com/feed/localFeed/|https://westvirginiawatch.com/feed/,state,WV,US,en,Unrated,,,,,,false,none,3,true,States Newsroom
+mountain-state-spotlight,Mountain State Spotlight,https://mountainstatespotlight.org,https://mountainstatespotlight.org/category/politics/feed/|https://mountainstatespotlight.org/feed/,state,WV,US,en,Unrated,,,,,,false,none,3,true,
+west-virginia-public-broadcasting,West Virginia Public Broadcasting,https://wvpublic.org,,state,WV,US,en,Unrated,,,,,,false,none,3,false,
+wisconsin-examiner,Wisconsin Examiner,https://wisconsinexaminer.com,https://wisconsinexaminer.com/feed/localFeed/|https://wisconsinexaminer.com/feed/,state,WI,US,en,Unrated,,,,,,false,none,1,true,States Newsroom; battleground (Gov)
+milwaukee-journal-sentinel,Milwaukee Journal Sentinel,https://www.jsonline.com,,local,WI,US,en,Unrated,,,,,,false,metered,1,false,Politics feed
+wisconsin-public-radio,Wisconsin Public Radio,https://www.wpr.org,https://www.wpr.org/topic/politics/feed|https://www.wpr.org/feed,state,WI,US,en,Unrated,,,,,,false,none,1,true,
+wisconsin-watch,Wisconsin Watch,https://wisconsinwatch.org,https://wisconsinwatch.org/feed/,state,WI,US,en,Unrated,,,,,,false,none,2,true,
+wyofile,WyoFile,https://wyofile.com,https://wyofile.com/category/politics/feed/|https://wyofile.com/feed/|https://wyofile.com/comments/feed/,state,WY,US,en,Unrated,,,,,,false,none,3,true,
+cowboy-state-daily,Cowboy State Daily,https://cowboystatedaily.com,https://cowboystatedaily.com/rss.xml,state,WY,US,en,Unrated,,,,,,false,none,3,true,
+casper-star-tribune,Casper Star-Tribune,https://trib.com,,local,WY,US,en,Unrated,,,,,,false,metered,3,false,
