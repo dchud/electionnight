@@ -4,9 +4,9 @@ All times are Eastern, Tuesday, November 3, 2026.
 
 ## Before class
 
-Keep the Mac on power with the lid open from now until the end of class. The
-pipeline runs under `caffeinate`, which prevents idle sleep, but closing the lid
-still sleeps the machine and stops collection.
+Keep the Mac on power with the lid open until you leave for class. The pipeline
+runs under `caffeinate`, which prevents idle sleep. Closing the lid still
+sleeps the machine and pauses collection; see "Moving to the classroom".
 
 | When | Do |
 |---|---|
@@ -25,6 +25,32 @@ uv run monitor web --reload              # the dashboard, reloads on code change
 
 The dashboard is at <http://127.0.0.1:8000>. Add `--lan` to reach it from a
 second device on the same network.
+
+## Moving to the classroom
+
+Closing the lid pauses the pipeline and the dashboard. Nothing needs stopping
+or restarting, and nothing already collected is at risk.
+
+1. Close the lid and travel.
+2. Open the lid, plug in, and join the network. Finish any Wi-Fi login page in
+   a browser.
+3. Watch the strip. It reads "Offline since" until the network is confirmed,
+   then names the gap for 30 minutes.
+
+When the network returns, every feed polls within 30 seconds. Stories published
+during the gap are placed at their published time, and time charts mark the gap
+with "Offline" and "Back online". `/status` lists every gap.
+
+A short network drop behaves the same way, with no action needed. Polling
+waits, no feed is penalized, and articles and model calls wait instead of being
+skipped or falling back to keywords.
+
+A feed lists only its newest stories, so a story that leaves a feed during a
+gap is not recovered. High-volume general feeds are the most exposed.
+
+With no network at all, the dashboard still runs from local data, including
+replay. A phone hotspot works; collection reads about 650 MB per hour before
+HTTP compression.
 
 ## During class
 
@@ -51,8 +77,8 @@ never interrupts collection.
 | A new table | Add it to `TABLES` in `src/monitor/lake.py` and restart the pipeline | None |
 | Changing an existing table's columns | Avoid this during class. Add a new table instead | None |
 
-Use a scratch lake to try anything risky: set `PATHS__CATALOG` and `PATHS__DATA`
-for that one command. Only the pipeline writes to the real lake.
+Use a scratch lake to try anything risky: set `PATHS__CATALOG` and
+`PATHS__DATA` for that one command. Only the pipeline writes to the real lake.
 
 To roll back:
 
@@ -62,20 +88,22 @@ scripts/restart_pipeline.sh
 ```
 
 Restart the dashboard the same way if it is not running with `--reload`. The
-data stays, because tables are append-only and rows written by newer code remain
-readable.
+data stays, because tables are append-only and rows written by newer code
+remain readable.
 
 ## If something goes wrong
 
 | Symptom | What happens | What to do |
 |---|---|---|
-| LLM errors or an outage | After 2 minutes, classification uses keywords and extraction waits. The strip says "LLM degraded" | Nothing. It recovers by itself and catches up |
+| The network drops, or a Wi-Fi login page appears | Polling waits and no feed is penalized. The strip says "Offline since". Every feed polls within 30 seconds of the network's return | Finish any login page. Otherwise nothing |
+| LLM errors while the network is up | After 2 minutes, classification uses keywords and extraction waits. The strip says "LLM degraded" | Nothing. It recovers by itself and catches up |
 | Lag over 2 minutes | The pipeline slows embedding and pauses backfills until lag falls under 1 minute | Check `/status` for the slow stage |
 | Free disk under 10 GB | A yellow banner | `uv run monitor prune --dry-run --thin 15m --older-than 2h`, then run it without `--dry-run` |
 | Free disk under 5 GB | A red banner, and full-text fetching stops | Prune as above. Offload if a bucket is configured: `uv run monitor offload` |
 | Free disk under 3 GB | The pipeline thins snapshots by itself | Free space elsewhere on the disk |
-| A feed keeps failing | It retries every 15 minutes. `/status` shows it | Nothing |
-| The dashboard feels slow | Fragments refresh at most every 10 seconds | Set `WEB__FRAGMENT_THROTTLE_SECONDS=20` and restart the dashboard. Projector mode shows fewer panels |
+| A feed keeps failing | It retries at most 15 minutes apart. `/status` shows it | Nothing |
+| The dashboard feels slow | When uncached queries pass `WEB__SLOW_QUERY_MS` at p95, panels refresh at most every 20 seconds until p95 falls below half of it | Projector mode shows fewer panels |
+| The dashboard is down after an edit | Collection continues. A file with an error stops the dashboard until the file is saved again | Fix the file, or `git checkout` it |
 | The dashboard is down | Collection continues | `uv run monitor web --reload` |
 | The pipeline is down | Polling stops, and the strip reports it | `scripts/restart_pipeline.sh` |
 | The catalog is damaged | Queries fail | Stop the pipeline, then restore the newest backup, as described below |
@@ -95,6 +123,6 @@ only if the feeds still list them.
 ## After class
 
 Reduce polling by raising `POLL__TIER_SECONDS`, for example to
-`[180,600,1800]`, and restart the pipeline. Review disk use with `uv run monitor
-disk` and `uv run monitor prune --dry-run`. If a bucket is configured,
+`[180,600,1800]`, and restart the pipeline. Review disk use with `uv run
+monitor disk` and `uv run monitor prune --dry-run`. If a bucket is configured,
 `uv run monitor offload --lake` uploads the current Parquet files.

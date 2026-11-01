@@ -45,6 +45,8 @@ TABLES: dict[str, str] = {
     "raw.sightings": """
         item_id TEXT, source_id TEXT, feed_url TEXT, seen_at TIMESTAMPTZ,
         title_hash TEXT""",
+    "raw.collection_gaps": """
+        gap_start TIMESTAMPTZ, gap_end TIMESTAMPTZ, reason TEXT""",
     "raw.fetch_details": """
         fetch_id TEXT, n_bytes BIGINT, bozo BOOLEAN, content_type TEXT,
         unchanged BOOLEAN""",

@@ -17,6 +17,7 @@ import trafilatura
 from monitor.archive import ArchiveWriter
 from monitor.disk import DiskGuard
 from monitor.ingest.feeds import canonicalize_url
+from monitor.ingest.network import NetworkGate
 from monitor.ingest.sources import Source
 from monitor.lake import utcnow
 from monitor.logs import get
@@ -103,8 +104,10 @@ class FetchTextParser:
         guard: DiskGuard,
         client: httpx.AsyncClient | None = None,
         archive: ArchiveWriter | None = None,
+        gate: NetworkGate | None = None,
     ) -> None:
         self.settings = settings
+        self.gate = gate or NetworkGate(settings)
         self.archive = archive
         self.sources = sources
         self.guard = guard
@@ -151,6 +154,14 @@ class FetchTextParser:
                 f"{parts.scheme}://{parts.netloc}/robots.txt"
             )
             parser = parse_robots(response.status_code, response.text)
+        except httpx.TransportError as error:
+            # With no network, nothing is learned about this site's rules.
+            if not await self.gate.reachable():
+                raise
+            log.debug(
+                "robots_failed", domain=domain, error=type(error).__name__
+            )
+            parser = parse_robots(599, "")
         except Exception as error:
             log.debug(
                 "robots_failed", domain=domain, error=type(error).__name__
@@ -202,11 +213,19 @@ class FetchTextParser:
             output.mark(item.item_id, "skipped", "disk guard")
             return
         domain = urlsplit(item.url).hostname or ""
-        try:
-            status, page, reason, body = await self._fetch(item, domain)
-        except Exception as error:
-            output.mark(item.item_id, "skipped", type(error).__name__)
-            return
+        while True:
+            await self.gate.wait_online()
+            try:
+                status, page, reason, body = await self._fetch(item, domain)
+                break
+            except httpx.TransportError as error:
+                # Offline, the item waits and keeps its chance at full text.
+                if await self.gate.reachable():
+                    output.mark(item.item_id, "skipped", type(error).__name__)
+                    return
+            except Exception as error:
+                output.mark(item.item_id, "skipped", type(error).__name__)
+                return
         if reason and status is None:
             output.mark(item.item_id, "skipped", reason)
             return

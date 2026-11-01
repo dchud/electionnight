@@ -17,6 +17,7 @@ import httpx
 
 from monitor.archive import ArchiveWriter
 from monitor.ingest.feeds import FeedEntry, parse_feed
+from monitor.ingest.network import NetworkGate
 from monitor.ingest.sources import Source
 from monitor.lake import BatchWriter, hash_id
 from monitor.logs import get
@@ -74,7 +75,7 @@ def next_delay(settings: Settings, state: FeedState) -> float:
     delay = float(poll.tier_seconds[index])
     if state.failures:
         multiplier = min(2**state.failures, MAX_BACKOFF_MULTIPLIER)
-        delay *= multiplier
+        delay = min(delay * multiplier, float(poll.circuit_retry_seconds))
     if state.failures >= poll.circuit_failures:
         delay = float(poll.circuit_retry_seconds)
     jitter = delay * poll.jitter_pct / 100
@@ -130,8 +131,10 @@ class Poller:
         client: httpx.AsyncClient | None = None,
         archive: ArchiveWriter | None = None,
         sightings: dict[tuple[str, str], str] | None = None,
+        gate: NetworkGate | None = None,
     ) -> None:
         self.settings = settings
+        self.gate = gate or NetworkGate(settings)
         self.archive = archive
         self.sightings = sightings if sightings is not None else {}
         self.writer = writer
@@ -176,9 +179,12 @@ class Poller:
                 response = await self.client.get(state.url, headers=headers)
             status = response.status_code
             if status == 200:
+                feed = await asyncio.to_thread(parse_feed, response.content)
+                # A Wi-Fi login page answers 200 with no entries.
+                if not feed.entries and not await self.gate.reachable():
+                    return
                 state.etag = response.headers.get("etag")
                 state.last_modified = response.headers.get("last-modified")
-                feed = await asyncio.to_thread(parse_feed, response.content)
                 n_entries = len(feed.entries)
                 now = datetime.now(UTC)
                 sighted = []
@@ -226,6 +232,10 @@ class Poller:
                     error = "no entries"
             elif status != 304:
                 error = f"HTTP {status}"
+        except httpx.TransportError as exc:
+            if not await self.gate.reachable():
+                return
+            error = type(exc).__name__
         except Exception as exc:
             error = type(exc).__name__
         self._record(state, status, error, n_new)
@@ -292,15 +302,22 @@ class Poller:
         index = min(state.source.poll_tier, 3) - 1
         tier = self.settings.poll.tier_seconds[index]
         await asyncio.sleep(random.uniform(0, min(tier, 60)))
+        stagger = self.settings.poll.resume_stagger_seconds
         while True:
+            # Feeds come back spread out so a weak network is not swamped.
+            if await self.gate.wait_online():
+                await asyncio.sleep(random.uniform(0, stagger))
             if state.source.poll_tier not in self.paused_tiers:
                 await self.poll_once(state)
-            await asyncio.sleep(next_delay(self.settings, state))
+            delay = next_delay(self.settings, state)
+            if await self.gate.sleep_or_resume(delay):
+                await asyncio.sleep(random.uniform(0, stagger))
 
     async def run(self) -> None:
         try:
             await asyncio.gather(
-                *(self.run_feed(state) for state in self.feeds)
+                self.gate.watch(),
+                *(self.run_feed(state) for state in self.feeds),
             )
         finally:
             await self.client.aclose()

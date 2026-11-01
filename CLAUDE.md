@@ -13,7 +13,7 @@ the beads tracker (`br`), under the MVP epic.
 3. **Items tagged `VERIFY-LOCAL`** are facts the spec author couldn't confirm:
    library APIs, option names, feed URLs, election facts. Before you rely on
    one, check it (docs, `pip show`, a small test script, or a web search) and
-   record the result in `docs/VERIFY_LOG.md`. If reality differs from the spec,
+   record the result in `docs/verify_log.md`. If reality differs from the spec,
    follow reality and note the difference.
 4. **Single-writer rule.** Only the `pipeline` process writes to the DuckLake.
    The `web` process never writes to the lake (its own UI-preferences DB is
@@ -57,7 +57,7 @@ caffeinate -is uv run honcho start pipeline web   # run the system
 | `src/monitor/parsers/` | One module per parser |
 | `src/monitor/web/` | Dashboard |
 | `config/` | Sources, ratings, taxonomy, races, poll closings |
-| `docs/VERIFY_LOG.md` | Checked facts and where the spec differs |
+| `docs/verify_log.md` | Checked facts and where the spec differs |
 
 ## Configuration
 

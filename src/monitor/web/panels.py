@@ -26,6 +26,7 @@ from monitor.web.filters import (
 from monitor.web.readmodel import ReadModel
 
 ET = ZoneInfo("America/New_York")
+GAP_NOTICE = timedelta(minutes=30)
 # The attention index compares each window with this period.
 BASELINE_START = datetime(2026, 11, 1, 12, 0, tzinfo=ET)
 BASELINE_END = datetime(2026, 11, 3, 12, 0, tzinfo=ET)
@@ -118,6 +119,10 @@ def parse_clock(text: str | None) -> datetime | None:
         day = 3 if parsed.hour >= 6 else 4
         return datetime(2026, 11, day, parsed.hour, parsed.minute, tzinfo=ET)
     return None
+
+
+def _clock(moment: datetime) -> str:
+    return moment.astimezone(ET).strftime("%-I:%M %p").lower()
 
 
 @dataclass(frozen=True)
@@ -261,6 +266,20 @@ class Panels:
         warnings = []
         if lag is None or lag > 180:
             warnings.append("Pipeline is not committing")
+        network = status.get("network") or {}
+        if network.get("online") is False and network.get("offline_since"):
+            since = datetime.fromisoformat(network["offline_since"])
+            warnings.append(
+                f"Offline since {_clock(since)}: not collecting. "
+                "Collection resumes when the network returns"
+            )
+        gaps = self.collection_gaps()
+        if gaps and now - gaps[0]["gap_end"] < GAP_NOTICE:
+            warnings.append(
+                f"No collection {_clock(gaps[0]['gap_start'])}"
+                f"–{_clock(gaps[0]['gap_end'])}; stories published then "
+                "were read on return"
+            )
         if llm.get("degraded"):
             warnings.append("LLM degraded: keyword classification")
         if budget.get("state") == "hard":
@@ -606,11 +625,32 @@ class Panels:
 
     def poll_rules(self, filters: Filters) -> list[dict[str, Any]]:
         start, end = filters.window_start, filters.now
-        return [
+        rules = [
             {"time": close.at.isoformat(), "label": close.label}
             for close in self.poll_closes
             if start <= close.at <= end
         ]
+        for gap in self.collection_gaps():
+            if start <= gap["gap_start"] <= end:
+                rules.append(
+                    {"time": gap["gap_start"].isoformat(), "label": "Offline"}
+                )
+            if start <= gap["gap_end"] <= end:
+                rules.append(
+                    {
+                        "time": gap["gap_end"].isoformat(),
+                        "label": "Back online",
+                    }
+                )
+        return rules
+
+    def collection_gaps(self) -> list[dict[str, Any]]:
+        """Periods with no collection, newest first."""
+        return self.model.query(
+            "collection_gaps",
+            "SELECT gap_start, gap_end, reason FROM collection_gaps "
+            "ORDER BY gap_start DESC",
+        )
 
     def topic_heat(self, filters: Filters) -> list[dict[str, Any]]:
         where, params = self._where(filters, windowed=False)

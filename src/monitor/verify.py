@@ -1,4 +1,4 @@
-"""Scriptable environment checks, recorded in `docs/VERIFY_LOG.md`.
+"""Scriptable environment checks, recorded in `docs/verify_log.md`.
 
 `monitor verify` rewrites the rows it can check and keeps every other row and
 all text outside the table.
@@ -18,7 +18,7 @@ import duckdb
 from monitor.lake import BatchWriter, connect, init_lake
 from monitor.settings import Paths, Settings, get_settings
 
-LOG_PATH = Path("docs/VERIFY_LOG.md")
+LOG_PATH = Path("docs/verify_log.md")
 SCRATCH = Path("tmp/verify")
 
 CHECKS_DESCRIBED = {

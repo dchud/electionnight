@@ -11,7 +11,7 @@
 
 1. **Copy this section into the repo's `CLAUDE.md`** at scaffold time. Keep `SPEC.md` in the repo root as the source of truth.
 2. **Work in the phase order in §19.** Each phase has acceptance criteria. Don't start a later phase until the earlier one's criteria pass, unless the owner says so. Collecting a baseline early matters more than polish.
-3. **Items tagged `VERIFY-LOCAL`** are facts the spec author couldn't confirm: library APIs, option names, feed URLs, election facts. Before you rely on one, check it (docs, `pip show`, a small test script, or a web search) and record the result in `docs/VERIFY_LOG.md`. If reality differs from the spec, follow reality and note the difference.
+3. **Items tagged `VERIFY-LOCAL`** are facts the spec author couldn't confirm: library APIs, option names, feed URLs, election facts. Before you rely on one, check it (docs, `pip show`, a small test script, or a web search) and record the result in `docs/verify_log.md`. If reality differs from the spec, follow reality and note the difference.
 4. **Single-writer rule.** Only the `pipeline` process writes to the DuckLake. The `web` process never writes to the lake (its own UI-preferences DB is fine).
 5. **Append-only by default.** Never UPDATE or DELETE rows in lake tables during the event. Corrections go in as new rows with a newer `created_at`. Readers take the latest row. This keeps snapshots cheap and replay correct.
 6. **Respect the disk budget (§16).** Check free space before downloading models or data. If free disk drops below 8 GB, stop and tell the owner.
@@ -188,7 +188,7 @@ election-monitor/
   scripts/                  # one-off: vendor_assets.sh, build_ref_data.py, discover_feeds.py
   tests/                    # fixtures/, test_*.py
   reports/                  # feed_validation.md, run logs
-  docs/                     # VERIFY_LOG.md, RUN_OF_SHOW.md, METHODS.md (also rendered in-app)
+  docs/                     # verify_log.md, run_of_show.md, methods.md (also rendered in-app)
 ```
 
 ---
@@ -660,7 +660,7 @@ class ItemB(BaseModel):
   - sortable table: outlet, scope, state, country, language, lean label + **citation link and retrieval date**, Ad Fontes values where available, ownership, paywall, feeds, fetch health (last success, error rate), items collected, relevant share;
   - the inclusion / exclusion criteria text (§5.3);
   - a lean-distribution chart.
-- **`/methods`**: renders `docs/METHODS.md`. Covers pipeline diagram, models and versions, prompts (abridged), metric definitions (§13), known limitations (paywalls, polling latency, LLM error rates, tone caveats, redistricting caveat), and the cost ledger summary.
+- **`/methods`**: renders `docs/methods.md`. Covers pipeline diagram, models and versions, prompts (abridged), metric definitions (§13), known limitations (paywalls, polling latency, LLM error rates, tone caveats, redistricting caveat), and the cost ledger summary.
 - **`/status`**: feed health grid, stage lags, queue depths, LLM spend by purpose, disk breakdown (`monitor disk` data), last maintenance, last backup.
 - **`/watchlist`**: edit watched races and states; battleground override.
 
@@ -746,7 +746,7 @@ Steps for Claude Code at Phase 0:
 
 ## 17. Operations
 
-### 17.1 Run-of-show for Nov 3 (`docs/RUN_OF_SHOW.md`)
+### 17.1 Run-of-show for Nov 3 (`docs/run_of_show.md`)
 - **12:00 pm:** `monitor ref build-races` (refresh ratings); `monitor sources check`; review `/status`.
 - **12:30 pm:** replay test of the last 6 h at 20×. Verify every panel renders at 1280×720 and at 1920×1080.
 - **2:30 pm:** restart both processes clean; `monitor backup --now`; confirm the LLM cap; plug into the projector and check projector mode.
@@ -783,7 +783,7 @@ Steps for Claude Code at Phase 0:
 
 ### Phase 0: Foundations and baseline (Sun evening, ~3–4 h). **Top priority: start collecting.**
 - [ ] Disk check (§16). Scaffold the repo (§6) with uv. `CLAUDE.md` from §0.
-- [ ] `monitor verify` script: DuckDB + ducklake + sqlite extension versions; attach a read-write and a read-only connection; set compression and inlining options; Anthropic key works with `claude-haiku-5-5`; fastembed model availability. Write results to `docs/VERIFY_LOG.md`.
+- [ ] `monitor verify` script: DuckDB + ducklake + sqlite extension versions; attach a read-write and a read-only connection; set compression and inlining options; Anthropic key works with `claude-haiku-5-5`; fastembed model availability. Write results to `docs/verify_log.md`.
 - [ ] `monitor init` creates all tables (§9).
 - [ ] `monitor sources discover` over `sources_seed.csv` → validated `config/sources.csv` + report. **Owner reviews the failures.**
 - [ ] Poller running under honcho, writing `raw.fetches` and `raw.items` with 30-second micro-commits. Maintenance and backup jobs scheduled.
@@ -901,7 +901,7 @@ degrade_gb = 5
 autoprune_gb = 3
 ```
 
-## Appendix B: Local verification checklist (`docs/VERIFY_LOG.md` template)
+## Appendix B: Local verification checklist (`docs/verify_log.md` template)
 
 | # | Check | How | Result |
 |---|---|---|---|

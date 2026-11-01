@@ -23,6 +23,9 @@ class Hub:
         self.settings = settings
         self.clients: set[asyncio.Queue[dict[str, Any]]] = set()
         self.known_briefs = -1
+        self.slow = False
+        self.pending = False
+        self.last_snapshot_sent = 0.0
 
     def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=64)
@@ -48,6 +51,39 @@ class Hub:
         self.known_briefs = count
         return rows[0]["brief_id"] if changed and rows else None
 
+    def _update_slow(self) -> None:
+        """Slow above the limit; normal again below half of it."""
+        limit = self.settings.web.slow_query_ms
+        p95 = self.model.recent_p95_ms()
+        if not self.slow and p95 > limit:
+            self.slow = True
+            log.warning("web_slow", p95_ms=round(p95))
+        elif self.slow and p95 < limit / 2:
+            self.slow = False
+            log.info("web_recovered", p95_ms=round(p95))
+
+    def _snapshot_due(self, now: float) -> bool:
+        """While slow, browsers hear of new data less often."""
+        if not self.pending:
+            return False
+        if not self.slow:
+            return True
+        gap = self.settings.web.slow_throttle_seconds
+        return now - self.last_snapshot_sent >= gap
+
+    def _publish_snapshot(self, now: float) -> None:
+        snapshot = self.model.snapshot
+        self.pending = False
+        self.last_snapshot_sent = now
+        self.publish(
+            {
+                "type": "snapshot",
+                "snapshot_id": snapshot.snapshot_id,
+                "committed_at": str(snapshot.committed_at),
+                "changed": list(snapshot.changed),
+            }
+        )
+
     async def run(self) -> None:
         last_status = 0.0
         while True:
@@ -57,16 +93,12 @@ class Hub:
             except Exception as error:
                 log.warning("refresh_failed", error=str(error)[:300])
                 continue
+            self._update_slow()
+            self.pending = self.pending or changed
+            now = time.monotonic()
+            if self._snapshot_due(now):
+                self._publish_snapshot(now)
             if changed:
-                snapshot = self.model.snapshot
-                self.publish(
-                    {
-                        "type": "snapshot",
-                        "snapshot_id": snapshot.snapshot_id,
-                        "committed_at": str(snapshot.committed_at),
-                        "changed": list(snapshot.changed),
-                    }
-                )
                 brief_id = self._new_brief()
                 if brief_id:
                     self.publish({"type": "brief", "brief_id": brief_id})

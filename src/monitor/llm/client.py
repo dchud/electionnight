@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
@@ -108,8 +109,10 @@ class LlmClient:
         writer: BatchWriter | None,
         budget: Budget,
         client: Any = None,
+        network_up: Callable[[], bool] | None = None,
     ) -> None:
         self.settings = settings
+        self.network_up = network_up or (lambda: True)
         self.writer = writer
         self.budget = budget
         key = settings.anthropic_api_key
@@ -133,8 +136,11 @@ class LlmClient:
 
     @property
     def degraded(self) -> bool:
-        """True once failures have lasted past the configured window."""
-        if self.failing_since is None:
+        """True once failures have lasted past the configured window.
+
+        With no network at all, items wait instead of falling to keywords.
+        """
+        if self.failing_since is None or not self.network_up():
             return False
         elapsed = time.monotonic() - self.failing_since
         return elapsed >= self.settings.llm.degrade_after_seconds
@@ -162,10 +168,14 @@ class LlmClient:
         self.failing_since = None
         self.last_error = None
 
+    def clear_failures(self) -> None:
+        self.failing_since = None
+        self.last_error = None
+
     def _note_failure(self, error: str) -> None:
-        if self.failing_since is None:
-            self.failing_since = time.monotonic()
         self.last_error = error
+        if self.failing_since is None and self.network_up():
+            self.failing_since = time.monotonic()
 
     def _ledger(
         self,

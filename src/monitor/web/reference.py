@@ -23,6 +23,7 @@ from monitor.web.filters import (
     set_watch,
 )
 from monitor.web.panels import (
+    ET,
     Panels,
     lean_glyph,
     lean_text,
@@ -31,7 +32,7 @@ from monitor.web.panels import (
 )
 from monitor.web.readmodel import ReadModel
 
-METHODS_PATH = Path(__file__).resolve().parents[3] / "docs" / "METHODS.md"
+METHODS_PATH = Path(__file__).resolve().parents[3] / "docs" / "methods.md"
 FETCH_RATE_WINDOW = timedelta(hours=24)
 DISK_TTL_SECONDS = 30.0
 STALE_STATUS_SECONDS = 180
@@ -106,6 +107,13 @@ def feed_state(feed: dict[str, Any]) -> str:
     if not feed.get("last_success_at"):
         return "waiting"
     return "ok"
+
+
+GAP_CAUSES = {"sleep": "Laptop asleep", "network": "Network down"}
+
+
+def clock_text(moment: datetime) -> str:
+    return moment.astimezone(ET).strftime("%b %-d, %-I:%M %p")
 
 
 class Reference:
@@ -287,6 +295,20 @@ class Reference:
             self._disk = (now, figures)
             return figures
 
+    def collection_gaps(self) -> list[dict[str, Any]]:
+        """Collection gaps as the status page shows them."""
+        return [
+            {
+                "start": clock_text(gap["gap_start"]),
+                "end": clock_text(gap["gap_end"]),
+                "minutes": round(
+                    (gap["gap_end"] - gap["gap_start"]).total_seconds() / 60
+                ),
+                "cause": GAP_CAUSES.get(gap["reason"], gap["reason"]),
+            }
+            for gap in self.panels.collection_gaps()
+        ]
+
     def status(self, filters: Filters) -> dict[str, Any]:
         status = self.model.read_status()
         now = datetime.now(UTC)
@@ -338,6 +360,8 @@ class Reference:
             ),
             "last_backup_at": parse_iso(status.get("last_backup_at")),
             "shedding": status.get("shedding"),
+            "network": status.get("network") or {},
+            "gaps": self.collection_gaps(),
             "stages": status.get("stages") or [],
             "feeds": feeds,
             "feed_counts": states,

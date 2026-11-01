@@ -58,6 +58,22 @@
       {% if disk_free is not none %}<p class="m-0 mt-1"><strong class="num">{{ '%.1f' % disk_free }} GB</strong> free.</p>{% endif %}
     </div>
   </article>
+  {% if gaps %}
+  <article class="panel span-12">
+    <div class="panel-head"><h2 class="panel-title">Collection gaps</h2><span class="panel-note">periods with no collection, newest first</span></div>
+    <div class="page-panel-body">
+      <table class="table">
+        <thead><tr><th>From</th><th>To</th><th class="text-right">Minutes</th><th>Cause</th></tr></thead>
+        <tbody>
+          {% for gap in gaps %}
+          <tr><td class="num">{{ gap.start }}</td><td class="num">{{ gap.end }}</td><td class="num text-right">{{ gap.minutes }}</td><td>{{ gap.cause }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="m-0 mt-2 text-[var(--text-3)]">Stories published during a gap are read on return and placed at their published time. Stories that left a feed during a gap are not recovered.</p>
+    </div>
+  </article>
+  {% endif %}
   <article class="panel span-5">
     <div class="panel-head"><h2 class="panel-title">Feed health</h2><span class="panel-note">{{ feed_counts.ok }} ok · {{ feed_counts.failing }} failing · {{ feed_counts.down }} circuit open · {{ feed_counts.waiting }} waiting</span></div>
     <div class="page-panel-body">

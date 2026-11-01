@@ -61,6 +61,17 @@ class Poll(BaseModel):
     user_agent: str = "ElectionNightMonitor/1.0 (personal research)"
     circuit_failures: int = 5
     circuit_retry_seconds: int = 900
+    probe_urls: list[str] = [
+        "https://www.gstatic.com/generate_204",
+        "https://api.anthropic.com/",
+        "https://www.cloudflare.com/cdn-cgi/trace",
+    ]
+    probe_timeout_seconds: float = 8.0
+    probe_seconds: float = 10.0
+    probe_cache_seconds: float = 5.0
+    sleep_gap_seconds: float = 60.0
+    resume_stagger_seconds: float = 30.0
+    min_gap_seconds: float = 60.0
 
 
 class Commit(BaseModel):
@@ -122,6 +133,8 @@ class Web(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
     fragment_throttle_seconds: int = 10
+    slow_query_ms: int = 500
+    slow_throttle_seconds: int = 20
     snapshot_poll_seconds: float = 3.0
     query_cache_size: int = 512
     default_window: str = "1h"

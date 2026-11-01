@@ -187,14 +187,16 @@ summary, not the full text.
 
 ## Differences from the build specification
 
-`docs/VERIFY_LOG.md` records every checked fact and difference. These two
+`docs/verify_log.md` records every checked fact and difference. These two
 change what the dashboard shows.
 
 **Time axis.** The specification places every item at `first_seen_at`. On the
 dashboard, an item published more than 2 hours before it was first seen sits at
 its published time, so a feed's first fetch does not appear as one spike of
-days-old stories. The article view shows the true first-seen time and says when
-an item was placed this way. `gold.*` bins use `first_seen_at` unchanged, so
+days-old stories. An item published during a collection gap and first seen
+within 15 minutes after it also sits at its published time, so a gap does not
+appear as one spike on return. The article view shows the true first-seen time
+and says when an item was placed this way. `gold.*` bins use `first_seen_at` unchanged, so
 they can differ from dashboard counts for those items.
 
 **Storyline thresholds.** The specification sets a join threshold of 0.82 and a

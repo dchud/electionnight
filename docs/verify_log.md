@@ -55,7 +55,15 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
   pre-aggregated bins cannot serve. `gold.*` is still computed.
 - **Time axis.** On the dashboard, an item published more than 2 hours before
   it was first seen sits at its published time, so a feed's first fetch does
-  not appear as one spike. `gold.*` bins use `first_seen_at` unchanged.
+  not appear as one spike. An item published during a collection gap and first
+  seen within 15 minutes after it sits there too. `gold.*` bins use
+  `first_seen_at` unchanged.
+- **Laptop sleep.** The system runs under `caffeinate`. The owner closes the lid
+  to travel to class, which sleeps the machine anyway. `time.monotonic` here is `mach_absolute_time()`, which
+  stops during sleep, so timers resume instead of firing late, and the pipeline
+  detects sleep from the difference between it and the wall clock. Network loss
+  is confirmed by HTTPS requests to three hosts, because a Wi-Fi login page
+  cannot pass a certificate check.
 - **Stream colors.** No palette of 10 hues avoiding party blue and red passes
   the colorblind checks. The first 6 are validated; the rest rely on direct
   labels and hover.

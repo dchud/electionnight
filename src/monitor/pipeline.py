@@ -22,6 +22,7 @@ from monitor.control import (
     process_requests,
 )
 from monitor.disk import DiskGuard, DiskLevel
+from monitor.ingest.network import NetworkGate, https_probe
 from monitor.ingest.poller import (
     Poller,
     load_seen,
@@ -102,6 +103,11 @@ class Pipeline:
         self.stage_filter = set(stages) if stages else None
         self.conn: duckdb.DuckDBPyConnection = connect(settings)
         self.db = Database(self.conn)
+        self.gate = NetworkGate(
+            settings,
+            probe=https_probe(settings),
+            on_restored=self._network_restored,
+        )
         self.writer = BatchWriter(self.conn, settings)
         self.guard = DiskGuard(settings)
         self.handlers: dict[str, Callable[..., str]] = {
@@ -367,6 +373,7 @@ class Pipeline:
             "feed_details": self.poller.details() if self.poller else [],
             "stages": [stage.status() for stage in self.stages],
             "shedding": self.shedding,
+            "network": self.gate.status(),
             "archive": self.archive.status(),
             "llm": self.llm.status() if self.llm else {"disabled": True},
             "disk": {
@@ -469,7 +476,11 @@ class Pipeline:
             resolver = EntityResolver(settings)
             fetch = stage(
                 FetchTextParser(
-                    settings, sources, self.guard, archive=self.archive
+                    settings,
+                    sources,
+                    self.guard,
+                    archive=self.archive,
+                    gate=self.gate,
                 ),
                 accept=relevant,
                 linger_seconds=0.0,
@@ -520,7 +531,17 @@ class Pipeline:
             on_new_items=self.on_new_items,
             archive=self.archive,
             sightings=load_sightings(self.conn),
+            gate=self.gate,
         )
+
+    async def _network_restored(self, gap: dict[str, Any]) -> None:
+        """Commit the gap before any item from after it can be read."""
+        if self.llm is not None:
+            self.llm.clear_failures()
+        seconds = (gap["gap_end"] - gap["gap_start"]).total_seconds()
+        if seconds >= self.settings.poll.min_gap_seconds:
+            self.writer.add("raw.collection_gaps", [gap])
+            await self.db.run(self.writer.flush)
 
     async def run(self) -> None:
         if not self.no_llm and self.settings.anthropic_api_key is not None:
@@ -528,6 +549,7 @@ class Pipeline:
                 self.settings,
                 self.writer,
                 load_budget(self.conn, self.settings),
+                network_up=lambda: self.gate.is_online,
             )
         self.archive.start()
         self.stages = self.build_stages()

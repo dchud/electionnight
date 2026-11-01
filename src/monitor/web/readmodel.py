@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -35,6 +35,8 @@ log = get(__name__)
 # each refresh looks back further than that.
 WATERMARK_OVERLAP = timedelta(minutes=3)
 READ_RETRIES = 3
+QUERY_WINDOW_SECONDS = 60.0
+QUERY_TIMES_KEPT = 512
 VECTOR_DIM = 384
 
 FACTS_COLUMNS = """
@@ -95,6 +97,12 @@ FACTS_SELECT = """
            CASE
                WHEN i.published_at < i.first_seen_at - INTERVAL 2 HOUR
                    THEN i.published_at
+               WHEN EXISTS (
+                   SELECT 1 FROM lake.raw.collection_gaps g
+                   WHERE i.first_seen_at BETWEEN g.gap_end
+                         AND g.gap_end + INTERVAL 15 MINUTE
+                     AND i.published_at BETWEEN g.gap_start AND g.gap_end
+               ) THEN i.published_at
                ELSE i.first_seen_at
            END AS first_seen_at,
            i.first_seen_at AS seen_raw_at,
@@ -149,6 +157,8 @@ COPIED_TABLES = {
     "QUALIFY row_number() OVER (PARTITION BY storyline_id "
     "ORDER BY version DESC, created_at DESC) = 1",
     "briefs": "SELECT * FROM lake.nlp.briefs",
+    "collection_gaps": "SELECT gap_start, gap_end, reason "
+    "FROM lake.raw.collection_gaps",
     "race_calls": "SELECT * FROM lake.nlp.race_calls QUALIFY row_number() "
     "OVER (PARTITION BY call_id ORDER BY created_at DESC) = 1",
 }
@@ -243,6 +253,9 @@ class ReadModel:
         self.db.execute("SET TimeZone = 'UTC'")
         self.db.execute(f"CREATE TABLE facts ({FACTS_COLUMNS})")
         self.cache = QueryCache(settings.web.query_cache_size)
+        self.query_times: deque[tuple[float, float]] = deque(
+            maxlen=QUERY_TIMES_KEPT
+        )
         self.snapshot = Snapshot(0, None, ())
         self.watermark: datetime | None = None
         self.refreshed_at: datetime | None = None
@@ -399,9 +412,20 @@ class ReadModel:
         cached = self.cache.get(key)
         if cached is not None:
             return cached
+        started = time.monotonic()
         rows = self.rows(sql, params)
+        finished = time.monotonic()
+        self.query_times.append((finished, (finished - started) * 1000))
         self.cache.put(key, rows)
         return rows
+
+    def recent_p95_ms(self, seconds: float = QUERY_WINDOW_SECONDS) -> float:
+        """The 95th percentile of uncached query time, recent queries only."""
+        since = time.monotonic() - seconds
+        times = sorted(ms for at, ms in list(self.query_times) if at >= since)
+        if not times:
+            return 0.0
+        return times[min(len(times) - 1, int(len(times) * 0.95))]
 
     def rows(
         self, sql: str, params: dict[str, Any] | None = None

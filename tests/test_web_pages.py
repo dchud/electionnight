@@ -1841,7 +1841,7 @@ def test_methods_renders_the_document_and_the_ledger(client):
 
 
 def test_methods_escapes_raw_html(client, tmp_path, monkeypatch):
-    path = tmp_path / "METHODS.md"
+    path = tmp_path / "methods.md"
     path.write_text(
         "# Title\n\n<script>alert(1)</script>\n\n"
         "[bad](javascript:alert(2))\n\n| a |\n|---|\n| b |\n",
