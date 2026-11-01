@@ -786,4 +786,56 @@
     }
   });
   document.addEventListener("DOMContentLoaded", () => paintDots(document));
+
+  /* A story chip says what it means at once, as the map's states do. A title
+     stays in the page until first use, so it still works without this. */
+  const CHIPS =
+    ".badge[title], .chip[title], .glyph[title], .tone-dot[title], [data-tip]";
+
+  function placeChipTip(tip, event) {
+    const gap = 14;
+    const right = event.clientX + gap + tip.offsetWidth;
+    const below = event.clientY + gap + tip.offsetHeight;
+    tip.style.left =
+      (right > window.innerWidth
+        ? event.clientX - gap - tip.offsetWidth
+        : event.clientX + gap) + "px";
+    tip.style.top =
+      (below > window.innerHeight
+        ? event.clientY - gap - tip.offsetHeight
+        : event.clientY + gap) + "px";
+  }
+
+  function hideChipTip() {
+    const tip = document.getElementById("tip");
+    if (tip && tip.dataset.chip) {
+      tip.hidden = true;
+      delete tip.dataset.chip;
+    }
+  }
+
+  document.addEventListener("pointerover", (event) => {
+    const chip = event.target.closest && event.target.closest(CHIPS);
+    const tip = document.getElementById("tip");
+    if (!chip || !tip) return;
+    if (chip.title) {
+      chip.dataset.tip = chip.title;
+      chip.setAttribute("aria-label", chip.title);
+      chip.removeAttribute("title");
+    }
+    tip.textContent = chip.dataset.tip;
+    tip.dataset.chip = "1";
+    tip.hidden = false;
+    placeChipTip(tip, event);
+  });
+  document.addEventListener("pointermove", (event) => {
+    const tip = document.getElementById("tip");
+    if (tip && tip.dataset.chip) placeChipTip(tip, event);
+  });
+  document.addEventListener("pointerout", (event) => {
+    const chip = event.target.closest && event.target.closest("[data-tip]");
+    if (chip && !chip.contains(event.relatedTarget)) hideChipTip();
+  });
+  document.addEventListener("htmx:beforeSwap", hideChipTip);
+  document.addEventListener("scroll", hideChipTip, true);
 })();

@@ -506,3 +506,26 @@ def test_county_map_is_never_black(scratch, browser):
     page.wait_for_selector("svg.map-painted path.map-county", state="attached")
     assert page.evaluate("() => window.__black") is False
     context.close()
+
+
+def test_chips_explain_themselves_at_once(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "chip", states=["GA"])
+    server.start()
+    context, page = open_page(browser)
+    wait_for_row(page, "Headline chip")
+    chip = page.locator('#wire-panel .chip:has-text("GA")').first
+    tip = page.locator("#tip")
+    assert chip.evaluate("el => getComputedStyle(el).cursor") != "help"
+    chip.hover()
+    page.wait_for_timeout(50)
+    assert tip.is_visible()
+    assert tip.inner_text() == "Georgia"
+    page.locator("#wire-panel .wire-head").first.hover()
+    page.wait_for_timeout(50)
+    assert not tip.is_visible()
+    chip.hover()
+    page.wait_for_timeout(50)
+    assert tip.is_visible()
+    assert tip.inner_text() == "Georgia"
+    context.close()
