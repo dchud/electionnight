@@ -262,6 +262,19 @@ def conclusions(
     least = min(seated, key=lambda s: s["seats_per_outlet"], default=None)
     right = by_bucket.get("R", {})
     left = by_bucket.get("L", {})
+    if right.get("top_share") is not None:
+        right_stories = (
+            f"{right.get('top_outlet')} alone is "
+            f"{right['top_share'] * 100:.0f}% of Right stories in this "
+            "window, so that bucket can move with one newsroom."
+        )
+    elif left.get("stories"):
+        right_stories = (
+            "The Right bucket has no stories in this window, and the Left "
+            f"bucket has {left['stories']}."
+        )
+    else:
+        right_stories = "Neither has stories in this window."
     claims = [
         {
             "claim": "Tone by lean in local coverage.",
@@ -273,24 +286,17 @@ def conclusions(
             "claim": "That one side of the press covered a story more.",
             "why": f"The Right bucket has {right.get('enabled_outlets', 0)} "
             f"outlets and the Left bucket "
-            f"{left.get('enabled_outlets', 0)}. "
-            + (
-                f"{right.get('top_outlet')} alone is "
-                f"{right.get('top_share', 0) * 100:.0f}% of Right stories "
-                "in this window, so that bucket can move with one newsroom."
-                if right.get("top_share") is not None
-                else "Neither has stories in this window."
-            ),
+            f"{left.get('enabled_outlets', 0)}. {right_stories}",
         },
         {
             "claim": "What the major wires and national outlets reported.",
-            "why": f"No working feed: {name_list(majors)}. Their stories "
+            "why": f"No feed enabled: {name_list(majors)}. Their stories "
             "appear only when another outlet republishes them, and then under "
             "that outlet's name.",
         },
         {
             "claim": "US Spanish-language coverage.",
-            "why": f"No working feed: {name_list(spanish) or 'none'}. The "
+            "why": f"No feed enabled: {name_list(spanish) or 'none'}. The "
             "Spanish sample is mostly outlets outside the US.",
         },
         {
@@ -394,8 +400,27 @@ def coverage(under: Under, filters: Filters) -> dict[str, Any]:
         key=lambda o: (o["scope"] not in {"wire", "national"}, o["name"]),
     )
 
+    pipeline = under.pipeline_status()
+    working = under.working_outlets(
+        {o["source_id"] for o in enabled}, pipeline
+    )
+    for state_row in states:
+        state_row["working_outlets"] = (
+            None
+            if working is None
+            else sum(
+                1
+                for o in enabled
+                if o["home_state"] == state_row["usps"]
+                and o["source_id"] in working
+            )
+        )
+    no_rating = unrated.get("enabled_outlets", 0) + non_us.get(
+        "enabled_outlets", 0
+    )
+
     feeds_now = []
-    for feed in under.model.read_status().get("feed_details") or []:
+    for feed in pipeline["status"].get("feed_details") or []:
         state = feed_state(feed)
         if state in {"failing", "down"}:
             feeds_now.append(
@@ -431,6 +456,10 @@ def coverage(under: Under, filters: Filters) -> dict[str, Any]:
         "totals": totals.first,
         "listed": len(outlets),
         "enabled": len(enabled),
+        "working": None if working is None else len(working),
+        "pipeline": pipeline,
+        "no_rating": no_rating,
+        "no_rating_share": no_rating / len(enabled) if enabled else None,
         "groups": groups,
         "report": report,
         "tried": tried,

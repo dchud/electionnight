@@ -7,14 +7,14 @@
 <section class="u-section" id="candidates">
   <div class="u-section-head"><h2 class="u-section-title">Recent items with an extraction trace and an archived page</h2></div>
   <div class="u-section-body">
-    {{ u.error_note(candidates.error) }}
+    {{ u.scan_failed(candidates.error) }}
     <div class="u-scroll"><table class="table u-table">
       <thead><tr><th>Headline</th><th>Outlet</th><th>Language</th><th>First seen</th></tr></thead>
       <tbody>
       {% for item in candidates["items"] %}
       <tr><td><a class="text-link" href="/under/trace/{{ item.item_id }}">{{ item.headline }}</a></td><td>{{ item.outlet }}</td><td>{{ item.language }}</td><td>{{ item.seen_raw_at|u_et }}</td></tr>
       {% else %}
-      <tr><td colspan="4">No item has both a trace and an archived page yet.</td></tr>
+      {% if candidates.scanned %}<tr><td colspan="4">No item has both a trace and an archived page.</td></tr>{% endif %}
       {% endfor %}
       </tbody>
     </table></div>

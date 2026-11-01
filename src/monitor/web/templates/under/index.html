@@ -4,19 +4,20 @@
 {% block content %}
 <h1>Under the hood</h1>
 <p class="u-lede">How this monitor turns news feeds into a dashboard: how many records there are, where they came from, how they are stored, which models produced which values, and what they cost. These pages read the same data as the dashboard and change nothing.</p>
-{{ u.error_note(overview.error) }}
+{{ u.scan_failed(overview.error) }}
 <div class="u-stats">
   <div class="u-stat"><span class="u-stat-label">Items in the fact table</span><span class="u-stat-value">{{ overview.counts["items"]|u_int }}</span><span class="u-stat-note">{{ overview.counts.relevant|u_int }} classified as relevant</span></div>
-  <div class="u-stat"><span class="u-stat-label">Outlets with a working feed</span><span class="u-stat-value">{{ overview.counts.outlets_enabled|u_int }}</span><span class="u-stat-note">of {{ overview.counts.outlets_listed|u_int }} listed</span></div>
+  <div class="u-stat"><span class="u-stat-label">Outlets enabled</span><span class="u-stat-value">{{ overview.counts.outlets_enabled|u_int }}</span><span class="u-stat-note">of {{ overview.counts.outlets_listed|u_int }} listed</span></div>
+  <div class="u-stat"><span class="u-stat-label">Outlets working</span>{% if overview.pipeline.available %}<span class="u-stat-value">{{ overview.working|u_int }}</span><span class="u-stat-note">enabled, with a feed that succeeded in the last hour</span>{% else %}<span class="u-stat-value">Status unavailable</span><span class="u-stat-note">{{ overview.pipeline.reason }}</span>{% endif %}</div>
   <div class="u-stat"><span class="u-stat-label">Lake tables</span><span class="u-stat-value">{{ overview.tables }}</span><span class="u-stat-note">{{ overview.total_rows|u_int }} rows, not records</span></div>
   <div class="u-stat"><span class="u-stat-label">Parquet files</span><span class="u-stat-value">{{ overview.parquet_files|u_int }}</span><span class="u-stat-note">{{ overview.parquet_bytes|u_bytes }}</span></div>
-  <div class="u-stat"><span class="u-stat-label">Estimated API spend</span><span class="u-stat-value">${{ '%.2f' % (overview.budget.spent_total or 0) }}</span><span class="u-stat-note">from configured prices, not an invoice</span></div>
+  <div class="u-stat"><span class="u-stat-label">Estimated API spend</span><span class="u-stat-value">${{ '%.2f' % overview.spend }}</span><span class="u-stat-note">from the ledger and configured prices, not an invoice</span></div>
 </div>
 {% call u.caveat("What to keep in mind on every page") %}
 <ul>
   <li>Rows are not records. Tables are append-only, so a correction or a recomputed bin is a new row. Readers take the newest row per key.</li>
   <li>{{ overview.counts.backlog|u_int }} of {{ overview.counts["items"]|u_int }} items were published over 2 hours before they were first seen, most of them feed backlog from the first fetch at {{ overview.counts.first_seen|u_et }}. Feeds serve their newest entries, not a complete history.</li>
-  <li>Dashboard panels read an in-memory fact table in the web process, not the <code>gold.*</code> tables. The dashboard's time axis places an item at its published time when that is over 2 hours before first seen. <code>gold.*</code> bins use <code>first_seen_at</code> unchanged, so the two can differ.</li>
+  <li>Dashboard panels read an in-memory fact table in the web process, not the <code>gold.*</code> tables. The dashboard's time axis places an item at its published time in two cases: it was published over 2 hours before first seen, or it was published around a collection gap and first seen just after the gap. <code>gold.*</code> bins use <code>first_seen_at</code> unchanged, so the two can differ.</li>
   <li>Capture of traces, raw entries, and decisions started on the afternoon of Nov 1. Older items lack them, which is expected.</li>
 </ul>
 {% endcall %}
@@ -41,15 +42,15 @@
 <section class="u-section" id="try-a-trace">
   <div class="u-section-head"><h2 class="u-section-title">Articles worth tracing</h2><span class="panel-note">newest items with an extraction trace and an archived page</span></div>
   <div class="u-section-body">
-    {{ u.error_note(candidates.error) }}
+    {{ u.scan_failed(candidates.error) }}
     {% if candidates["items"] %}
     <ul class="u-list">
       {% for item in candidates["items"][:5] %}
       <li><a class="text-link" href="/under/trace/{{ item.item_id }}">{{ item.headline }}</a> <span class="u-names">{{ item.outlet }}, {{ item.seen_raw_at|u_et }}</span></li>
       {% endfor %}
     </ul>
-    {% else %}
-    <p class="empty">No item has both a trace and an archived page yet.</p>
+    {% elif candidates.scanned %}
+    <p class="empty">No item has both a trace and an archived page.</p>
     {% endif %}
     {{ u.show_query(candidates.queries, "index-candidates") }}
   </div>

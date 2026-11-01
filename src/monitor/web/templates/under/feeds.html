@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Feeds: polling as a system</h1>
 <p class="u-lede">Every enabled feed is polled on a tier of {{ poll.tier_seconds|join(', ') }} seconds, with a conditional GET. Figures come from <code>raw.fetches</code>, in a child process. Feed state comes from the pipeline's status file, the same one <a class="text-link" href="/status">/status</a> reads.</p>
-{% for message in errors %}{{ u.error_note(message) }}{% endfor %}
+{{ u.scans_failed(errors) }}
 {% set c = conditional.first %}
 <div class="u-stats">
   <div class="u-stat"><span class="u-stat-label">Polls</span><span class="u-stat-value">{{ c.polls|u_int }}</span></div>
@@ -20,10 +20,10 @@
     {{ u.ran_note(conditional) }}
     <div class="u-scroll"><table class="table u-table">
       <thead><tr><th>Outcome</th><th class="num">Polls</th><th class="num">Share</th><th class="num">Last hour</th><th class="num">Share</th><th class="num">Mean time</th></tr></thead>
-      <tbody>{% for row in mix %}<tr><td>{{ row.outcome }}</td><td class="num">{{ row.n|u_int }}</td><td class="num">{{ row.share|u_pct }}</td><td class="num">{{ row.last_hour|u_int }}</td><td class="num">{{ row.recent_share|u_pct }}</td><td class="num">{{ row.mean_ms|round|int }} ms</td></tr>{% else %}<tr><td colspan="6">No polls recorded.</td></tr>{% endfor %}</tbody>
+      <tbody>{% for row in mix %}<tr><td>{{ row.outcome }}</td><td class="num">{{ row.n|u_int }}</td><td class="num">{{ row.share|u_pct }}</td><td class="num">{{ row.last_hour|u_int }}</td><td class="num">{{ row.recent_share|u_pct }}</td><td class="num">{{ row.mean_ms|round|int }} ms</td></tr>{% else %}{% if mix_ok %}<tr><td colspan="6">No polls recorded.</td></tr>{% endif %}{% endfor %}</tbody>
     </table></div>
     {% call u.caveat("How to read the saving") %}
-    <p>A 304 sends no body, so nothing measures what it saved. The estimate is the mean size of that feed's 200 responses, counted for the {{ c.not_modified_sized|u_int }} of {{ c.not_modified|u_int }} 304s whose feed has a recorded size. Sizes exist only since capture started. Of {{ c.detailed_responses|u_int }} recorded 200 responses, {{ c.unchanged_bodies|u_int }} had a body identical to the last one, which means the server ignored the validators.</p>
+    <p>A 304 sends no body, so nothing measures what it saved. The estimate is the mean size of that feed's 200 responses, counted for the {{ c.not_modified_sized|u_int }} of {{ c.not_modified|u_int }} 304s whose feed has a recorded size. Sizes exist only since capture started. Of {{ c.detailed_responses|u_int }} recorded 200 responses, {{ c.unchanged_bodies|u_int }} were marked unchanged: the body matched the last one archived, or the archive did not store it because its queue was full or the disk was low. A server can send an identical body when it ignores validators, and when it offers none to send back.</p>
     {% endcall %}
     {{ u.show_query([mix_query, conditional.query], "feeds-mix") }}
   </div>
@@ -58,7 +58,7 @@
         <h3 class="u-chart-title">Feeds that have never added an item</h3>
         <div class="u-scroll"><table class="table u-table">
           <thead><tr><th>Feed</th><th class="num">Polls</th><th class="num">Entries served</th><th>Last poll</th></tr></thead>
-          <tbody>{% for row in idle_feeds.rows %}<tr><td class="u-break">{{ row.feed_url }}</td><td class="num">{{ row.polls|u_int }}</td><td class="num">{{ row.entries_served|u_int }}</td><td>{{ row.last_poll|u_et }}</td></tr>{% else %}<tr><td colspan="4">Every polled feed has added an item.</td></tr>{% endfor %}</tbody>
+          <tbody>{% for row in idle_feeds.rows %}<tr><td class="u-break">{{ row.feed_url }}</td><td class="num">{{ row.polls|u_int }}</td><td class="num">{{ row.entries_served|u_int }}</td><td>{{ row.last_poll|u_et }}</td></tr>{% else %}{% if idle_feeds.ok %}<tr><td colspan="4">Every polled feed has added an item.</td></tr>{% endif %}{% endfor %}</tbody>
         </table></div>
       </div>
     </div>
@@ -67,9 +67,12 @@
 </section>
 
 <section class="u-section" id="breakers">
-  <div class="u-section-head"><h2 class="u-section-title">Circuit breakers and last success</h2><span class="panel-note">{{ states.ok }} ok, {{ states.failing }} failing, {{ states.down }} circuit open, {{ states.waiting }} waiting</span></div>
+  <div class="u-section-head"><h2 class="u-section-title">Circuit breakers and last success</h2>{% if pipeline.available %}<span class="panel-note">{{ states.ok }} ok, {{ states.failing }} failing, {{ states.down }} circuit open, {{ states.waiting }} waiting</span>{% endif %}</div>
   <div class="u-section-body">
-    <p class="u-note">After {{ poll.circuit_failures }} failures in a row, a feed is retried every {{ poll.circuit_retry_seconds // 60 }} minutes. This state lives in the pipeline's memory, so a restart clears it. {% if status_updated %}The status file was written {{ status_updated|u_et }}.{% else %}The status file is missing.{% endif %}{% if started_at %} The pipeline started {{ started_at|u_et }}.{% endif %}</p>
+    <p class="u-note">After {{ poll.circuit_failures }} failures in a row, a feed is retried every {{ poll.circuit_retry_seconds // 60 }} minutes. This state lives in the pipeline's memory, so a restart clears it.{% if pipeline.available %} The status file was written {{ pipeline.updated|u_et }}.{% endif %}{% if started_at %} The pipeline started {{ started_at|u_et }}.{% endif %}</p>
+    {% if not pipeline.available %}
+    {{ u.status_unavailable(pipeline) }}
+    {% else %}
     <div class="u-pair">
       <div>
         <h3 class="u-chart-title">Feeds not ok</h3>
@@ -86,6 +89,7 @@
         </table></div>
       </div>
     </div>
+    {% endif %}
   </div>
 </section>
 {% endblock %}

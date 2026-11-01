@@ -10,7 +10,7 @@
   {% if item.url %}<a class="text-link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">Original</a>.{% endif %}
   <a class="text-link" href="/article/{{ item.item_id }}">Article page</a>.
 </p>
-{% for message in errors %}{{ u.error_note(message) }}{% endfor %}
+{{ u.scans_failed(errors) }}
 {% if before_capture %}
 {% call u.caveat("This item is older than capture") %}
 <p>It was first seen before capture started at {{ capture_time|u_et }}. Its raw feed entry is thin. A stage that ran before capture left no trace, archived payload, or decision, which is expected. A stage that ran later, such as a backfilled extraction, does have them. Trace a newer item to see every stage recorded.</p>
@@ -21,7 +21,7 @@
   <div class="u-section-head"><h2 class="u-section-title">Every stage, and when it finished</h2><span class="panel-note">times are after first seen</span></div>
   <div class="u-section-body">
     {% call u.caveat("What these times mean") %}
-    <p>Buffered is <code>created_at</code>: when a stage handed its row to the writer. Committed is the snapshot's time: when a reader could first see it. The writer commits every 30 s. A long wait marked backfill means the item waited for a later catch-up pass, which is common for first-fetch backlog.</p>
+    <p>Buffered is <code>created_at</code>: when a stage handed its row to the writer. Committed is the snapshot's time: when a reader could first see it. The writer commits every 30 s. When a stage has several rows, the times, snapshot, and file describe the newest row, the one readers use. A long wait marked backfill means the item waited for a later catch-up pass, which is common for first-fetch backlog.</p>
     {% endcall %}
     <div class="u-scroll">
     <table class="table u-table">
@@ -32,7 +32,7 @@
         <td>{{ s.name }}</td>
         <td>{{ s.table }}</td>
         <td class="num">{{ s.n }}</td>
-        <td>{{ s.status or 'no row' }}{% if s.run_error %}: {{ s.run_error }}{% endif %}{% if s.version %} <span class="u-names">v{{ s.version }}</span>{% endif %}</td>
+        <td>{% if s.error %}scan did not finish{% else %}{{ s.status or 'no row' }}{% endif %}{% if s.run_error %}: {{ s.run_error }}{% endif %}{% if s.version %} <span class="u-names">v{{ s.version }}</span>{% endif %}</td>
         <td class="num">{{ s.latency|u_secs }}{% if s.backfill %} <span class="u-tag">backfill</span>{% endif %}</td>
         <td class="num">{{ s.commit_latency|u_secs }}</td>
         <td class="num">{{ s.snapshot if s.snapshot is not none else '—' }}</td>
@@ -55,13 +55,19 @@
 <section class="u-section" id="feed-entry">
   <div class="u-section-head"><h2 class="u-section-title">The raw feed entry</h2></div>
   <div class="u-section-body">
+    {% if raw_ran.error %}
+    {{ u.scan_failed(raw_ran.error) }}
+    {% else %}
     <p class="u-note">Feed: <code>{{ raw_row.feed_url }}</code>. <code>source_id</code> <code>{{ raw_row.source_id }}</code> is the first feed to serve this item, which favors the fastest poller.</p>
     {% if not rich_entry %}
     <p class="banner-warn u-error">This entry holds only a few fields, because rich raw entries started when capture did. The title and summary are still in their own columns on the row.</p>
     {% endif %}
     <pre class="u-pre">{{ entry or 'No raw entry is stored.' }}</pre>
-    <h3 class="u-chart-title">Sightings: {{ sightings.rows|length }}</h3>
-    {% if sightings.rows %}
+    {% endif %}
+    <h3 class="u-chart-title">Sightings{% if sightings.ok %}: {{ sightings.rows|length }}{% endif %}</h3>
+    {% if sightings.error %}
+    {{ u.scan_failed(sightings.error) }}
+    {% elif sightings.rows %}
     <div class="u-scroll"><table class="table u-table">
       <thead><tr><th>Outlet</th><th>Feed</th><th>Seen</th><th>Title hash</th></tr></thead>
       <tbody>{% for row in sightings.rows %}<tr><td>{{ row.source_id }}</td><td class="u-break">{{ row.feed_url }}</td><td>{{ row.seen_at|u_et }}</td><td>{{ row.title_hash }}</td></tr>{% endfor %}</tbody>
@@ -71,7 +77,7 @@
     <p class="u-note">No sighting is recorded. Sightings started when capture did.</p>
     {% endif %}
     <details class="u-details" hx-get="/under/trace/{{ item.item_id }}/archive/feeds" hx-trigger="toggle once" hx-target="find .u-slot" data-key="trace-archive-feeds">
-      <summary>Original feed bytes, from the archive{% if not feed_archive %}: none recorded{% endif %}</summary>
+      <summary>Original feed bytes, from the archive{% if feed_archive.ok and not feed_archive.rows %}: none recorded{% endif %}</summary>
       <div class="u-slot"><p class="u-note">Reading the archive file from its start.</p></div>
     </details>
     {{ u.show_query(feed_queries, "trace-feed") }}
@@ -79,9 +85,11 @@
 </section>
 
 <section class="u-section" id="llm">
-  <div class="u-section-head"><h2 class="u-section-title">The prompt and response: {{ calls|length }} {{ 'call' if calls|length == 1 else 'calls' }}</h2></div>
+  <div class="u-section-head"><h2 class="u-section-title">The prompt and response{% if traces_ran.ok %}: {{ calls|length }} {{ 'call' if calls|length == 1 else 'calls' }}{% endif %}</h2></div>
   <div class="u-section-body">
-    {% if calls %}
+    {% if traces_ran.error %}
+    {{ u.scan_failed(traces_ran.error) }}
+    {% elif calls %}
     <p class="u-note">Article text in a request is cut to an excerpt here. The model received all of it, and <code>nlp.llm_traces</code> keeps the exact request.</p>
     <p class="u-note">Costs are <code>usd_est</code>, computed from configured prices, not an invoice. SDK retries are not counted. An extraction request carries article text as the model received it, up to 6,000 tokens.</p>
     {% for call in calls %}
@@ -116,7 +124,7 @@
       {% for row in mentions.rows %}
       <tr><td>{{ row.surface }}</td><td>{{ row.ent_type }}</td><td>{% if row.entity_id %}<a class="text-link" href="/entity/{{ row.entity_id }}">{{ row.entity.canonical_name or row.entity_id }}</a>{% else %}not resolved{% endif %}</td><td>{{ row.resolved_by or '—' }}</td><td class="num">{{ '%+.1f' % row.tone if row.tone is not none else '—' }}</td><td>{{ row.tone_evidence or '' }}</td></tr>
       {% else %}
-      <tr><td colspan="6">No entity row. Extraction runs on relevant items only.</td></tr>
+      <tr><td colspan="6">{% if mentions_ran.error %}The entity scan did not finish.{% else %}No entity row. Extraction runs on relevant items only.{% endif %}</td></tr>
       {% endfor %}
       </tbody>
     </table></div>
@@ -126,7 +134,7 @@
       {% for row in places %}
       <tr><td>{{ row.surface }}</td><td>{{ row.place_type }}</td><td>{{ row.state_usps or '—' }}</td><td>{{ row.county_fips or '—' }}</td><td>{{ row.method }}</td><td class="num">{{ '%.2f' % row.match_score if row.match_score is not none else '—' }}</td></tr>
       {% else %}
-      <tr><td colspan="6">No place row.</td></tr>
+      <tr><td colspan="6">{% if places_ran.error %}The place scan did not finish.{% else %}No place row.{% endif %}</td></tr>
       {% endfor %}
       </tbody>
     </table></div>
@@ -144,10 +152,10 @@
     <ul class="u-list">
       {% for row in dup_rows %}
       <li>Dedupe: group <code>{{ row.dup_group_id }}</code>, canonical {{ 'yes' if row.is_canonical else 'no' }}, stored method <code>{{ row.method }}</code>, similarity {{ row.similarity if row.similarity is not none else '—' }}. {{ row.reading }}</li>
-      {% else %}<li>No dedupe row.</li>{% endfor %}
+      {% else %}<li>{% if dup_ran.error %}The dedupe scan did not finish.{% else %}No dedupe row.{% endif %}</li>{% endfor %}
       {% for row in story_rows %}
       <li>Storyline: <code>{{ row.storyline_id }}</code>, stored similarity {{ '%.3f' % row.similarity if row.similarity is not none else '—' }}.{% if row.placeholder %} <span class="u-tag u-tag-warn">placeholder</span> 1.0 means this item started the storyline, not that it matched anything at 1.0.{% endif %}</li>
-      {% else %}<li>No storyline row. Storylines take relevant, canonical items only.</li>{% endfor %}
+      {% else %}<li>{% if story_ran.error %}The storyline scan did not finish.{% else %}No storyline row. Storylines take relevant, canonical items only.{% endif %}</li>{% endfor %}
       {% if storyline %}<li>Current storyline: <a class="text-link" href="/story/{{ storyline.storyline_id }}">{{ storyline.label or 'Unlabeled' }}</a>, status {{ storyline.status }}, {{ storyline.n_items }} items, {{ storyline.n_sources }} outlets.</li>{% endif %}
     </ul>
     <h3 class="u-chart-title">Recorded decisions</h3>
@@ -156,6 +164,8 @@
       <thead><tr><th>Stage</th><th>Decision</th><th>Method</th><th>Nearest</th><th class="num">Nearest similarity</th><th class="num">Threshold</th><th class="num">SimHash distance</th></tr></thead>
       <tbody>{% for row in decisions %}<tr><td>{{ row.stage }}</td><td>{{ row.decision }}</td><td>{{ row.method or '—' }}</td><td class="u-break">{{ row.nearest_id or '—' }}</td><td class="num">{{ '%.3f' % row.nearest_similarity if row.nearest_similarity is not none else '—' }}</td><td class="num">{{ '%.2f' % row.threshold if row.threshold is not none else '—' }}</td><td class="num">{{ row.simhash_distance if row.simhash_distance is not none else '—' }}</td></tr>{% endfor %}</tbody>
     </table></div>
+    {% elif decisions_ran.error %}
+    {{ u.scan_failed(decisions_ran.error) }}
     {% else %}
     <p class="u-note">No decision is recorded for this item. <code>nlp.cluster_decisions</code> started when capture did.</p>
     {% endif %}
@@ -174,7 +184,7 @@
   <div class="u-section-body">
     {% call u.caveat("Panels read the fact table, not gold.*") %}
     <p>Each row below runs the panel's own filter on this item, with the default controls and the window above. Dashboard panels query an in-memory fact table. <code>gold.*</code> is computed and not read by these panels.</p>
-    <p>{% if moved_on_axis %}This item was published over 2 hours before it was first seen, so the dashboard places it at {{ item.first_seen_at|u_et }}, while <code>gold.*</code> bins place it at {{ item.seen_raw_at|u_et }}.{% else %}The dashboard and <code>gold.*</code> both place this item at {{ item.seen_raw_at|u_et }}.{% endif %}</p>
+    <p>{% if moved_on_axis %}{% if moved_for_backlog %}This item was published over 2 hours before it was first seen{% else %}This item was published during a collection gap, or in the 20 minutes before it, and first seen within 15 minutes after it{% endif %}, so the dashboard places it at {{ item.first_seen_at|u_et }}, while <code>gold.*</code> bins place it at {{ item.seen_raw_at|u_et }}.{% else %}The dashboard and <code>gold.*</code> both place this item at {{ item.seen_raw_at|u_et }}.{% endif %}</p>
     {% endcall %}
     <div class="u-scroll"><table class="table u-table">
       <thead><tr><th>Panel</th><th>Counts it</th><th>The rule</th></tr></thead>
@@ -193,7 +203,7 @@
   <div class="u-section-head"><h2 class="u-section-title">The fetched page</h2></div>
   <div class="u-section-body">
     <details class="u-details" hx-get="/under/trace/{{ item.item_id }}/archive/pages" hx-trigger="toggle once" hx-target="find .u-slot" data-key="trace-archive-pages">
-      <summary>Original page bytes, from the archive{% if not page_archive %}: none recorded{% endif %}</summary>
+      <summary>Original page bytes, from the archive{% if page_archive.ok and not page_archive.rows %}: none recorded{% endif %}</summary>
       <div class="u-slot"><p class="u-note">Reading the archive file from its start.</p></div>
     </details>
   </div>

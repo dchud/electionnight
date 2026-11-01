@@ -38,6 +38,8 @@ MAX_CELL_CHARS = 200_000
 MAX_OUTPUT_BYTES = 20_000_000
 CONSOLE_MAX_CELL_CHARS = 4000
 CONSOLE_MAX_OUTPUT_BYTES = 2_000_000
+MAX_COLUMNS = 200
+MAX_COLUMN_NAME_CHARS = 200
 
 # Table functions the console may call. Everything else is denied, including
 # every DuckLake maintenance call, `sqlite_scan`, `sqlite_query`, `query`,
@@ -45,7 +47,6 @@ CONSOLE_MAX_OUTPUT_BYTES = 2_000_000
 ALLOWED_TABLE_FUNCTIONS = frozenset(
     {
         "duckdb_columns",
-        "duckdb_databases",
         "duckdb_functions",
         "duckdb_schemas",
         "duckdb_tables",
@@ -76,14 +77,27 @@ ALLOWED_TABLE_FUNCTIONS = frozenset(
 )
 DENIED_SCALAR_FUNCTIONS = frozenset(
     {
+        "current_setting",
         "getenv",
         "json_execute_serialized_sql",
         "nextval",
+        "pg_sleep",
         "setval",
         "sleep_ms",
         "write_log",
     }
 )
+# Query nodes a read may contain. A CTE can otherwise hold a COPY, INSERT,
+# UPDATE, or DELETE while the statement still reports itself as a SELECT.
+ALLOWED_QUERY_NODES = frozenset(
+    {
+        "SELECT_NODE",
+        "SET_OPERATION_NODE",
+        "RECURSIVE_CTE_NODE",
+        "CTE_NODE",
+    }
+)
+DENIED_TABLES = frozenset({"pg_settings", "duckdb_settings"})
 # Tables reachable by name. A bare name may be a CTE; the binder rejects it if
 # it is not, and a path-like name never reaches a replacement scan.
 ALLOWED_CATALOGS = frozenset({"lake", "__ducklake_metadata_lake"})
@@ -91,6 +105,11 @@ ALLOWED_SCHEMAS = frozenset({"information_schema", "pg_catalog"})
 EXPLAIN_RE = re.compile(r"^\s*EXPLAIN\s+(?P<rest>.*)$", re.I | re.S)
 EXPLAIN_BODY_RE = re.compile(r"^\s*(SELECT|WITH|FROM|VALUES)\b", re.I)
 PATH_LIKE_RE = re.compile(r"[/\\.:]")
+IDENTIFYING_RE = (
+    rb"<(?:guid|id|link)\b[^>]*>\s*(?:<!\[CDATA\[)?\s*NEEDLE\s*"
+    rb"(?:\]\]>)?\s*</|<link\b[^>]*\bhref=[\"']NEEDLE[\"']"
+)
+WHOLE_VALUE_RE = rb"(?<![^\s>\"'\[])NEEDLE(?![^\s<\"'\]])"
 
 
 class ConsoleRejected(Exception):
@@ -165,13 +184,15 @@ def fetch(
     """Run one statement, bounded in rows, in cell size, and in total bytes."""
     started = time.monotonic()
     cursor = conn.execute(sql, params) if params else conn.execute(sql)
-    columns = [column[0] for column in cursor.description or []]
+    names = [column[0] for column in cursor.description or []]
+    columns = [str(name)[:MAX_COLUMN_NAME_CHARS] for name in names]
+    columns = columns[:MAX_COLUMNS]
     rows = cursor.fetchmany(max_rows + 1)
-    truncated = len(rows) > max_rows
+    truncated = len(rows) > max_rows or len(names) > MAX_COLUMNS
     kept = []
     size = 0
     for row in rows[:max_rows]:
-        clipped = [clip_cell(cell, max_cell) for cell in row]
+        clipped = [clip_cell(cell, max_cell) for cell in row[:MAX_COLUMNS]]
         size += len(json.dumps(clipped, default=plain))
         if size > max_bytes:
             truncated = True
@@ -202,7 +223,11 @@ def run_scan(request: dict[str, Any]) -> None:
 
 
 def walk_ast(node: Any, seen: dict[str, set[str]]) -> None:
-    """Collect every table function, scalar function, and table reference."""
+    """Collect every query node, function, and table reference.
+
+    Every value is walked. A subquery can sit in any field, including a table
+    function's arguments, so no field may be treated as uninteresting.
+    """
     if isinstance(node, list):
         for value in node:
             walk_ast(value, seen)
@@ -210,17 +235,14 @@ def walk_ast(node: Any, seen: dict[str, set[str]]) -> None:
     if not isinstance(node, dict):
         return
     kind = node.get("type")
+    if isinstance(kind, str) and kind.endswith("_NODE"):
+        seen["query_nodes"].add(kind)
     if kind == "TABLE_FUNCTION":
         function = node.get("function") or {}
         seen["table_functions"].add(
             str(function.get("function_name", "")).lower()
         )
-        walk_ast(function.get("children"), seen)
-        for key, value in node.items():
-            if key != "function":
-                walk_ast(value, seen)
-        return
-    if kind == "BASE_TABLE":
+    if kind in {"BASE_TABLE", "SHOW_REF"}:
         seen["tables"].add(
             json.dumps(
                 [
@@ -256,16 +278,22 @@ def check_select(conn: Any, sql: str) -> None:
             f"Could not read this statement: {tree.get('error_message')}"
         )
     seen: dict[str, set[str]] = {
+        "query_nodes": set(),
         "table_functions": set(),
         "scalar_functions": set(),
         "tables": set(),
     }
     walk_ast(tree.get("statements"), seen)
+    nodes = sorted(seen["query_nodes"] - ALLOWED_QUERY_NODES)
+    if nodes:
+        raise ConsoleRejected(f"Only reads run here, not {', '.join(nodes)}.")
     denied = sorted(seen["table_functions"] - ALLOWED_TABLE_FUNCTIONS)
     if denied:
         raise ConsoleRejected(
             f"Table function not allowed here: {', '.join(denied)}."
         )
+    # A table function's name is also collected here, so a denied name is
+    # refused wherever it appears.
     scalars = sorted(seen["scalar_functions"] & DENIED_SCALAR_FUNCTIONS)
     if scalars:
         raise ConsoleRejected(f"Function not allowed: {', '.join(scalars)}.")
@@ -273,6 +301,8 @@ def check_select(conn: Any, sql: str) -> None:
         catalog, schema, table = json.loads(reference)
         if PATH_LIKE_RE.search(table):
             raise ConsoleRejected("File paths are not allowed as tables.")
+        if table.lower() in DENIED_TABLES:
+            raise ConsoleRejected(f"Table not allowed here: {table}.")
         if (
             catalog
             and catalog not in ALLOWED_CATALOGS
@@ -339,23 +369,42 @@ def feed_entry_excerpt(body: bytes, needles: list[str], limit: int) -> bytes:
     for needle in needles:
         if not needle:
             continue
-        at = body.find(needle.encode("utf-8", "ignore"))
-        if at < 0:
-            # Feeds escape ampersands in links.
-            at = body.find(
-                needle.replace("&", "&amp;").encode("utf-8", "ignore")
-            )
+        at = _needle_at(body, needle)
         if at < 0:
             continue
-        starts = [body.rfind(tag, 0, at) for tag in (b"<item", b"<entry")]
+        starts = [
+            body.rfind(tag, 0, at)
+            for tag in (b"<item>", b"<item ", b"<entry>", b"<entry ")
+        ]
         start = max(starts)
         if start < 0:
             start = max(0, at - limit // 4)
-        ends = [body.find(tag, at) for tag in (b"</item>", b"</entry>")]
-        found = [end for end in ends if end >= 0]
-        end = (min(found) + 8) if found else at + limit // 2
+        ends = [
+            (found, found + len(tag))
+            for tag in (b"</item>", b"</entry>")
+            if (found := body.find(tag, at)) >= 0
+        ]
+        end = min(ends)[1] if ends else at + limit // 2
         return body[start : min(end, start + limit)]
     return b""
+
+
+def _needle_at(body: bytes, needle: str) -> int:
+    """Where a guid or URL is a whole value in a feed body, or -1.
+
+    A substring is not enough: `story-1` is inside `story-10`, and a short guid
+    can be inside an image URL. An identifying element is tried before any
+    other whole value, because a story can link to another story.
+    """
+    # Feeds escape ampersands in links.
+    forms = (needle, needle.replace("&", "&amp;"))
+    for shape in (IDENTIFYING_RE, WHOLE_VALUE_RE):
+        for form in forms:
+            value = re.escape(form.encode("utf-8", "ignore"))
+            match = re.search(shape.replace(b"NEEDLE", value), body)
+            if match:
+                return match.start()
+    return -1
 
 
 def run_archive(request: dict[str, Any]) -> None:

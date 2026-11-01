@@ -13,8 +13,9 @@
   <span class="u-note">Window: {{ window_start|et_datetime }} to {{ window_end|et_datetime }}. {{ totals.relevant|u_int }} relevant items in it, {{ totals.relevant_unique|u_int }} unique. {{ totals.relevant_all_time|u_int }} relevant in all.</span>
 </div>
 <div class="u-stats">
-  <div class="u-stat u-stat-hero"><span class="u-stat-label">Enabled outlets with no lean rating</span><span class="u-stat-value">{{ unrated.outlet_share|u_pct(0) }}</span><span class="u-stat-note">{{ unrated.enabled_outlets }} of {{ enabled }}. Another {{ non_us.enabled_outlets }} are non-US and not rated on this scale. {{ rated_total }} carry a rating.</span></div>
-  <div class="u-stat"><span class="u-stat-label">Outlets with a working feed</span><span class="u-stat-value">{{ enabled }}</span><span class="u-stat-note">of {{ listed }} listed; {{ groups.total }} have none</span></div>
+  <div class="u-stat u-stat-hero"><span class="u-stat-label">Enabled outlets with no lean rating</span><span class="u-stat-value">{{ no_rating_share|u_pct(0) }}</span><span class="u-stat-note">{{ no_rating }} of {{ enabled }}: {{ unrated.enabled_outlets or 0 }} US outlets unrated, and {{ non_us.enabled_outlets or 0 }} non-US outlets this scale does not rate. {{ rated_total }} carry a rating.</span></div>
+  <div class="u-stat"><span class="u-stat-label">Outlets enabled</span><span class="u-stat-value">{{ enabled }}</span><span class="u-stat-note">of {{ listed }} listed; {{ groups.total }} have no feed enabled</span></div>
+  <div class="u-stat"><span class="u-stat-label">Outlets working</span>{% if pipeline.available %}<span class="u-stat-value">{{ working }}</span><span class="u-stat-note">of {{ enabled }} enabled; a feed succeeded in the last hour, by the status file</span>{% else %}<span class="u-stat-value">Status unavailable</span><span class="u-stat-note">{{ pipeline.reason }}</span>{% endif %}</div>
   <div class="u-stat"><span class="u-stat-label">States at 0 or 1 outlet</span><span class="u-stat-value">{{ sparse|length }}</span><span class="u-stat-note">{% for s in sparse %}{{ s.usps }} ({{ s.enabled_outlets }}){{ ', ' if not loop.last }}{% endfor %}</span></div>
   <div class="u-stat"><span class="u-stat-label">Places below target</span><span class="u-stat-value">{{ under_target|length }}</span><span class="u-stat-note">{{ under_target|selectattr('battleground')|list|length }} battleground states below 4</span></div>
 </div>
@@ -32,6 +33,7 @@
     {% call u.caveat("Why a state's share of stories is not a measure of news") %}
     <p>A story is a relevant, unique item the classifier tagged with that state. One item can count in several states, and {{ totals.no_state|u_int }} unique relevant items in this window have no state tag. The share compares a state's stories with its share of House seats in <code>ref.races</code> ({{ total_seats }} rows for the places listed, including DC's non-voting delegate). Seats stand in for population, because the gazetteer has no population column. A high ratio can mean a contested statewide race as easily as more sources.</p>
     {% endcall %}
+    {{ u.show_query(queries.outlets + queries.lean + queries.states, "coverage-gaps") }}
   </div>
 </section>
 
@@ -40,12 +42,13 @@
   <div class="u-section-body">
     <div class="u-scroll">
     <table class="table u-table">
-      <thead><tr><th>State</th><th class="num">Outlets</th><th class="num">Target</th><th class="num">House seats</th><th class="num u-hide-projector">Seats per outlet</th><th class="num">Stories</th><th class="num">Seat share</th><th class="num">Story share</th><th class="num">Ratio</th><th>Reading</th><th class="num u-hide-projector">From own outlets</th></tr></thead>
+      <thead><tr><th>State</th><th class="num">Enabled</th><th class="num">Working</th><th class="num">Target</th><th class="num">House seats</th><th class="num u-hide-projector">Seats per outlet</th><th class="num">Stories</th><th class="num">Seat share</th><th class="num">Story share</th><th class="num">Ratio</th><th>Reading</th><th class="num u-hide-projector">Stories from own outlets</th></tr></thead>
       <tbody>
       {% for s in states %}
       <tr class="{{ 'u-row-flag' if s.enabled_outlets <= 1 else '' }}">
         <td>{{ s.usps }} {% if s.battleground %}<span class="u-tag">battleground</span>{% endif %}</td>
         <td class="num">{{ s.enabled_outlets }}{% if s.gap %} <span class="u-tag u-tag-warn">{{ s.gap }} short</span>{% endif %}</td>
+        <td class="num">{{ s.working_outlets if s.working_outlets is not none else '—' }}</td>
         <td class="num">{{ s.target }}</td>
         <td class="num">{{ s.house_seats }}</td>
         <td class="num u-hide-projector">{{ '%.1f' % s.seats_per_outlet if s.seats_per_outlet else '—' }}</td>
@@ -69,7 +72,7 @@
   <div class="u-section-body">
         <div class="u-scroll">
         <table class="table u-table">
-          <thead><tr><th>State</th><th class="num">Enabled</th><th class="num">Target</th><th>Enabled outlets</th><th>No working feed</th></tr></thead>
+          <thead><tr><th>State</th><th class="num">Enabled</th><th class="num">Target</th><th>Enabled outlets</th><th>No feed enabled</th></tr></thead>
           <tbody>
           {% for s in under_target %}
           <tr><td>{{ s.name }}</td><td class="num">{{ s.enabled_outlets }}</td><td class="num">{{ s.target }}</td><td>{{ (s.enabled_names or [])|join(', ') or 'None' }}</td><td>{{ (s.no_feed_names or [])|join(', ') or '—' }}</td></tr>
@@ -79,6 +82,7 @@
           </tbody>
         </table>
         </div>
+        {{ u.show_query(queries.states, "coverage-below-target") }}
   </div>
 </section>
 
@@ -87,7 +91,7 @@
   <div class="u-section-body">
         <h3 class="u-chart-title">Outlets whose own notes name more than one state</h3>
         <ul class="u-list">
-          {% for o in filed %}<li>{{ o.name }}: filed under {{ o.home_state or 'no state' }}. Note: {{ o.notes }}.{% if not o.enabled %} <span class="u-tag u-tag-warn">no working feed</span>{% endif %}</li>{% else %}<li>None.</li>{% endfor %}
+          {% for o in filed %}<li>{{ o.name }}: filed under {{ o.home_state or 'no state' }}. Note: {{ o.notes }}.{% if not o.enabled %} <span class="u-tag u-tag-warn">no feed enabled</span>{% endif %}</li>{% else %}<li>None.</li>{% endfor %}
         </ul>
         {% if no_home_state %}<p class="u-note">Enabled state and local outlets with no home state: {{ no_home_state|join(', ') }}.</p>{% endif %}
         <h3 class="u-chart-title">Outlets whose tagged stories are mostly about another state</h3>
@@ -109,7 +113,7 @@
 </section>
 
 <section class="u-section" id="no-feed">
-  <div class="u-section-head"><h2 class="u-section-title">Outlets with no working feed: {{ groups.total }}</h2><span class="panel-note">grouped by reason</span></div>
+  <div class="u-section-head"><h2 class="u-section-title">Listed outlets with no feed enabled: {{ groups.total }}</h2><span class="panel-note">grouped by reason</span></div>
   <div class="u-section-body">
     {% if not report.found %}<p class="banner-warn u-error">reports/feed_validation.md is missing, so reasons cannot be shown.</p>{% endif %}
     <div class="u-scroll">
@@ -123,17 +127,22 @@
     </table>
     </div>
     {% call u.caveat("How these reasons were recorded") %}
-    <p>Reasons come from <code>reports/feed_validation.md</code>{% if report.generated %}, generated {{ report.generated }}{% endif %}. Each is the most common failure among the URLs tried for that outlet at that time, not a current check. Blocked means HTTP 401, 402, 403, 406, or 429. No feed found means HTTP 404 or 410 on every URL tried. Sites that blocked a request were not retried with a different identity.</p>
+    <p>Reasons come from <code>reports/feed_validation.md</code>{% if report.generated %}, generated {{ report.generated }}{% endif %}. Each is the most common failure among the URLs tried for that outlet at that time, not a current check. Blocked means that failure was HTTP 401, 402, 403, 406, or 429. No feed found means it was HTTP 404 or 410. Sites that blocked a request were not retried with a different identity.</p>
     {% if tried.retried %}<p>Retried with other feed URLs and still failed: {{ tried.retried }}.</p>{% endif %}
     {% if tried.new_candidates %}<p>Replacement candidates that also failed: {{ tried.new_candidates }}.</p>{% endif %}
     {% endcall %}
+    {{ u.show_query(queries.outlets, "coverage-no-feed") }}
   </div>
 </section>
 
 <section class="u-section" id="failing-now">
   <div class="u-section-head"><h2 class="u-section-title">Enabled outlets that are failing or silent</h2><span class="panel-note">live pipeline state</span></div>
   <div class="u-section-body">
+    {% if not pipeline.available %}
+    {{ u.status_unavailable(pipeline) }}
+    {% else %}
     <h3 class="u-chart-title">Feeds failing right now: {{ feeds_now|length }}</h3>
+    {% endif %}
     {% if feeds_now %}
     <div class="u-scroll">
     <table class="table u-table">
@@ -148,7 +157,7 @@
 </section>
 
 <section class="u-section" id="lean">
-  <div class="u-section-head"><h2 class="u-section-title">Lean: {{ unrated.outlet_share|u_pct(0) }} of enabled outlets are unrated</h2><span class="panel-note">stories count all copies, in the window</span></div>
+  <div class="u-section-head"><h2 class="u-section-title">Lean: {{ no_rating_share|u_pct(0) }} of enabled outlets have no rating</h2><span class="panel-note">stories count all copies, in the window</span></div>
   <div class="u-section-body">
     {% call u.caveat("Where the ratings come from") %}
     <p>Ratings come from AllSides search-result text, because allsides.com blocks direct fetches. No AllSides page was loaded directly. The owner confirmed {{ rated_total }} national and analysis outlets. Everything else shows Unrated, including every state and local outlet. A rating describes an outlet as a whole, not a story.</p>
@@ -187,7 +196,7 @@
   <div class="u-section-body">
     <div class="u-scroll">
     <table class="table u-table">
-      <thead><tr><th>Language</th><th class="num">Enabled outlets</th><th>Sample target</th><th class="num">Items</th><th class="num">Relevant</th><th class="num">Relevant, unique</th><th>No working feed</th></tr></thead>
+      <thead><tr><th>Language</th><th class="num">Enabled outlets</th><th>Sample target</th><th class="num">Items</th><th class="num">Relevant</th><th class="num">Relevant, unique</th><th>No feed enabled</th></tr></thead>
       <tbody>
       {% for row in languages %}
       <tr><td>{{ row.name }}</td><td class="num">{{ row.enabled_outlets }}</td><td>{{ row.target }}</td><td class="num">{{ row['items']|u_int }}</td><td class="num">{{ row.relevant|u_int }}</td><td class="num">{{ row.relevant_unique|u_int }}</td><td>{{ (row.no_feed_names or [])|join(', ') or '—' }}</td></tr>

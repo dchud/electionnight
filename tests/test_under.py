@@ -2,8 +2,11 @@
 
 import hashlib
 import json
+import re
 import sqlite3
+import time
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 import zstandard
@@ -12,20 +15,28 @@ from fastapi.testclient import TestClient
 
 from monitor.lake import BatchWriter, connect
 from monitor.web.app import create_app
+from monitor.web.filters import Filters
 from monitor.web.under import (
+    GATE_BUSY,
+    ChildOutcome,
     Under,
     child_env,
     key_sql,
     run_worker,
     score_agreement,
     table_key,
+    worth_keeping,
 )
 from monitor.web.under_coverage import (
+    conclusions,
+    coverage,
     failure_group,
     read_replacement_failures,
     read_report,
     state_reading,
 )
+from monitor.web.under_trace import panel_checks, records, trace
+from monitor.web.under_worker import feed_entry_excerpt
 
 NOW = datetime.now(UTC) - timedelta(minutes=5)
 OLD = NOW - timedelta(hours=3)
@@ -585,7 +596,7 @@ def seed(settings):
     settings.paths.status.write_text(
         json.dumps(
             {
-                "updated_at": NOW.isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
                 "started_at": OLD.isoformat(),
                 "feeds": {"healthy": 1, "total": 2},
                 "feed_details": [
@@ -627,16 +638,64 @@ def lake_settings(lake_template, tmp_path_factory):
     return settings
 
 
+def app_client(settings):
+    """A client the loopback checks on the SQL console accept."""
+    return TestClient(
+        create_app(settings),
+        base_url="http://127.0.0.1:8000",
+        client=("127.0.0.1", 50000),
+    )
+
+
 @pytest.fixture(scope="module")
 def client(lake_settings):
     """One app for this module's tests, which only read."""
-    with TestClient(create_app(lake_settings)) as test_client:
+    with app_client(lake_settings) as test_client:
         yield test_client
 
 
 @pytest.fixture(scope="module")
 def under(client) -> Under:
     return client.app.state.web.under
+
+
+@pytest.fixture
+def busy_scans(under):
+    """Another scan holds the gate, and no earlier result is kept."""
+    under._cache.clear()
+    assert under._gate.acquire(timeout=30)
+    yield under
+    under._gate.release()
+    under._cache.clear()
+
+
+def add_rows(settings, rows):
+    """Commit rows to a lake, one transaction for all of them."""
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    for table, table_rows in rows.items():
+        writer.add(table, table_rows)
+    writer.flush()
+    conn.close()
+
+
+def touch_status(settings):
+    """Mark the status file as written just now."""
+    status = json.loads(settings.paths.status.read_text())
+    status["updated_at"] = datetime.now(UTC).isoformat()
+    settings.paths.status.write_text(json.dumps(status))
+
+
+def archive_row(kind, key, body, archive_file):
+    return {
+        "kind": kind,
+        "key": key,
+        "source_id": "peach",
+        "fetched_at": NOW,
+        "sha256": hashlib.sha256(body).hexdigest(),
+        "n_bytes": len(body),
+        "archive_file": archive_file,
+    }
 
 
 def lake_state(settings):
@@ -791,12 +850,12 @@ def test_coverage_names_the_gaps(client):
     assert "Covers GA + AL" in html
 
 
-def test_coverage_leads_with_the_unrated_share(client):
+def test_coverage_leads_with_every_outlet_that_has_no_rating(client):
     html = client.get("/under/coverage?window=24h").text
     hero = html[html.index("u-stat-hero") :]
-    # Five enabled outlets; three unrated, one rated, one non-US.
-    assert hero.index("60%") < 200
-    assert "3 of 5" in hero[:400]
+    # Five enabled outlets; three unrated, one non-US, one rated.
+    assert hero.index("80%") < 200
+    assert "4 of 5: 3 US outlets unrated, and 1 non-US" in hero[:400]
     assert "1 carry a rating" in hero[:400]
 
 
@@ -893,16 +952,41 @@ def test_storage_says_when_a_table_has_no_file(client):
     assert "has no Parquet file" in html
 
 
-def test_time_travel_compares_two_snapshots(client, under):
-    first = under.catalog(
-        "SELECT min(snapshot_id) AS a, max(snapshot_id) AS b "
-        "FROM lake.snapshots()"
-    ).first
-    html = client.get(
-        f"/under/storage?table=nlp.mentions&a={first['b']}&b={first['b']}"
-    ).text
-    assert f"AT (VERSION =&gt; {first['b']})" in html
-    assert "0 rows were added" in html
+def test_time_travel_compares_two_snapshots(settings):
+    bin_start = NOW.replace(minute=0, second=0, microsecond=0)
+
+    def rows(*counts):
+        return {
+            "gold.source_bins": [
+                {
+                    "bin_start": bin_start,
+                    "source_id": "peach",
+                    "n_items": n,
+                    "n_relevant": n,
+                }
+                for n in counts
+            ]
+        }
+
+    add_rows(settings, rows(1, 2, 3))
+    conn = connect(settings)
+    older = conn.execute(
+        "SELECT max(snapshot_id) FROM lake.snapshots()"
+    ).fetchone()[0]
+    conn.close()
+    add_rows(settings, rows(4, 5))
+    with app_client(settings) as test_client:
+        newer = test_client.app.state.web.under.snapshot_id
+        html = test_client.get(
+            f"/under/storage?table=gold.source_bins&a={older}&b={newer}"
+        ).text
+        same = test_client.get(
+            f"/under/storage?table=gold.source_bins&a={newer}&b={newer}"
+        ).text
+    assert newer > older
+    assert "2 rows were added between them" in html
+    assert f"AT (VERSION =&gt; {older})" in html
+    assert "0 rows were added between them" in same
 
 
 def test_a_table_name_outside_the_list_is_ignored(client):
@@ -1026,9 +1110,6 @@ def test_trace_of_an_old_item_says_what_is_absent(client):
 
 
 def test_trace_counts_panels_with_each_panels_filter(under):
-    from monitor.web.filters import Filters
-    from monitor.web.under_trace import panel_checks
-
     filters = Filters.parse({}, "24h")
     checks = {
         row["panel"]: row for row in panel_checks(under, "cap1", filters)
@@ -1141,13 +1222,15 @@ def test_article_page_links_to_the_trace(client):
 # Feeds and costs
 
 
-def test_feeds_view(client):
+def test_feeds_view(client, lake_settings):
+    touch_status(lake_settings)
     html = client.get("/under/feeds").text
     assert "304 not modified" in html
     assert "200 with new items" in html
     assert "HTTP 429" in html
     assert "circuit open" in html
     assert "first feed" in html or "whichever feed served it first" in html
+    assert "the server ignored the validators" not in html
 
 
 def test_costs_compute_the_caching_saving(under, client):
@@ -1207,3 +1290,704 @@ def test_trace_leaves_other_requests_alone(stored):
     from monitor.web.under_trace import trim_article_text
 
     assert trim_article_text(stored) == stored
+
+
+# A scan that fails or stops
+
+
+@pytest.mark.parametrize(
+    ("path", "absent"),
+    [
+        ("/under", "No item has both"),
+        ("/under/trace", "No item has both"),
+        ("/under/inventory", "no table has more rows than keys"),
+        ("/under/inventory", "keys scanned just now"),
+        ("/under/storage?table=nlp.embeddings", "No maintenance recorded"),
+        ("/under/storage?table=nlp.embeddings", "rows were added between"),
+        ("/under/storage?table=nlp.embeddings", "No rows were added"),
+        ("/under/data-model?table=raw.items", "This table has no rows."),
+        ("/under/models", "No prompts recorded"),
+        ("/under/models", "No traces recorded"),
+        ("/under/feeds", "No polls recorded"),
+        ("/under/feeds", "Every polled feed has added an item"),
+        ("/under/trace/cap1", "No raw entry is stored"),
+        ("/under/trace/cap1", "rich raw entries started"),
+        ("/under/trace/cap1", "No sighting is recorded"),
+        ("/under/trace/cap1", "No trace names this item"),
+        ("/under/trace/cap1", "none recorded"),
+        ("/under/trace/cap1", "No entity row"),
+        ("/under/trace/cap1", "No place row"),
+        ("/under/trace/cap1", "No dedupe row"),
+        ("/under/trace/cap1", "No storyline row"),
+        ("/under/trace/cap1", "No decision is recorded"),
+        ("/under/records?feed=example", "0 items match"),
+        ("/under/records?feed=example", "No item matches"),
+    ],
+)
+def test_a_failed_scan_does_not_read_as_no_data(
+    client, busy_scans, path, absent
+):
+    html = client.get(path).text
+    assert absent not in html
+    assert GATE_BUSY in html
+    assert ">Retry</button>" in html
+
+
+@pytest.mark.parametrize(
+    ("kind", "absent"),
+    [
+        ("pages", "No archived page is recorded"),
+        ("feeds", "No archived feed payload is recorded"),
+    ],
+)
+def test_a_failed_scan_is_not_a_missing_archive_record(
+    client, busy_scans, kind, absent
+):
+    html = client.get(f"/under/trace/cap1/archive/{kind}").text
+    assert absent not in html
+    assert "did not finish" in html
+    assert GATE_BUSY in html
+    assert f'hx-get="/under/trace/cap1/archive/{kind}"' in html
+
+
+def test_a_stopped_scan_continues_on_retry(under, monkeypatch):
+    sent = []
+
+    def stopped_after_one(request, limit, sandbox=False):
+        names = [statement["name"] for statement in request["statements"]]
+        sent.append(names)
+        record = {
+            "name": names[0],
+            "columns": ["n"],
+            "rows": [[len(sent)]],
+            "truncated": False,
+            "ms": 1,
+        }
+        return ChildOutcome(records=[record], timed_out=True)
+
+    monkeypatch.setattr("monitor.web.under.run_worker", stopped_after_one)
+    statements = [("a", "SELECT 1", None), ("b", "SELECT 2", None)]
+    first = under.scan("retry", statements)
+    assert first["a"].first == {"n": 1}
+    assert "Not finished" in first["b"].error
+    second = under.scan("retry", statements)
+    assert sent == [["a", "b"], ["b"]]
+    assert second["a"].first == {"n": 1}
+    assert second["b"].first == {"n": 2}
+    assert under.scan("retry", statements)["b"].ok
+    assert len(sent) == 2
+
+
+def test_a_failed_rescan_keeps_the_last_result(under, monkeypatch):
+    statements = [("kept", "SELECT 1 AS n", None)]
+    under.scan("rescan", statements)
+    monkeypatch.setattr(
+        "monitor.web.under.run_worker",
+        lambda *_: ChildOutcome(timed_out=True),
+    )
+    ran = under.scan("rescan", statements, ttl=0.0)["kept"]
+    assert ran.ok
+    assert ran.first == {"n": 1}
+    assert ran.age_seconds is not None
+
+
+def test_a_busy_gate_returns_at_once(busy_scans):
+    started = time.monotonic()
+    ran = busy_scans.scan("busy", [("one", "SELECT 1 AS n", None)])["one"]
+    outcome = busy_scans.worker_call(("busy",), {}, 1.0, 1.0)
+    assert time.monotonic() - started < 1.0
+    assert ran.error == GATE_BUSY
+    assert outcome.failed == GATE_BUSY
+
+
+def test_a_long_result_is_not_cached(under, monkeypatch):
+    monkeypatch.setattr("monitor.web.under.CACHE_MAX_ROWS", 1)
+    statements = [
+        ("long", "SELECT * FROM range(2)", None),
+        ("short", "SELECT 1 AS n", None),
+    ]
+    results = under.scan("long", statements)
+    assert len(results["long"].rows) == 2
+    assert set(under._recall(("scan", "long"))) == {"short"}
+    sql = "SELECT unnest($ids) AS kept_out"
+    assert len(under.local(sql, {"ids": [1, 2]}).rows) == 2
+    assert not [key for key in under._cache if sql in str(key)]
+
+
+def test_scan_age_follows_the_wall_clock(under, monkeypatch):
+    statements = [("slept", "SELECT 1 AS n", None)]
+    assert under.scan("sleep", statements)["slept"].age_seconds is None
+    now = time.time()
+    # The monotonic clock stops while the laptop sleeps.
+    clock = SimpleNamespace(
+        time=lambda: now + 3600,
+        monotonic=time.monotonic,
+        sleep=time.sleep,
+    )
+    monkeypatch.setattr("monitor.web.under.time", clock)
+    assert under._gate.acquire(timeout=30)
+    try:
+        ran = under.scan("sleep", statements)["slept"]
+    finally:
+        under._gate.release()
+    assert ran.ok
+    assert ran.age_seconds >= 3600
+
+
+def test_an_aged_scan_does_not_promise_two_minutes(client, under):
+    under._cache.clear()
+    path = "/under/data-model?table=nlp.embeddings"
+    client.get(path)
+    html = client.get(path).text
+    assert "so they can trail the snapshot" in html
+    assert "up to 2 minutes" not in html
+
+
+@pytest.mark.parametrize(
+    ("records_seen", "timed_out", "kept"),
+    [
+        ([{"name": "record", "scanned": 1}], False, True),
+        ([{"name": "record", "scanned": 1}], True, False),
+        ([{"name": "record", "missing": True, "scanned": 1}], False, False),
+        ([{"name": "_fatal", "error": "broken"}], False, False),
+        ([], False, False),
+    ],
+)
+def test_only_a_finished_answer_is_kept(records_seen, timed_out, kept):
+    outcome = ChildOutcome(records=records_seen, timed_out=timed_out)
+    assert worth_keeping(outcome) is kept
+
+
+# Archive records
+
+
+FEED_OF_TWO = (
+    b"<rss><channel>"
+    b"<item><title>Alpha story</title>"
+    b"<guid>https://example.com/alpha</guid></item>"
+    b"<item><title>Beta story</title>"
+    b"<guid>https://example.com/beta</guid></item>"
+    b"</channel></rss>"
+)
+
+
+def test_two_items_in_one_payload_each_show_their_own_entry(settings):
+    write_archive(
+        settings.paths.archive / "feeds" / FEED_ARCHIVE,
+        [(FEED_URL, FEED_OF_TWO)],
+    )
+    add_rows(
+        settings,
+        {
+            "raw.items": [item("alpha", NOW), item("beta", NOW)],
+            "raw.archive_index": [
+                archive_row("feeds", FEED_URL, FEED_OF_TWO, FEED_ARCHIVE)
+            ],
+        },
+    )
+    with app_client(settings) as test_client:
+        alpha = test_client.get("/under/trace/alpha/archive/feeds").text
+        beta = test_client.get("/under/trace/beta/archive/feeds").text
+    assert "Alpha story" in alpha
+    assert "Beta story" not in alpha
+    assert "Beta story" in beta
+    assert "Alpha story" not in beta
+
+
+def test_an_unflushed_record_is_read_when_it_arrives(settings):
+    page = b"<html>the page</html>"
+    path = settings.paths.archive / "pages" / PAGE_ARCHIVE
+    part = path.with_name(path.name + ".part")
+    write_archive(part, [("other", b"other body")])
+    add_rows(
+        settings,
+        {
+            "raw.items": [item("alpha", NOW)],
+            "raw.archive_index": [
+                archive_row("pages", "alpha", page, PAGE_ARCHIVE)
+            ],
+        },
+    )
+    with app_client(settings) as test_client:
+        url = "/under/trace/alpha/archive/pages"
+        assert "Open this again shortly" in test_client.get(url).text
+        part.unlink()
+        write_archive(path, [("other", b"other body"), ("alpha", page)])
+        assert "matches the index" in test_client.get(url).text
+
+
+@pytest.mark.parametrize(
+    ("body", "needle", "wanted", "unwanted"),
+    [
+        # A shorter URL is inside a longer one.
+        (
+            b"<item><title>Wrong</title><guid>https://x.org/s-10</guid>"
+            b"</item><item><title>Right</title>"
+            b"<guid>https://x.org/s-1</guid></item>",
+            "https://x.org/s-1",
+            b"Right",
+            b"Wrong",
+        ),
+        # A numeric guid is inside an image URL.
+        (
+            b"<item><title>Wrong</title><enclosure url='https://x.org/4821.jpg'"
+            b"/><guid isPermaLink='false'>9</guid></item><item><title>Right"
+            b"</title><guid isPermaLink='false'>4821</guid></item>",
+            "4821",
+            b"Right",
+            b"Wrong",
+        ),
+        # A story links to another story before that story's own entry.
+        (
+            b'<item><title>Wrong</title><description><![CDATA[<a href="'
+            b'https://x.org/s">more</a>]]></description></item><item><title>'
+            b"Right</title><link>https://x.org/s</link></item>",
+            "https://x.org/s",
+            b"Right",
+            b"Wrong",
+        ),
+        # An Atom link, and an escaped ampersand.
+        (
+            b'<entry><title>Right</title><link rel="alternate" href="'
+            b'https://x.org/?a=1&amp;b=2"/></entry>',
+            "https://x.org/?a=1&b=2",
+            b"Right",
+            b"Wrong",
+        ),
+    ],
+)
+def test_feed_excerpt_finds_a_whole_value(body, needle, wanted, unwanted):
+    excerpt = feed_entry_excerpt(body, [needle], 6000)
+    assert wanted in excerpt
+    assert unwanted not in excerpt
+    assert excerpt.endswith((b"</item>", b"</entry>"))
+
+
+def test_feed_excerpt_with_no_whole_value_finds_nothing():
+    body = b"<item><link>https://x.org/s-10</link></item>"
+    assert feed_entry_excerpt(body, ["https://x.org/s-1"], 6000) == b""
+
+
+# Trace
+
+
+def test_stage_line_describes_the_newest_row(settings):
+    seen = NOW - timedelta(minutes=30)
+    later = NOW + timedelta(minutes=4)
+    add_rows(
+        settings,
+        {
+            "raw.items": [item("alpha", seen)],
+            "nlp.classify_a": [
+                classified(
+                    "alpha",
+                    method="keywords",
+                    created_at=seen + timedelta(minutes=1),
+                )
+            ],
+            "nlp.parser_runs": [
+                {
+                    "item_id": "alpha",
+                    "parser": "classify_a",
+                    "parser_version": "1",
+                    "status": "ok",
+                    "created_at": seen + timedelta(minutes=1),
+                }
+            ],
+        },
+    )
+    add_rows(
+        settings,
+        {
+            "nlp.classify_a": [
+                classified("alpha", parser_version="2", created_at=later)
+            ],
+            "nlp.parser_runs": [
+                {
+                    "item_id": "alpha",
+                    "parser": "classify_a",
+                    "parser_version": "2",
+                    "status": "ok",
+                    "created_at": later,
+                }
+            ],
+        },
+    )
+    with app_client(settings) as test_client:
+        web = test_client.app.state.web
+        data = trace(web.under, "alpha", Filters.parse({}, "24h"))
+        newest = web.under.snapshot_id
+    stage = next(s for s in data["stages"] if s["table"] == "nlp.classify_a")
+    assert stage["n"] == 2
+    assert stage["version"] == "2"
+    assert stage["created"] == later
+    assert stage["latency"] == pytest.approx(34 * 60)
+    assert stage["snapshot"] == newest
+
+
+def test_panel_checks_match_what_the_panels_draw(settings):
+    add_rows(
+        settings,
+        {
+            "ref.sources": [
+                source("peach", "Peach Post"),
+                source(
+                    "times",
+                    "National Times",
+                    lean_label="LL",
+                    lean_source_url="https://www.allsides.com/times",
+                ),
+            ],
+            "raw.items": [
+                item("plain", NOW),
+                item("rated", NOW, source_id="times"),
+                item("loose", NOW),
+            ],
+            "nlp.classify_a": [
+                classified("plain"),
+                classified("rated"),
+                classified("loose"),
+            ],
+            "nlp.storyline_assign": [
+                {
+                    "item_id": item_id,
+                    "storyline_id": storyline_id,
+                    "similarity": 0.95,
+                    "assigned_at": NOW,
+                }
+                for item_id, storyline_id in (
+                    ("plain", "named"),
+                    ("rated", "named"),
+                    ("loose", "unnamed"),
+                )
+            ],
+            "nlp.storylines": [
+                {
+                    "storyline_id": "named",
+                    "version": 1,
+                    "label": "A named story",
+                    "status": "active",
+                },
+                {"storyline_id": "unnamed", "version": 1, "status": "active"},
+            ],
+        },
+    )
+    filters = Filters.parse({}, "24h")
+    with app_client(settings) as test_client:
+        web = test_client.app.state.web
+
+        def counts(item_id, panel):
+            checks = panel_checks(web.under, item_id, filters)
+            return next(c for c in checks if c["panel"] == panel)["counts"]
+
+        cells = {
+            cell["bucket"]: cell["share"]
+            for cell in web.panels.coverage_matrix(filters)
+        }
+        series = {
+            row["storyline_id"]: row["total"]
+            for row in web.panels.stream_rows(filters)
+        }
+        assert cells["LL"] > 0
+        assert "Unrated" not in cells
+        assert counts("rated", "Coverage by Lean")
+        assert not counts("plain", "Coverage by Lean")
+        assert series["other"] == 1
+        assert counts("loose", "Storyline Stream")
+        assert counts("plain", "Storyline Stream")
+
+
+def test_a_move_around_a_gap_is_not_called_backlog(settings):
+    add_rows(
+        settings,
+        {
+            "raw.items": [
+                item("gapitem", NOW, published_at=NOW - timedelta(minutes=20)),
+                item("stale", NOW, published_at=NOW - timedelta(days=3)),
+            ],
+            "raw.collection_gaps": [
+                {
+                    "gap_start": NOW - timedelta(minutes=40),
+                    "gap_end": NOW - timedelta(minutes=5),
+                    "reason": "sleep",
+                }
+            ],
+        },
+    )
+    with app_client(settings) as test_client:
+        gap = test_client.get("/under/trace/gapitem").text
+        stale = test_client.get("/under/trace/stale").text
+        inventory = test_client.get("/under/inventory").text
+    assert "published during a collection gap" in gap
+    assert "over 2 hours before it was first seen" not in gap
+    assert "over 2 hours before it was first seen" in stale
+    assert "published during a collection gap" not in stale
+    assert "It does the same for 1 items published during" in inventory
+
+
+def test_trace_discloses_every_query_it_ran(client):
+    html = client.get("/under/trace/cap1").text
+    for sql in (
+        "One item with its outlet.",
+        "min(created_at) AS first_row",
+        "f.dup_group_id = $group",
+        "FROM storylines WHERE storyline_id = $id",
+    ):
+        assert sql in html, sql
+
+
+# Records
+
+
+def test_a_capped_id_scan_says_the_count_is_a_floor(
+    client, under, monkeypatch
+):
+    monkeypatch.setattr("monitor.web.under_trace.FEED_MATCH_LIMIT", 2)
+    under._cache.clear()
+    html = client.get(
+        "/under/records", params={"feed": "example.com/feed"}
+    ).text
+    under._cache.clear()
+    assert "At least 2 items match" in html
+    assert "matched more than 2 items" in html
+
+
+def test_records_do_not_show_defaults_as_stored_values(settings):
+    add_rows(settings, {"raw.items": [item("bare", NOW)]})
+    with app_client(settings) as test_client:
+        html = test_client.get("/under/records").text
+        under = test_client.app.state.web.under
+        canonical = records(under, {"status": "canonical"})
+        not_relevant = records(under, {"status": "not_relevant"})
+    assert "<td>not classified</td>" in html
+    assert "<td>no row</td>" in html
+    assert canonical["total"] == 0
+    assert not_relevant["total"] == 0
+
+
+def test_parser_run_filter_uses_each_items_newest_run(settings):
+    def run(item_id, status, when):
+        return {
+            "item_id": item_id,
+            "parser": "extract_b",
+            "parser_version": "1",
+            "status": status,
+            "created_at": when,
+        }
+
+    add_rows(
+        settings,
+        {
+            "raw.items": [item("healed", NOW), item("broken", NOW)],
+            "nlp.parser_runs": [
+                run("healed", "error", NOW - timedelta(minutes=9)),
+                run("healed", "ok", NOW),
+                run("broken", "error", NOW),
+            ],
+        },
+    )
+    with app_client(settings) as test_client:
+        under = test_client.app.state.web.under
+        errors = records(under, {"run": "extract_b:error"})
+        finished = records(under, {"run": "extract_b:ok"})
+    assert {row["item_id"] for row in errors["rows"]} == {"broken"}
+    assert {row["item_id"] for row in finished["rows"]} == {"healed"}
+    choices = {(c["status"], c["n"]) for c in errors["run_choices"]}
+    assert choices == {("error", 1), ("ok", 1)}
+
+
+# Coverage and status
+
+
+def test_coverage_separates_enabled_from_working(under, lake_settings):
+    touch_status(lake_settings)
+    data = coverage(under, Filters.parse({}, "24h"))
+    assert data["enabled"] == 5
+    assert data["working"] == 1
+    by_state = {row["usps"]: row for row in data["states_alpha"]}
+    assert by_state["GA"]["enabled_outlets"] == 2
+    assert by_state["GA"]["working_outlets"] == 1
+    assert by_state["MS"]["working_outlets"] == 0
+
+
+def test_working_means_a_feed_succeeded_recently(under):
+    long_ago = datetime.now(UTC) - timedelta(hours=2)
+    pipeline = {
+        "available": True,
+        "status": {
+            "feed_details": [
+                {
+                    "source_id": "fresh",
+                    "last_success_at": datetime.now(UTC).isoformat(),
+                },
+                {
+                    "source_id": "old",
+                    "last_success_at": long_ago.isoformat(),
+                },
+                {"source_id": "never", "last_success_at": None},
+                {
+                    "source_id": "off",
+                    "last_success_at": datetime.now(UTC).isoformat(),
+                },
+            ]
+        },
+    }
+    enabled = {"fresh", "old", "never"}
+    assert under.working_outlets(enabled, pipeline) == {"fresh"}
+    assert under.working_outlets(enabled, {"available": False}) is None
+
+
+@pytest.mark.parametrize("state", ["missing", "stale"])
+def test_no_current_status_is_never_good_news(settings, state):
+    seed(settings)
+    add_rows(
+        settings,
+        {
+            "nlp.llm_calls": [
+                {
+                    "call_id": "call2",
+                    "purpose": "classify_a",
+                    "model": "claude-haiku-5-5",
+                    "input_tokens": 1,
+                    "cache_read_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "output_tokens": 1,
+                    "usd_est": 1.25,
+                    "latency_ms": 10,
+                    "status": "ok",
+                }
+            ]
+        },
+    )
+    if state == "missing":
+        settings.paths.status.unlink()
+    else:
+        status = json.loads(settings.paths.status.read_text())
+        status["updated_at"] = (
+            datetime.now(UTC) - timedelta(hours=1)
+        ).isoformat()
+        settings.paths.status.write_text(json.dumps(status))
+    with app_client(settings) as test_client:
+        feeds = test_client.get("/under/feeds").text
+        page = test_client.get("/under/coverage?window=24h").text
+        index = test_client.get("/under").text
+        costs = test_client.get("/under/costs").text
+        data = coverage(
+            test_client.app.state.web.under, Filters.parse({}, "24h")
+        )
+    assert data["working"] is None
+    for html in (feeds, page, index, costs):
+        assert "Status unavailable" in html
+    assert "Every feed is ok" not in feeds
+    assert "HTTP 429" not in feeds
+    assert re.search(r"\d+ ok, \d+ failing", feeds) is None
+    assert "Feeds failing right now" not in page
+    assert "$1.25" in index
+    assert "$1.25 of" in costs
+
+
+def test_conclusion_names_the_bucket_with_stories():
+    lean = [
+        {
+            "bucket": "L",
+            "enabled_outlets": 2,
+            "stories": 3,
+            "top_outlet": "Left Paper",
+            "top_share": 1.0,
+        },
+        {
+            "bucket": "R",
+            "enabled_outlets": 1,
+            "stories": 0,
+            "top_outlet": None,
+            "top_share": None,
+        },
+    ]
+    claims = conclusions([], lean, [], [])
+    claim = next(c for c in claims if "one side" in c["claim"])
+    assert "Neither" not in claim["why"]
+    assert "no stories" in claim["why"]
+    assert "Left bucket has 3" in claim["why"]
+
+
+def test_from_own_outlets_counts_that_states_stories(settings):
+    add_rows(
+        settings,
+        {
+            "ref.sources": [
+                source("peach", "Peach Post", home_state="GA"),
+                source("times", "National Times", scope="national"),
+            ],
+            "ref.states": [
+                {"usps": "GA", "name": "Georgia", "battleground": True},
+                {"usps": "FL", "name": "Florida", "battleground": True},
+            ],
+            "raw.items": [
+                item("own", NOW),
+                item("away", NOW),
+                item("national", NOW, source_id="times"),
+            ],
+            "nlp.classify_a": [
+                classified("own"),
+                classified("away", states=["FL"]),
+                classified("national"),
+            ],
+        },
+    )
+    with app_client(settings) as test_client:
+        under = test_client.app.state.web.under
+        data = coverage(under, Filters.parse({}, "24h"))
+    by_state = {row["usps"]: row for row in data["states_alpha"]}
+    assert by_state["GA"]["stories"] == 2
+    assert by_state["GA"]["from_own_outlets"] == 1
+    assert by_state["FL"]["stories"] == 1
+    assert by_state["FL"]["from_own_outlets"] == 0
+
+
+def test_failure_reasons_name_the_most_common_failure(client):
+    html = client.get("/under/coverage?window=24h").text
+    assert "on every URL tried" not in html
+    assert "No feed found means it was HTTP 404 or 410" in html
+
+
+# Storage and costs
+
+
+def test_column_bars_are_shares_of_the_column_data(under):
+    columns = under.storage({"table": "nlp.embeddings"})["columns"]
+    assert len(columns["rows"]) > 1
+    total = sum(row["width"] for row in columns["rows"])
+    assert total == pytest.approx(100)
+    largest = columns["rows"][0]
+    assert largest["share"] == pytest.approx(
+        largest["compressed"] / columns["total_compressed"]
+    )
+
+
+def test_a_stopped_time_travel_scan_shows_no_difference(
+    client, under, monkeypatch
+):
+    def stopped_after_one(request, limit, sandbox=False):
+        statement = request["statements"][0]
+        kept = {**request, "statements": [statement]}
+        outcome = run_worker(kept, limit)
+        outcome.timed_out = True
+        return outcome
+
+    monkeypatch.setattr("monitor.web.under.run_worker", stopped_after_one)
+    under._cache.clear()
+    last = under.snapshot_id
+    html = client.get(
+        f"/under/storage?table=gold.source_bins&a={last}&b={last}"
+    ).text
+    under._cache.clear()
+    assert "rows were added between them" not in html
+    assert "No rows were added" not in html
+    assert "The difference is not known" in html
+
+
+def test_token_note_states_the_measured_share(client, under):
+    assert under.costs()["cache_read_share"] == pytest.approx(0.9)
+    html = client.get("/under/costs").text
+    assert "90% of input tokens were read from the cache" in html
+    assert "Most input is the cached" not in html

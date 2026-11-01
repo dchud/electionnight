@@ -21,12 +21,27 @@
 </aside>
 {% endmacro %}
 
+{% macro retry() %}<button class="u-button" data-under-refresh>Retry</button>{% endmacro %}
+
 {% macro error_note(message) %}
 {% if message %}<p class="banner-warn u-error">{{ message }}</p>{% endif %}
 {% endmacro %}
 
+{# A scan that did not finish says nothing about what the lake holds. #}
+{% macro scan_failed(message) %}
+{% if message %}<p class="banner-warn u-error">This scan did not finish, so these figures are not known. {{ message }} {{ retry() }}</p>{% endif %}
+{% endmacro %}
+
+{% macro scans_failed(messages) %}
+{% if messages %}<div class="banner-warn u-error"><p>A scan did not finish, so a blank figure on this page is not known. It does not mean zero. {{ retry() }}</p><ul>{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul></div>{% endif %}
+{% endmacro %}
+
+{% macro status_unavailable(pipeline) %}
+<p class="banner-warn u-error">Status unavailable. {{ pipeline.reason }} This says nothing about whether feeds are working. {{ retry() }}</p>
+{% endmacro %}
+
 {% macro ran_note(ran) %}
-{% if ran.error %}<p class="banner-warn u-error">{{ ran.error }}</p>{% endif %}
-{% if ran.age_seconds %}<p class="u-note">These figures were scanned {{ ran.age_seconds|u_secs }} ago. A scan is kept for up to 2 minutes, so it can trail the snapshot shown above.</p>{% endif %}
+{{ scan_failed(ran.error) }}
+{% if ran.age_seconds %}<p class="u-note">These figures were scanned {{ ran.age_seconds|u_secs }} ago, so they can trail the snapshot shown above.</p>{% endif %}
 {% if ran.truncated %}<p class="u-note">The result was cut off at the row limit.</p>{% endif %}
 {% endmacro %}

@@ -10,7 +10,7 @@
   <div class="u-stat"><span class="u-stat-label">Estimated spend</span><span class="u-stat-value">${{ '%.2f' % total_usd }}</span><span class="u-stat-note">{{ calls|u_int }} calls; {{ not_ok }} not ok</span></div>
   <div class="u-stat"><span class="u-stat-label">The same calls with no cache</span><span class="u-stat-value">${{ '%.2f' % uncached_total }}</span><span class="u-stat-note">same tokens at the full input price</span></div>
   <div class="u-stat"><span class="u-stat-label">Saved by prompt caching</span><span class="u-stat-value">${{ '%.2f' % saved_total }}</span><span class="u-stat-note">{{ saved_share|u_pct(0) }} of the uncached cost</span></div>
-  <div class="u-stat"><span class="u-stat-label">Budget state</span><span class="u-stat-value">{{ budget.state or '—' }}</span><span class="u-stat-note">${{ '%.2f' % (budget.spent_today or 0) }} of ${{ '%.2f' % (budget.daily_cap or 0) }} today; ${{ '%.2f' % (budget.spent_total or 0) }} of ${{ '%.2f' % (budget.hard_cap or 0) }} in total{% if degraded %}; degraded{% endif %}</span></div>
+  <div class="u-stat"><span class="u-stat-label">Budget state</span>{% if pipeline.available and budget %}<span class="u-stat-value">{{ budget.state or '—' }}</span><span class="u-stat-note">${{ '%.2f' % (budget.spent_today or 0) }} of ${{ '%.2f' % (budget.daily_cap or 0) }} today; ${{ '%.2f' % (budget.spent_total or 0) }} of ${{ '%.2f' % (budget.hard_cap or 0) }} in total{% if degraded %}; degraded{% endif %}</span>{% elif pipeline.available %}<span class="u-stat-value">—</span><span class="u-stat-note">The pipeline reports no budget, so it is running without API calls. ${{ '%.2f' % total_usd }} of ${{ '%.2f' % hard_cap }} in the ledger.</span>{% else %}<span class="u-stat-value">Status unavailable</span><span class="u-stat-note">{{ pipeline.reason }} ${{ '%.2f' % total_usd }} of ${{ '%.2f' % hard_cap }} in the ledger.</span>{% endif %}</div>
 </div>
 
 <section class="u-section" id="ledger">
@@ -31,7 +31,8 @@
     {% for row in token_rows %}
     <div class="u-bars-row"><span>{{ row.kind }}</span><span class="bar-track"><span class="bar-fill" style="width:{{ '%.1f' % row.width }}%"></span></span><span class="num">{{ row.n|u_int }}</span></div>
     {% endfor %}
-    <p class="u-note">Most input is the cached system prompt, read again on every call. That is what caching saves.</p>
+    <p class="u-note">{{ cache_read_share|u_pct(0) }} of input tokens were read from the cache. The cached part of a request is its system prompt, which repeats on every call.</p>
+    {{ u.show_query(queries.ledger, "costs-tokens") }}
   </div>
 </section>
 

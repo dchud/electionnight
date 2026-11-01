@@ -24,8 +24,8 @@ from monitor.web.under_trace import (
 router = APIRouter(prefix="/under")
 
 MAX_SQL_BYTES = 100_000
-LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
-LOOPBACK_NAMES = {"127.0.0.1", "[::1]", "localhost", "testserver"}
+LOOPBACK_HOSTS = {"127.0.0.1", "::1"}
+LOOPBACK_NAMES = {"127.0.0.1", "[::1]", "localhost"}
 
 NAV = (
     ("index", "/under", "Overview"),
@@ -214,14 +214,14 @@ def _local_request(request: Request) -> bool:
     client = request.client.host if request.client else ""
     if client not in LOOPBACK_HOSTS:
         return False
-    host = request.headers.get("host", "").rsplit(":", 1)[0]
-    if host not in LOOPBACK_NAMES:
+    host = request.headers.get("host", "")
+    name = (
+        host[: host.rfind(":")] if host.rfind(":") > host.rfind("]") else host
+    )
+    if name not in LOOPBACK_NAMES:
         return False
     origin = request.headers.get("origin")
-    if origin:
-        name = origin.split("://", 1)[-1].rsplit(":", 1)[0]
-        return name in LOOPBACK_NAMES
-    return True
+    return not origin or origin == f"http://{host}"
 
 
 @router.get("/sql", response_model=None)
@@ -245,10 +245,15 @@ async def sql_run(request: Request) -> Response:
     """Reads the form body here, and runs the query in a worker thread."""
     if not _local_request(request):
         return Response("The SQL console is loopback only.", status_code=403)
-    body = (await request.body())[:MAX_SQL_BYTES].decode("utf-8", "replace")
-    sql = (parse_qs(body).get("sql") or [""])[0]
+    data = bytearray()
+    async for chunk in request.stream():
+        data += chunk
+        if len(data) > MAX_SQL_BYTES:
+            return Response("That query is too long.", status_code=413)
+    sql = (parse_qs(data.decode("utf-8", "replace")).get("sql") or [""])[0]
     result = await run_in_threadpool(_under(request).console, sql)
-    return _page(
+    return await run_in_threadpool(
+        _page,
         request,
         "sql",
         "sql",

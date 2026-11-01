@@ -17,16 +17,18 @@
   <button class="button" type="submit">Search</button>
   <a class="text-link" href="/under/records">Clear</a>
 </form>
-{% for message in errors %}{{ u.error_note(message) }}{% endfor %}
+{{ u.scans_failed(errors) }}
+{% if capped %}<p class="banner-warn u-error">A feed or parser-run filter matched more than {{ id_limit|u_int }} items. Only the first {{ id_limit|u_int }} it returned are searched, in no set order, so the count and the list are incomplete.</p>{% endif %}
 
 <section class="u-section" id="results">
-  <div class="u-section-head"><h2 class="u-section-title">{{ total|u_int }} items match</h2><span class="panel-note">newest first; {{ per_page }} per page</span></div>
+  <div class="u-section-head"><h2 class="u-section-title">{% if incomplete %}Not counted: a filter's scan did not finish{% elif capped %}At least {{ total|u_int }} items match{% else %}{{ total|u_int }} items match{% endif %}</h2><span class="panel-note">newest first; {{ per_page }} per page</span></div>
   <div class="u-section-body">
     {% call u.caveat("Reading these values") %}
     <ul>
       <li><code>source_id</code> is the first feed to serve an item, which favors the fastest poller.</li>
       <li>A similarity of 1.0 is a placeholder for an item that started a storyline.</li>
-      <li>Feed and parser-run filters are not in the fact table, so they scan <code>raw.items</code> and <code>nlp.parser_runs</code> in a child process, and they stay up to 2 minutes behind.</li>
+      <li>Feed and parser-run filters are not in the fact table, so they scan <code>raw.items</code> and <code>nlp.parser_runs</code> in a child process, and they can trail by up to 2 minutes. A parser-run filter and its counts use each item's newest run of that parser.</li>
+      <li>Relevant and Canonical read <code>not classified</code> and <code>no row</code> when an item has no row in <code>nlp.classify_a</code> or <code>nlp.dup_groups</code>.</li>
     </ul>
     {% endcall %}
     <div class="u-scroll">
@@ -42,14 +44,14 @@
         <td>{{ row.title }}</td>
         <td>{{ row.seen_raw_at|u_et }}</td>
         <td class="u-hide-projector">{% if row.moved %}{{ row.first_seen_at|u_et }}{% else %}same{% endif %}</td>
-        <td>{{ 'yes' if row.relevant else 'no' }} <span class="u-names">{{ '%.2f' % row.relevance_conf }}</span></td>
+        <td>{% if row.method %}{{ 'yes' if row.relevant else 'no' }} <span class="u-names">{{ '%.2f' % row.relevance_conf }}</span>{% else %}not classified{% endif %}</td>
         <td>{{ row.method or 'none' }}</td>
-        <td>{{ 'yes' if row.canonical else 'no' }}</td>
+        <td>{% if row.dup_group_id %}{{ 'yes' if row.canonical else 'no' }}{% else %}no row{% endif %}</td>
         <td class="num">{{ '%.3f' % row.similarity if row.similarity is not none else '—' }}</td>
         <td class="num">{{ '%+.1f' % row.tone if row.tone is not none else '—' }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="12">No item matches these filters.</td></tr>
+      <tr><td colspan="12">{% if incomplete %}No list is shown, because a filter's scan did not finish.{% else %}No item matches these filters.{% endif %}</td></tr>
       {% endfor %}
       </tbody>
     </table>

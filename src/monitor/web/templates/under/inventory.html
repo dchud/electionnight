@@ -13,11 +13,13 @@
 {{ u.show_query(totals_query, "inventory-totals") }}
 
 <section class="u-section" id="rows-keys">
-  <div class="u-section-head"><h2 class="u-section-title">Rows and distinct keys per table</h2><span class="panel-note">{% if key_age %}keys scanned {{ key_age|u_secs }} ago{% else %}keys scanned just now{% endif %}</span></div>
+  <div class="u-section-head"><h2 class="u-section-title">Rows and distinct keys per table</h2><span class="panel-note">{% if key_failures %}not every table was scanned{% elif key_age %}keys scanned {{ key_age|u_secs }} ago{% else %}keys scanned just now{% endif %}</span></div>
   <div class="u-section-body">
+    {{ u.scan_failed(catalog_error) }}
+    {{ u.scans_failed(key_failures) }}
     {% call u.caveat("Rows are not records") %}
-    <p>Every table is append-only. A correction, a recomputed bin, or a reloaded reference row is a new row, and readers take the newest row per key. So a row count measures writes, and a key count measures things. Largest gaps: {% for row in widest %}<code>{{ row.table }}</code> has {{ row.scan_rows|u_int }} rows for {{ row['keys']|u_int }} keys{{ ', ' if not loop.last else '.' }}{% else %}no table has more rows than keys.{% endfor %}</p>
-    <p><code>gold.*</code> tables recompute recent bins each cycle and append a row when a count changes, so one 5-minute bin can hold several rows. Rows come from the catalog, which knows them without opening a file. Keys need a scan, so they run in a child process and can trail the catalog by up to 2 minutes.</p>
+    <p>Every table is append-only. A correction, a recomputed bin, or a reloaded reference row is a new row, and readers take the newest row per key. So a row count measures writes, and a key count measures things. Largest gaps{% if key_failures %} among the tables scanned{% endif %}: {% for row in widest %}<code>{{ row.table }}</code> has {{ row.scan_rows|u_int }} rows for {{ row['keys']|u_int }} keys{{ ', ' if not loop.last else '.' }}{% else %}{% if key_failures %}not known, because the scan did not finish.{% else %}no table has more rows than keys.{% endif %}{% endfor %}</p>
+    <p><code>gold.*</code> tables recompute recent bins each cycle and append a row when a count changes, so one 5-minute bin can hold several rows. Rows come from the catalog, which knows them without opening a file. Keys need a scan, so they run in a child process and can trail the catalog. The heading of this section says by how much.</p>
     {% endcall %}
     <div class="u-scroll">
     <table class="table u-table">
@@ -50,7 +52,7 @@
     {% else %}
     {% call u.caveat("Most early items were backlog") %}
     <p>{{ arrivals.summary.first_15_minutes|u_int }} of {{ arrivals.summary['items']|u_int }} items arrived in the first 15 minutes, from the first fetch at {{ arrivals.first_seen|u_et }}. A feed's first fetch serves whatever it already holds, so that spike is not news volume. {{ arrivals.summary.backlog|u_int }} items were published over 2 hours before first seen.</p>
-    <p>The dashboard's time axis places those {{ arrivals.summary.moved_on_axis|u_int }} items at their published time. {{ arrivals.before_chart|u_int }} of them land before the first fetch, off the left edge of the charts below. <code>gold.*</code> bins use <code>first_seen_at</code> unchanged, so they show the spike and the dashboard does not.</p>
+    <p>The dashboard's time axis places those items at their published time. It does the same for {{ arrivals.summary.moved_for_gap|u_int }} items published during a collection gap, or in the 20 minutes before it, and first seen within 15 minutes after it. {{ arrivals.before_chart|u_int }} of these moved items land before the first fetch, off the left edge of the charts below. <code>gold.*</code> bins use <code>first_seen_at</code> unchanged, so they show the spike and the dashboard does not.</p>
     {% for bar in arrivals.spikes %}<p>At {{ bar.when }}: {{ bar.n|u_int }} items, {{ bar.backlog|u_int }} of them backlog, as {{ bar.outlets_first }} outlets delivered their first item.</p>{% endfor %}
     {% endcall %}
     <div class="u-legend">

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ from monitor.web.under import (
     Disclosed,
     Ran,
     Under,
+    failure_lines,
     parse_time,
     pretty_json,
     shorten_cell,
@@ -37,6 +39,7 @@ ARCHIVE_NAME_RE = re.compile(
 ARCHIVE_EXCERPT_BYTES = 6000
 ARTICLE_EXCERPT_CHARS = 600
 BACKFILL_SECONDS = 600
+BACKLOG_AGE = timedelta(hours=2)
 
 # Stage name, table, parser in `nlp.parser_runs`, and columns to show.
 STAGES = (
@@ -65,8 +68,8 @@ STAGES = (
 
 STATUS_CLAUSES = {
     "relevant": "f.relevant",
-    "not_relevant": "NOT f.relevant",
-    "canonical": "f.canonical",
+    "not_relevant": "NOT f.relevant AND f.method IS NOT NULL",
+    "canonical": "f.canonical AND f.dup_group_id IS NOT NULL",
     "copy": "NOT f.canonical",
     "in_storyline": "f.storyline_id IS NOT NULL",
     "no_storyline": "f.storyline_id IS NULL",
@@ -260,6 +263,10 @@ def panel_checks(
         "WHERE s.storyline_id = f.storyline_id "
         "AND coalesce(s.label, '') <> '')"
     )
+    has_lean_cell = (
+        "EXISTS (SELECT 1 FROM sources s WHERE s.source_id = f.source_id "
+        "AND s.lean_label IN ('L', 'LL', 'C', 'LR', 'R', 'NA'))"
+    )
     active = (
         "EXISTS (SELECT 1 FROM storylines s "
         "WHERE s.storyline_id = f.storyline_id AND s.status = 'active' "
@@ -308,9 +315,10 @@ def panel_checks(
         (
             "Storyline Stream",
             where(),
-            f"f.storyline_id IS NOT NULL AND {labeled}",
-            "In a labeled storyline, in the window. Only the top 10 are "
-            "named; the rest fall into Other.",
+            "f.storyline_id IS NOT NULL",
+            "In a storyline, in the window. The 10 largest labeled storylines "
+            "are named. Every other storyline, labeled or not, counts in "
+            "Other.",
         ),
         (
             "Topic Heat",
@@ -335,8 +343,10 @@ def panel_checks(
         (
             "Coverage by Lean",
             where(unique=False),
-            labeled,
-            "In a labeled storyline, in the window. Copies count.",
+            f"{labeled} AND {has_lean_cell}",
+            "In a labeled storyline, in the window, from a rated or Non-US "
+            "outlet. An Unrated outlet's item has no cell. Copies count. Only "
+            "the 12 largest storylines show.",
         ),
         (
             "Global Press",
@@ -377,6 +387,7 @@ def trace(
     first_seen = item["seen_raw_at"]
     snapshots = _snapshot_times(under, results)
     runs = results["parser_runs"].rows
+    capture_ran = under.capture_start()
     capture = under.capture_time()
     before_capture = bool(capture and first_seen and first_seen < capture)
     stages = []
@@ -406,33 +417,42 @@ def trace(
         for row in results["nlp.storyline_assign"].rows
     ]
     group = []
+    fact_queries = []
     if item.get("dup_group_id"):
-        group = under.local(
+        group_ran = under.local(
             "SELECT f.item_id, f.source_id, f.title, f.canonical, "
             "f.seen_raw_at FROM facts f WHERE f.dup_group_id = $group "
             "ORDER BY f.seen_raw_at LIMIT 12",
             {"group": item["dup_group_id"]},
-        ).rows
+        )
+        group = group_ran.rows
+        fact_queries.append(group_ran.query)
     storyline = None
     if item.get("storyline_id"):
-        rows = under.local(
+        storyline_ran = under.local(
             "SELECT storyline_id, label, status, n_items, n_sources "
             "FROM storylines WHERE storyline_id = $id",
             {"id": item["storyline_id"]},
-        ).rows
-        storyline = rows[0] if rows else None
+        )
+        storyline = storyline_ran.first or None
+        fact_queries.append(storyline_ran.query)
     briefs = under.local(
         "SELECT brief_id, created_at FROM briefs "
         "WHERE contains(citations, $item_id) ORDER BY created_at DESC",
         {"item_id": item_id},
     )
     moved = item["first_seen_at"] != item["seen_raw_at"]
+    published = item.get("published_at")
     return {
         "item": {**item, "url": safe_url(item.get("url"))},
         "before_capture": before_capture,
         "capture_time": capture,
         "moved_on_axis": moved,
+        "moved_for_backlog": moved
+        and published is not None
+        and published < first_seen - BACKLOG_AGE,
         "stages": stages,
+        "raw_ran": results["raw.items"],
         "raw_row": raw_row,
         "entry": pretty_json(entry_text),
         "rich_entry": rich_entry,
@@ -440,20 +460,26 @@ def trace(
         "calls": calls,
         "traces_ran": results["traces"],
         "mentions": mentions,
+        "mentions_ran": results["nlp.mentions"],
         "places": results["nlp.places"].rows,
+        "places_ran": results["nlp.places"],
         "rejected": results["rejected"].rows,
         "dup_rows": dup_rows,
+        "dup_ran": results["nlp.dup_groups"],
         "story_rows": story_rows,
+        "story_ran": results["nlp.storyline_assign"],
         "decisions": results["decisions"].rows,
+        "decisions_ran": results["decisions"],
         "group": group,
         "storyline": storyline,
         "briefs": briefs,
         "race_calls": results["nlp.race_calls"].rows,
         "panels": panel_checks(under, item_id, filters),
         "window": filters.window,
-        "page_archive": results["page_archive"].first,
-        "feed_archive": results["feed_archive"].first,
-        "stage_queries": [results[table].query for _, table, _, _ in STAGES]
+        "page_archive": results["page_archive"],
+        "feed_archive": results["feed_archive"],
+        "stage_queries": [fact.query, capture_ran.query]
+        + [results[table].query for _, table, _, _ in STAGES]
         + [results["parser_runs"].query, snapshots["query"]],
         "feed_queries": [
             results["raw.items"].query,
@@ -475,12 +501,15 @@ def trace(
             results["nlp.dup_groups"].query,
             results["nlp.storyline_assign"].query,
             results["decisions"].query,
+            *fact_queries,
         ],
-        "errors": [
-            f"{name}: {ran.error}"
-            for name, ran in results.items()
-            if ran.error
-        ],
+        "errors": failure_lines(
+            {
+                **results,
+                "capture start": capture_ran,
+                **snapshots["ran"],
+            }
+        ),
     }
 
 
@@ -503,6 +532,7 @@ def _snapshot_times(under: Under, results: dict[str, Ran]) -> dict[str, Any]:
     if not ids:
         return {
             "times": {},
+            "ran": {},
             "query": Disclosed(
                 "-- No stage rows, so no snapshot times were read.", "none"
             ),
@@ -516,6 +546,7 @@ def _snapshot_times(under: Under, results: dict[str, Ran]) -> dict[str, Any]:
         "times": {
             row["snapshot_id"]: row["snapshot_time"] for row in ran.rows
         },
+        "ran": {"snapshot times": ran},
         "query": ran.query,
     }
 
@@ -532,7 +563,7 @@ def _stage(
     own_runs = [run for run in runs if run["parser"] == parser]
     last_run = own_runs[-1] if own_runs else {}
     rows = ran.rows
-    row = rows[0] if rows else {}
+    row = rows[-1] if rows else {}
     created = parse_time(row.get("created_at"))
     latency = (created - first_seen).total_seconds() if created else None
     snapshot = row.get("_snapshot")
@@ -626,7 +657,18 @@ def archive_record(under: Under, item_id: str, kind: str) -> dict[str, Any]:
     )
     name = "feed_archive" if kind == "feeds" else "page_archive"
     index = results[name].first
-    base = {"kind": kind, "query": results[name].query}
+    base = {
+        "item_id": item_id,
+        "kind": kind,
+        "query": results[name].query,
+    }
+    # The feed search needs the item's row as well as the index row.
+    needed = [results[name]]
+    if kind == "feeds":
+        needed.append(results["raw.items"])
+    failed = next((ran.error for ran in needed if ran.error), None)
+    if failed:
+        return {**base, "status": "scan_failed", "error": failed}
     if not index:
         return {**base, "status": "no_index"}
     archive_file = str(index.get("archive_file") or "")
@@ -652,7 +694,7 @@ def archive_record(under: Under, item_id: str, kind: str) -> dict[str, Any]:
         else []
     )
     outcome = under.worker_call(
-        ("archive", kind, index["sha256"]),
+        ("archive", kind, item_id, index["sha256"]),
         {
             "mode": "archive",
             "path": str(chosen),
@@ -703,6 +745,7 @@ def trace_candidates(under: Under) -> dict[str, Any]:
     )
     return {
         "items": items.rows,
+        "scanned": ran.ok,
         "queries": [ran.query, items.query],
         "error": ran.error,
     }
@@ -821,8 +864,10 @@ def records(under: Under, params: Any) -> dict[str, Any]:
         ran = _ids_from_scan(
             under,
             "run",
-            "SELECT DISTINCT item_id FROM lake.nlp.parser_runs "
-            "WHERE parser = $parser AND status = $status",
+            "SELECT item_id FROM (SELECT item_id, status "
+            "FROM lake.nlp.parser_runs WHERE parser = $parser "
+            "QUALIFY row_number() OVER (PARTITION BY item_id "
+            "ORDER BY created_at DESC) = 1) WHERE status = $status",
             {"parser": run_parts[0], "status": run_parts[1]},
         )
         scans.append(ran)
@@ -830,6 +875,7 @@ def records(under: Under, params: Any) -> dict[str, Any]:
             errors.append(ran.error)
         clauses.append("f.item_id IN (SELECT unnest($run_ids))")
         binds["run_ids"] = [row["item_id"] for row in ran.rows]
+    capped = any(ran.truncated for ran in scans)
     where = " AND ".join(clauses)
     total = under.local(
         f"SELECT count(*) AS n FROM facts f WHERE {where}", binds
@@ -870,9 +916,10 @@ def records(under: Under, params: Any) -> dict[str, Any]:
         [
             (
                 "runs",
-                "SELECT parser, status, count(*) AS n "
-                "FROM lake.nlp.parser_runs GROUP BY ALL "
-                "ORDER BY parser, status",
+                "SELECT parser, status, count(*) AS n FROM (SELECT parser, "
+                "status FROM lake.nlp.parser_runs QUALIFY row_number() OVER "
+                "(PARTITION BY item_id, parser ORDER BY created_at DESC) = 1) "
+                "GROUP BY ALL ORDER BY parser, status",
                 None,
             )
         ],
@@ -898,11 +945,19 @@ def records(under: Under, params: Any) -> dict[str, Any]:
         "methods": methods.rows,
         "status_labels": STATUS_LABELS,
         "run_choices": run_choices.rows,
-        "errors": errors,
+        "errors": errors
+        + failure_lines({"feed URLs": feeds_ran, "parser runs": run_choices}),
+        "incomplete": bool(errors),
+        "capped": capped,
+        "id_limit": FEED_MATCH_LIMIT,
         "queries": [
             *[ran.query for ran in scans],
             total.query,
             rows.query,
             feeds_ran.query,
+            outlets.query,
+            languages.query,
+            methods.query,
+            run_choices.query,
         ],
     }

@@ -1,5 +1,5 @@
 -- The feeds that added the most items. A feed gets credit only when it was
--- first to serve an item, so `later_sightings` shows what it also carried.
+-- first to serve an item, so `sightings` shows what it also carried.
 WITH polls AS (
     SELECT feed_url, any_value(source_id) AS source_id, count(*) AS polls,
            coalesce(sum(n_entries), 0) AS entries_served,

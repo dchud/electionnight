@@ -12,12 +12,15 @@ times are Eastern. The dashboard is the main view; these pages explain it.
 3. Move between sections with `j` and `k`. Press `r` to refresh. Pages also
    refresh every 30 seconds unless "Every 30 s" is off; a form with focus
    holds the refresh.
-4. Every section has a "Show query" disclosure with the SQL that ran, where it
-   ran, and how long it took. Open one early, so the class knows it is there.
+4. Every section that reads a table has a "Show query" disclosure with the SQL
+   that ran, where it ran, and how long it took. Open one early, so the class
+   knows it is there. Feed state comes from the status file, and JSON schemas
+   come from code, so those two have none.
 
 These pages hold no SSE connection, so several tabs cannot use up the browser's
 connections to the dashboard. Queries that open data files run in a child
-process at low priority, stopped at 10 seconds.
+process at low priority, stopped at 10 seconds. The keyword comparison gets 30
+seconds, and an archive read gets 15.
 
 ## The order
 
@@ -38,17 +41,23 @@ process at low priority, stopped at 10 seconds.
 ### Coverage
 
 Start here. Everything after depends on it. Read the large number at the top
-aloud: the share of enabled outlets with no lean rating. Then read "The gaps,
-by name", and name AP, Reuters, the Washington Post, CNN, and USA Today.
+aloud: the share of enabled outlets with no lean rating. It counts non-US
+outlets, which this scale does not rate, and the breakdown sits under it. Then
+read "The gaps, by name", and name AP, Reuters, the Washington Post, CNN, and
+USA Today.
 
 Ratings come from AllSides search-result text, because allsides.com blocks
 direct fetches. The owner confirmed national and analysis outlets only, so no
 state or local outlet has a rating.
 
-Sort out two ideas on the location table. Outlets against target measures the
-source list. Story share against seat share measures attention, and House seats
-stand in for population because the gazetteer has none. A high ratio can come
-from a contested statewide race.
+An enabled outlet has a feed on the list. A working outlet is an enabled outlet
+with a feed that succeeded in the last hour, according to the status file. The
+page shows both.
+
+Sort out two ideas on the location table. Enabled outlets against target
+measures the source list. Story share against seat share measures attention,
+and House seats stand in for population because the gazetteer has none. A high
+ratio can come from a contested statewide race.
 
 End on "Conclusions this data cannot support". Ask the class to add one.
 
@@ -59,9 +68,11 @@ so a recomputed bin is a new row, and readers take the newest row per key.
 
 Show the arrival chart. The spike at the first fetch, 1:14 pm on November 1, is
 feed backlog, not news. A second spike is the outlets added later that
-afternoon. The dashboard places an item at its published time when that is over
-2 hours before first seen; `gold.*` bins use `first_seen_at` unchanged. So the
-two disagree on purpose. Dashboard panels read an in-memory fact table, not
+afternoon. The dashboard places an item at its published time in two cases: it
+was published over 2 hours before first seen, or it was published during a
+collection gap, or in the 20 minutes before it, and first seen within 15
+minutes after it. `gold.*` bins use `first_seen_at` unchanged. So the two
+disagree on purpose. Dashboard panels read an in-memory fact table, not
 `gold.*`.
 
 `source_id` is the first feed to serve an item, which favors the fastest
@@ -90,7 +101,8 @@ Open `/under/trace` and choose a recent item. Walk down the page:
 
 1. The raw feed entry, then the original bytes. Open "Original feed bytes".
 2. Each stage's row and latency. Buffered is when a stage finished, and
-   committed is when a reader could see it.
+   committed is when a reader could see it. When a stage has several rows, the
+   line describes the newest, the one readers use.
 3. The prompt, request, and response, with article text cut to an excerpt.
 4. Entity and place resolution, with any quote the citation check threw out.
 5. Dedupe and clustering. A stored `similarity` of 1.0 is a placeholder for an
@@ -155,9 +167,11 @@ uv run pytest tests/test_under_sql.py --basetemp=tmp/pytest-under
 
 | What you see | What it means | What to do |
 |---|---|---|
-| "These figures were scanned ... ago" | A scan is kept for up to 2 minutes, so it can trail the snapshot in the header | Nothing |
-| "Not finished when the child process stopped" | A scan reached its 10-second limit in its own process | Refresh, or use a narrower query |
-| "Another scan is running" | Scans run one at a time | Refresh in a moment |
+| "These figures were scanned ... ago" | A result is kept for 2 minutes, or 10 minutes for Parquet footers, time travel, and capture start. If a new scan does not finish, the last result stands in | Nothing |
+| "This scan did not finish" or "A scan did not finish" | A figure on that page is not known. It does not mean zero | Press Retry |
+| "Not finished when the child process stopped" | A scan reached its 10-second limit in its own process. What finished is kept | Press Retry. The next run continues with what is left |
+| "Another scan is running" | Scans run one at a time, and a page does not wait for one | Press Retry in a moment |
+| "Status unavailable" | The status file is missing, or over 3 minutes old. The pipeline may be stopped, or the laptop may have slept | Check that the pipeline is running. Spend still reads from the ledger |
 | "The local file is gone" | Archive files move to a private S3 bucket and leave this machine after 24 hours. These views do not fetch from S3 | Trace a newer item |
 | A section has no trace or decision | The item is older than capture, which started on the afternoon of November 1 | Trace a newer item |
-| Rows catalog and rows scan differ slightly | The catalog is current, and the scan is up to 2 minutes old | Nothing |
+| Rows catalog and rows scan differ slightly | The catalog is current, and the scan is as old as the section heading says | Nothing |

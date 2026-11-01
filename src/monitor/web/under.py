@@ -40,20 +40,28 @@ from monitor.settings import Settings
 from monitor.web.filters import Filters
 from monitor.web.panels import Panels, load_sql
 from monitor.web.readmodel import ReadModel
-from monitor.web.reference import Reference, feed_state
+from monitor.web.reference import (
+    STALE_STATUS_SECONDS,
+    Reference,
+    feed_state,
+)
 
 log = get(__name__)
 
 ET = ZoneInfo("America/New_York")
 WORKER = Path(__file__).with_name("under_worker.py")
 SANDBOX_EXEC = "/usr/bin/sandbox-exec"
+CONSOLE_MAX_RSS_KB = 2_000_000
+MEMORY_WATCH_SECONDS = 0.25
 CHILD_LIMIT_SECONDS = 10.0
 ARCHIVE_LIMIT_SECONDS = 15.0
 AGREEMENT_LIMIT_SECONDS = 30.0
-GATE_WAIT_SECONDS = 12.0
 SCAN_TTL_SECONDS = 120.0
 SLOW_SCAN_TTL_SECONDS = 600.0
+GATE_BUSY = "Another scan is running."
 CACHE_SIZE = 256
+CACHE_MAX_ROWS = 5000
+WORKING_WITHIN_SECONDS = 3600.0
 CONSOLE_MAX_ROWS = 1000
 AGREEMENT_SAMPLE = 2000
 READ_RETRIES = 3
@@ -320,6 +328,7 @@ class Ran:
     error: str | None = None
     truncated: bool = False
     age_seconds: float | None = None
+    scanned_at: float = 0.0
 
     @property
     def ok(self) -> bool:
@@ -466,24 +475,78 @@ def child_env() -> dict[str, str]:
     }
 
 
-def sandbox_profile(catalog: str) -> str:
-    """Reads anything. No network. Writes only what a WAL reader must.
+def _sbpl(path: Path | str) -> str:
+    """A path quoted for a sandbox profile, with symlinks resolved."""
+    text = str(Path(path).resolve())
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def sandbox_profile(catalog: str, data_path: str) -> str:
+    """No network, no new programs, and little to read or write.
+
+    Under the home directory, the child reads only the Python install, this
+    worker, DuckDB's extensions, the lake, and the catalog, so `.env` and SSH
+    keys stay out of reach whatever DuckDB allows. It can still see file names.
 
     A SQLite reader of a database in WAL mode needs write access to the `-shm`
     and `-wal` files: it takes its locks through one and creates both if no
     other connection has. The catalog file and the lake stay read-only.
     """
-    path = catalog.replace("\\", "\\\\").replace('"', '\\"')
+    home = Path.home()
+    readable = [
+        f"(subpath {_sbpl(sys.prefix)})",
+        f"(subpath {_sbpl(sys.base_prefix)})",
+        f"(subpath {_sbpl(home / '.duckdb')})",
+        f"(subpath {_sbpl(data_path)})",
+        f"(literal {_sbpl(WORKER)})",
+        f"(literal {_sbpl(catalog)})",
+        f"(literal {_sbpl(str(catalog) + '-shm')})",
+        f"(literal {_sbpl(str(catalog) + '-wal')})",
+    ]
+    programs = [
+        f"(subpath {_sbpl(sys.prefix)})",
+        f"(subpath {_sbpl(sys.base_prefix)})",
+    ]
     return (
         "(version 1)(allow default)(deny network*)(deny file-write*)"
         '(allow file-write* (literal "/dev/null"))'
-        f'(allow file-write* (literal "{path}-shm"))'
-        f'(allow file-write* (literal "{path}-wal"))'
+        f"(allow file-write* (literal {_sbpl(str(catalog) + '-shm')}))"
+        f"(allow file-write* (literal {_sbpl(str(catalog) + '-wal')}))"
+        f"(deny file-read-data (subpath {_sbpl(home)}))"
+        f"(allow file-read-data {' '.join(readable)})"
+        "(deny process-fork)"
+        "(deny process-exec*)"
+        f"(allow process-exec* {' '.join(programs)})"
+        "(deny signal)(allow signal (target self))"
     )
 
 
 def console_available() -> bool:
     return shutil.which(SANDBOX_EXEC) is not None
+
+
+def _watch_memory(
+    process: subprocess.Popen[bytes],
+    over_memory: threading.Event,
+    done: threading.Event,
+) -> None:
+    """Stop a child past the ceiling. DuckDB's limit misses Python objects."""
+    while not done.wait(MEMORY_WATCH_SECONDS):
+        try:
+            result = subprocess.run(
+                ["/bin/ps", "-o", "rss=", "-p", str(process.pid)],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+            rss = int(result.stdout.strip() or 0)
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            continue
+        if rss > CONSOLE_MAX_RSS_KB:
+            over_memory.set()
+            process.kill()
+            return
 
 
 def run_worker(
@@ -492,7 +555,7 @@ def run_worker(
     """Run one child to its end or to the limit, and read its output."""
     command = [sys.executable, "-I", str(WORKER)]
     if sandbox:
-        profile = sandbox_profile(request["catalog"])
+        profile = sandbox_profile(request["catalog"], request["data_path"])
         command = [SANDBOX_EXEC, "-p", profile, *command]
     payload = json.dumps(
         {**request, "limit_seconds": limit_seconds}, default=str
@@ -507,16 +570,33 @@ def run_worker(
             stderr=subprocess.PIPE,
             env=child_env(),
             start_new_session=True,
+            # DuckDB reads its working directory, which the profile must allow.
+            cwd=request["data_path"] if sandbox else None,
         )
     except OSError as error:
         outcome.failed = f"Could not start the child process: {error}"
         return outcome
+    over_memory = threading.Event()
+    done = threading.Event()
+    if sandbox:
+        threading.Thread(
+            target=_watch_memory,
+            args=(process, over_memory, done),
+            daemon=True,
+        ).start()
     try:
         stdout, stderr = process.communicate(payload, timeout=limit_seconds)
     except subprocess.TimeoutExpired:
         process.kill()
         outcome.timed_out = True
         stdout, stderr = process.communicate()
+    finally:
+        done.set()
+    if over_memory.is_set():
+        outcome.failed = (
+            "The query used more than "
+            f"{CONSOLE_MAX_RSS_KB // 1_000_000} GB of memory and was stopped."
+        )
     outcome.seconds = time.monotonic() - started
     outcome.stderr = stderr.decode("utf-8", "replace")[-600:]
     for line in stdout.decode("utf-8", "replace").splitlines():
@@ -525,6 +605,30 @@ def run_worker(
         except ValueError:
             continue
     return outcome
+
+
+def worth_keeping(outcome: ChildOutcome) -> bool:
+    """A finished answer. Other outcomes can change on the next try."""
+    return (
+        bool(outcome.records)
+        and not outcome.timed_out
+        and not any(
+            record.get("name") == "_fatal" or record.get("missing")
+            for record in outcome.records
+        )
+    )
+
+
+def failure_lines(results: dict[str, Ran]) -> list[str]:
+    """Each reason a scan did not finish, with what it left unread."""
+    unread: dict[str, list[str]] = {}
+    for name, ran in results.items():
+        if ran.error:
+            unread.setdefault(ran.error, []).append(name)
+    return [
+        f"{reason} Not read: {', '.join(names)}."
+        for reason, names in unread.items()
+    ]
 
 
 class Under:
@@ -576,12 +680,24 @@ class Under:
         return None
 
     def local(self, sql: str, params: dict[str, Any] | None = None) -> Ran:
-        """Query the local tables, cached for the current snapshot."""
-        frozen = tuple(sorted((k, str(v)) for k, v in (params or {}).items()))
-        key = ("local", self.snapshot_id, sql, frozen)
-        cached = self._recall(key)
-        if cached is not None:
-            return cached
+        """Query the local tables, cached for the current snapshot.
+
+        A query bound to a very long list is not cached, because its key and
+        its disclosure would each hold the whole list.
+        """
+        keep = not any(
+            isinstance(value, list | tuple) and len(value) > CACHE_MAX_ROWS
+            for value in (params or {}).values()
+        )
+        key: tuple[Any, ...] = ()
+        if keep:
+            frozen = tuple(
+                sorted((k, str(v)) for k, v in (params or {}).items())
+            )
+            key = ("local", self.snapshot_id, sql, frozen)
+            cached = self._recall(key)
+            if cached is not None:
+                return cached
         started = time.monotonic()
         rows = self.model.rows(sql, params)
         ran = Ran(
@@ -594,7 +710,8 @@ class Under:
                 len(rows),
             ),
         )
-        self._remember(key, ran)
+        if keep:
+            self._remember(key, ran)
         return ran
 
     def _catalog_conn(self) -> duckdb.DuckDBPyConnection:
@@ -664,56 +781,87 @@ class Under:
     ) -> dict[str, Ran]:
         """Run fixed statements in a child process, one child at a time.
 
-        Results are kept for `ttl` seconds, since snapshots arrive every 30 s.
-        If the child is busy or stopped early, the last results stand in, and
-        anything with no result says why.
+        Each result is kept for `ttl` seconds, since snapshots arrive every
+        30 s. A run covers only the statements with no current result, so a
+        retry continues where a stopped child left off. If another scan holds
+        the gate, this returns at once. A statement that does not finish keeps
+        its last result, or says why it has none.
         """
         cache_key = ("scan", key)
-        held = self._recall(cache_key)
-        if held and time.monotonic() - held[0] < ttl:
-            return self._aged(held)
-        if not self._gate.acquire(timeout=GATE_WAIT_SECONDS):
-            if held:
-                return self._aged(held)
-            return self._unfinished(
-                statements, "Another scan is running. Refresh in a moment."
-            )
+        held, pending = self._pending(cache_key, statements, ttl)
+        if not pending:
+            return self._settled(cache_key, statements, held, {})
+        if not self._gate.acquire(blocking=False):
+            busy = self._unfinished(pending, GATE_BUSY)
+            return self._settled(cache_key, statements, held, busy)
         try:
-            held = self._recall(cache_key)
-            if held and time.monotonic() - held[0] < ttl:
-                return self._aged(held)
+            held, pending = self._pending(cache_key, statements, ttl)
+            if not pending:
+                return self._settled(cache_key, statements, held, {})
             outcome = run_worker(
                 self._lake_request(
                     mode="scan",
                     max_rows=max_rows,
                     statements=[
                         {"name": name, "sql": sql, "params": params}
-                        for name, sql, params in statements
+                        for name, sql, params in pending
                     ],
                 ),
                 CHILD_LIMIT_SECONDS,
             )
         finally:
             self._gate.release()
-        results = self._scan_results(statements, outcome)
-        if all(ran.ok for ran in results.values()):
-            self._remember(cache_key, (time.monotonic(), results))
-            return results
-        if held:
-            merged = {
-                name: held[1][name] if not ran.ok and name in held[1] else ran
-                for name, ran in results.items()
-            }
-            self._remember(cache_key, (held[0], merged))
-            return self._aged((held[0], merged))
-        return results
+        fresh = self._scan_results(pending, outcome)
+        return self._settled(cache_key, statements, held, fresh)
 
-    @staticmethod
-    def _aged(held: tuple[float, dict[str, Ran]]) -> dict[str, Ran]:
-        age = time.monotonic() - held[0]
-        for ran in held[1].values():
-            ran.age_seconds = age
-        return held[1]
+    def _pending(
+        self,
+        cache_key: tuple[Any, ...],
+        statements: list[tuple[str, str, dict[str, Any] | None]],
+        ttl: float,
+    ) -> tuple[dict[str, Ran], list[tuple[str, str, dict[str, Any] | None]]]:
+        """The results held, and the statements with no current result."""
+        held: dict[str, Ran] = self._recall(cache_key) or {}
+        now = time.time()
+        pending = [
+            statement
+            for statement in statements
+            if statement[0] not in held
+            or now - held[statement[0]].scanned_at >= ttl
+        ]
+        return held, pending
+
+    def _settled(
+        self,
+        cache_key: tuple[Any, ...],
+        statements: list[tuple[str, str, dict[str, Any] | None]],
+        held: dict[str, Ran],
+        fresh: dict[str, Ran],
+    ) -> dict[str, Ran]:
+        """Fresh results over held ones. A failure never replaces a result.
+
+        Ages use the wall clock, because the monotonic clock stops while the
+        laptop sleeps. A very long result is not kept, so the cache stays
+        small.
+        """
+        now = time.time()
+        settled: dict[str, Ran] = {}
+        for name, _, _ in statements:
+            ran = fresh.get(name)
+            if ran is None or (not ran.ok and name in held):
+                ran = held[name]
+                ran.age_seconds = now - ran.scanned_at
+            settled[name] = ran
+        if fresh:
+            self._remember(
+                cache_key,
+                {
+                    name: ran
+                    for name, ran in settled.items()
+                    if ran.ok and len(ran.rows) <= CACHE_MAX_ROWS
+                },
+            )
+        return settled
 
     @staticmethod
     def _unfinished(
@@ -760,6 +908,7 @@ class Under:
                     rows,
                     Disclosed(sql, CHILD, params, record.get("ms"), len(rows)),
                     truncated=record.get("truncated", False),
+                    scanned_at=time.time(),
                 )
         return results
 
@@ -772,20 +921,16 @@ class Under:
     ) -> ChildOutcome:
         """One child process for work other than a list of statements."""
         held = self._recall(cache_key)
-        if held and time.monotonic() - held[0] < ttl:
+        if held and time.time() - held[0] < ttl:
             return held[1]
-        if not self._gate.acquire(timeout=GATE_WAIT_SECONDS):
-            return (
-                held[1]
-                if held
-                else ChildOutcome(failed="Another scan is running.")
-            )
+        if not self._gate.acquire(blocking=False):
+            return held[1] if held else ChildOutcome(failed=GATE_BUSY)
         try:
             outcome = run_worker(request, limit_seconds)
         finally:
             self._gate.release()
-        if outcome.records and not outcome.timed_out:
-            self._remember(cache_key, (time.monotonic(), outcome))
+        if worth_keeping(outcome):
+            self._remember(cache_key, (time.time(), outcome))
         return outcome
 
     # Shared lookups
@@ -813,23 +958,73 @@ class Under:
         known = [when for when in times if when]
         return min(known) if known else None
 
+    def pipeline_status(self) -> dict[str, Any]:
+        """The status file, and whether it describes the pipeline now."""
+        status = self.model.read_status()
+        updated = parse_time(status.get("updated_at"))
+        reason = ""
+        if updated is None:
+            reason = "The status file is missing."
+        else:
+            age = (datetime.now(UTC) - updated).total_seconds()
+            if age > STALE_STATUS_SECONDS:
+                reason = (
+                    f"The status file was last written {seconds_label(age)} "
+                    f"ago, at {et_label(updated)}."
+                )
+        return {
+            "available": not reason,
+            "reason": reason,
+            "updated": updated,
+            "status": {} if reason else status,
+        }
+
+    def working_outlets(
+        self, enabled: set[str], pipeline: dict[str, Any]
+    ) -> set[str] | None:
+        """Enabled outlets with a feed that succeeded recently.
+
+        None means the status file cannot say.
+        """
+        if not pipeline["available"]:
+            return None
+        now = datetime.now(UTC)
+        working = set()
+        for feed in pipeline["status"].get("feed_details") or []:
+            success = parse_time(feed.get("last_success_at"))
+            if success and (
+                (now - success).total_seconds() <= WORKING_WITHIN_SECONDS
+            ):
+                working.add(feed.get("source_id"))
+        return working & enabled
+
     # Landing page
 
     def overview(self) -> dict[str, Any]:
         tables = self.catalog_tables()
         rows = tables.rows
         counts = self.local(load_sql("under_overview"))
-        status = self.model.read_status()
-        llm = status.get("llm") or {}
+        spend = self.local(load_sql("under_costs_total"))
+        enabled = self.local("SELECT source_id FROM sources WHERE enabled")
+        pipeline = self.pipeline_status()
+        working = self.working_outlets(
+            {row["source_id"] for row in enabled.rows}, pipeline
+        )
         return {
             "tables": len(rows),
             "total_rows": sum(row["total_rows"] for row in rows),
             "parquet_files": sum(row["parquet_files"] for row in rows),
             "parquet_bytes": sum(row["parquet_bytes"] for row in rows),
             "counts": counts.first,
-            "feeds": status.get("feeds") or {},
-            "budget": llm.get("budget") or {},
-            "queries": [tables.query, counts.query],
+            "spend": spend.first.get("usd", 0.0),
+            "working": None if working is None else len(working),
+            "pipeline": pipeline,
+            "queries": [
+                tables.query,
+                counts.query,
+                spend.query,
+                enabled.query,
+            ],
             "error": tables.error,
         }
 
@@ -852,7 +1047,7 @@ class Under:
             f"{row['schema_name']}.{row['table_name']}": row
             for row in tables.rows
         }
-        rows = []
+        rows: list[dict[str, Any]] = []
         for table in TABLES:
             catalog_row = by_table.get(table, {})
             key_ran = keys[table]
@@ -863,7 +1058,9 @@ class Under:
                 {
                     "table": table,
                     "schema": table.split(".")[0],
-                    "rows": catalog_row.get("total_rows", 0),
+                    "rows": catalog_row.get(
+                        "total_rows", 0 if tables.ok else None
+                    ),
                     "scan_rows": n_rows,
                     "keys": n_keys,
                     "extra": (n_rows - n_keys)
@@ -879,7 +1076,6 @@ class Under:
                         if table.startswith("gold.")
                         else ""
                     ),
-                    "error": key_ran.error,
                 }
             )
         key_query = Disclosed(
@@ -904,6 +1100,8 @@ class Under:
             "table_rows": rows,
             "widest": widest[:6],
             "key_age": max(ages) if ages else None,
+            "key_failures": failure_lines(keys),
+            "catalog_error": tables.error,
             "table_queries": [tables.query, key_query],
             "totals": totals.first,
             "totals_query": totals.query,
@@ -994,6 +1192,16 @@ class Under:
         table_names = {row["table_id"]: row for row in rows}
         return {
             "rows": rows,
+            "catalog_failures": failure_lines(
+                {
+                    "tables": tables,
+                    "options": options,
+                    "files": files,
+                    "snapshots": snapshots,
+                    "kinds": kinds,
+                    "scheduled": scheduled,
+                }
+            ),
             "totals": {
                 "inlined": sum(row["inlined_rows"] for row in rows),
                 "parquet": sum(row["parquet_rows"] for row in rows),
@@ -1049,6 +1257,8 @@ class Under:
 
     def column_compression(self, table: str, files: Ran) -> dict[str, Any]:
         """Per-column sizes from the footer of the table's largest file."""
+        if files.error:
+            return {"empty": True, "failed": files.error}
         if not files.rows:
             return {
                 "empty": True,
@@ -1073,9 +1283,10 @@ class Under:
             }
             for row in ran.rows
         ]
-        peak = max((row["compressed"] for row in rows), default=0) or 1
+        total = sum(row["compressed"] for row in rows) or 1
         for row in rows:
-            row["width"] = row["compressed"] / peak * 100
+            row["share"] = row["compressed"] / total
+            row["width"] = row["share"] * 100
         return {
             "empty": False,
             "path": path,
@@ -1137,6 +1348,7 @@ class Under:
         )
         low = results["older"].first
         high = results["newer"].first
+        counted = results["older"].ok and results["newer"].ok
         return {
             "table": table,
             "a": older,
@@ -1146,12 +1358,9 @@ class Under:
             "older": low,
             "newer": high,
             "added": results["added"],
-            "difference": (high.get("n_rows", 0) or 0)
-            - (low.get("n_rows", 0) or 0),
+            "difference": high["n_rows"] - low["n_rows"] if counted else None,
             "queries": [results[name].query for name in results],
-            "error": next(
-                (ran.error for ran in results.values() if ran.error), None
-            ),
+            "failures": failure_lines(results),
         }
 
     # Data model
@@ -1281,11 +1490,7 @@ class Under:
             "placeholder": results["thresholds"].first,
             "placeholder_query": results["thresholds"].query,
             "queries": [results[p["table"]].query for p in PRODUCERS],
-            "errors": [
-                f"{name}: {ran.error}"
-                for name, ran in results.items()
-                if ran.error
-            ],
+            "errors": failure_lines(results),
             "settings": self.settings,
             "agreement": self.agreement(),
         }
@@ -1335,7 +1540,8 @@ class Under:
             "feeds",
             [(name, load_sql(f"under_feeds_{name}"), None) for name in names],
         )
-        status = self.model.read_status()
+        pipeline = self.pipeline_status()
+        status = pipeline["status"]
         details = status.get("feed_details") or []
         states = {"ok": 0, "waiting": 0, "failing": 0, "down": 0}
         feeds = []
@@ -1365,6 +1571,7 @@ class Under:
                 for row in mix
             ],
             "mix_query": results["mix"].query,
+            "mix_ok": results["mix"].ok,
             "conditional": results["conditional"],
             "tiers": results["tiers"],
             "top_feeds": results["top_feeds"],
@@ -1373,14 +1580,10 @@ class Under:
             "feeds_total": len(feeds),
             "trouble": trouble,
             "oldest": oldest[:15],
-            "status_updated": parse_time(status.get("updated_at")),
+            "pipeline": pipeline,
             "started_at": parse_time(status.get("started_at")),
             "poll": self.settings.poll,
-            "errors": [
-                f"{name}: {ran.error}"
-                for name, ran in results.items()
-                if ran.error
-            ],
+            "errors": failure_lines(results),
         }
 
     # API cost
@@ -1410,8 +1613,8 @@ class Under:
         by_day = self.local(load_sql("under_costs_by_day"))
         by_hour = self.local(load_sql("under_costs_by_hour"))
         items = self.local(load_sql("under_costs_items"))
-        status = self.model.read_status()
-        llm = status.get("llm") or {}
+        pipeline = self.pipeline_status()
+        llm = pipeline["status"].get("llm") or {}
         rows = []
         for row in ledger.rows:
             uncached = self._usd(row, uncached=True)
@@ -1435,6 +1638,8 @@ class Under:
             "cache_write": sum(row["cache_write_tokens"] for row in rows),
             "output": sum(row["output_tokens"] for row in rows),
         }
+        input_total = tokens["input"] + tokens["cache_read"]
+        input_total += tokens["cache_write"]
         peak = max(tokens.values()) or 1
         token_rows = [
             {
@@ -1481,6 +1686,9 @@ class Under:
             "calls": sum(row["calls"] for row in rows),
             "not_ok": sum(row["not_ok"] for row in rows),
             "token_rows": token_rows,
+            "cache_read_share": tokens["cache_read"] / input_total
+            if input_total
+            else None,
             "stage_rows": stage_rows,
             "by_day": [
                 {**row, "width": row["usd"] / day_peak * 100}
@@ -1490,7 +1698,9 @@ class Under:
                 {**row, "width": row["usd"] / hour_peak * 100}
                 for row in by_hour.rows
             ],
+            "pipeline": pipeline,
             "budget": llm.get("budget") or {},
+            "hard_cap": self.settings.llm.hard_usd_cap,
             "degraded": llm.get("degraded"),
             "prices": self.settings.llm.prices_per_mtok,
             "read_multiplier": self.settings.llm.cache_read_multiplier,
@@ -1547,7 +1757,9 @@ def console_result(text: str, outcome: ChildOutcome) -> dict[str, Any]:
     records = {record.get("name"): record for record in outcome.records}
     record = records.get("console")
     result: dict[str, Any] = {"sql": text, "seconds": outcome.seconds}
-    if outcome.timed_out:
+    if outcome.failed:
+        result.update(status="stopped", error=outcome.failed)
+    elif outcome.timed_out:
         result.update(
             status="stopped",
             error=f"Stopped at {CHILD_LIMIT_SECONDS:.0f} s. The query ran in "

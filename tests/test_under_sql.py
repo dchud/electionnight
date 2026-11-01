@@ -5,10 +5,13 @@ import json
 import os
 import shutil
 import sqlite3
+import subprocess
+import sys
 import threading
 import time
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from conftest import clone_lake
@@ -18,9 +21,11 @@ from structlog.testing import capture_logs
 from monitor.lake import BatchWriter, connect
 from monitor.web.app import create_app
 from monitor.web.under import (
+    SANDBOX_EXEC,
     Under,
     console_available,
     run_worker,
+    sandbox_profile,
 )
 
 needs_sandbox = pytest.mark.skipif(
@@ -191,6 +196,28 @@ def attempts(settings):
         "SELECT 1; DROP TABLE lake.raw.items",
         "SELECT 1; SELECT 2",
         "PIVOT lake.raw.items ON title USING count(*)",
+        f"SELECT * FROM range((SELECT count(*) FROM {cleanup}))",
+        f"SELECT * FROM unnest((SELECT list(path) FROM {cleanup}))",
+        "SELECT * FROM range((SELECT count(*) FROM query('SELECT 1')))",
+        "SELECT * FROM range((SELECT count(*) FROM "
+        "query_table('lake.raw.items')))",
+        "SELECT * FROM range((SELECT count(*) FROM duckdb_settings()))",
+        "SELECT * FROM range((SELECT count(*) FROM sqlite_query("
+        f"'__ducklake_metadata_lake', 'ATTACH ''{root}/x.sqlite'' AS c2')))",
+        "SELECT * FROM range((SELECT sleep_ms(100000)))",
+        f"WITH x AS (COPY (SELECT 1) TO '{data}/x.csv') SELECT * FROM x",
+        f"WITH x AS (COPY (SELECT 1) TO '{catalog}') SELECT * FROM x",
+        f"WITH x AS (COPY (SELECT 1) TO '{catalog}-wal') SELECT * FROM x",
+        "WITH x AS (DELETE FROM lake.raw.items RETURNING *) SELECT * FROM x",
+        "WITH x AS (UPDATE lake.raw.items SET title = 'x' RETURNING *) "
+        "SELECT * FROM x",
+        "WITH x AS (INSERT INTO lake.raw.items (item_id) VALUES ('x') "
+        "RETURNING *) SELECT * FROM x",
+        "SELECT pg_sleep(1)",
+        "SELECT current_setting('home_directory')",
+        "SELECT name, setting FROM pg_catalog.pg_settings",
+        "SELECT * FROM duckdb_databases()",
+        f"SHOW '{root}/.env'",
         "SELECT * FROM query('DELETE FROM lake.raw.items')",
         "SELECT * FROM query('SELECT 1')",
         "SELECT * FROM query_table('lake.raw.items')",
@@ -210,6 +237,10 @@ def reads_of_dotenv(settings):
     root = settings.paths.catalog.resolve().parent
     return [
         f"SELECT * FROM read_text('{root}/.env')",
+        f"SELECT * FROM unnest((SELECT list(content) FROM "
+        f"read_text('{root}/.env')))",
+        f"SELECT * FROM range((SELECT count(*) FROM "
+        f"read_text('{root}/.env')))",
         f"SELECT * FROM read_text('{data}/../.env')",
         f"SELECT * FROM read_text('{data}/raw/../../.env')",
         f"SELECT * FROM read_csv('{root}/.env')",
@@ -292,11 +323,106 @@ def test_sandbox_alone_stops_the_writes_that_got_through_duckdb(scratch):
         "cleanup_all => true)",
         f"COPY (SELECT 1) TO '{data}/x.csv'",
         f"COPY lake.raw.items TO '{data}/x.parquet'",
+        f"COPY (SELECT 1) TO '{scratch.paths.catalog.resolve()}'",
         f"EXPORT DATABASE '{data}/x'",
         "CHECKPOINT lake",
     ):
         run_worker(scan_request(scratch, sql), 20.0, sandbox=True)
         assert fingerprint(scratch) == before, sql
+
+
+def sandboxed_python(settings, code):
+    """Run Python directly inside the console's profile, below DuckDB."""
+    catalog = str(settings.paths.catalog.resolve())
+    data = str(settings.paths.data.resolve())
+    return subprocess.run(
+        [
+            SANDBOX_EXEC,
+            "-p",
+            sandbox_profile(catalog, data),
+            sys.executable,
+            "-I",
+            "-c",
+            code,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+@needs_sandbox
+def test_sandbox_alone_denies_reading_secrets(scratch):
+    canary = scratch.paths.catalog.resolve().parent / ".env"
+    canary.write_text("ANTHROPIC_API_KEY=canary-value")
+    result = sandboxed_python(scratch, f"print(open({str(canary)!r}).read())")
+    assert result.returncode != 0
+    assert "canary-value" not in result.stdout
+    assert "Operation not permitted" in result.stderr
+
+
+@needs_sandbox
+def test_sandbox_alone_denies_home_directory_reads(scratch):
+    target = Path.home() / ".ssh"
+    code = f"import os; print(open(os.path.join({str(target)!r}, 'config')))"
+    result = sandboxed_python(scratch, code)
+    assert result.returncode != 0
+
+
+@needs_sandbox
+def test_sandbox_alone_denies_the_network(scratch):
+    code = (
+        "import socket; s = socket.socket(); s.settimeout(3); "
+        "s.connect(('127.0.0.1', 8000))"
+    )
+    result = sandboxed_python(scratch, code)
+    assert result.returncode != 0
+    assert "not permitted" in result.stderr.lower()
+
+
+@needs_sandbox
+def test_sandbox_alone_denies_running_programs(scratch):
+    code = "import os; os.execv('/bin/ls', ['ls'])"
+    result = sandboxed_python(scratch, code)
+    assert result.returncode != 0
+    assert "not permitted" in result.stderr.lower()
+
+
+@needs_sandbox
+def test_sandbox_alone_denies_writing_the_lake(scratch):
+    target = scratch.paths.data.resolve() / "x.parquet"
+    result = sandboxed_python(scratch, f"open({str(target)!r}, 'w')")
+    assert result.returncode != 0
+    assert not target.exists()
+
+
+@needs_sandbox
+def test_memory_ceiling_stops_a_large_result(scratch):
+    outcome = run_worker(
+        console_request(
+            scratch, "SELECT repeat('x', 500000000) FROM range(20)"
+        ),
+        20.0,
+        sandbox=True,
+    )
+    assert (
+        outcome.failed
+        or outcome.timed_out
+        or any(record.get("error") for record in outcome.records)
+    )
+
+
+def test_column_names_count_toward_the_limits(scratch):
+    name = "n" * 5000
+    columns = ", ".join(f'1 AS "{name}{i}"' for i in range(300))
+    outcome = run_worker(
+        console_request(scratch, f"SELECT {columns}"), 20.0, sandbox=False
+    )
+    record = outcome.records[0]
+    assert len(record["columns"]) <= 200
+    assert all(len(column) <= 200 for column in record["columns"])
+    assert record["truncated"] is True
 
 
 @needs_sandbox
@@ -405,7 +531,11 @@ def test_large_results_are_cut_by_size(scratch):
 
 @pytest.fixture(scope="module")
 def client(scratch):
-    with TestClient(create_app(scratch)) as test_client:
+    with TestClient(
+        create_app(scratch),
+        base_url="http://127.0.0.1:8000",
+        client=("127.0.0.1", 50000),
+    ) as test_client:
         yield test_client
 
 

@@ -17,7 +17,7 @@
       </div>
       <div>
         <h3 class="u-chart-title">Live, from <code>information_schema.columns</code></h3>
-        {{ u.error_note(columns.error) }}
+        {{ u.scan_failed(columns.error) }}
         <div class="u-scroll"><table class="table u-table">
           <thead><tr><th class="num">#</th><th>Column</th><th>Type</th><th>Nullable</th></tr></thead>
           <tbody>{% for row in columns.rows %}<tr><td class="num">{{ row.ordinal_position }}</td><td>{{ row.column_name }}</td><td>{{ row.data_type }}</td><td>{{ row.is_nullable }}</td></tr>{% endfor %}</tbody>
@@ -39,6 +39,8 @@
       <tbody>{% for row in physical.rows %}<tr class="{{ 'u-row-flag' if row.duckdb_type == 'FLOAT[]' and row.name == 'vec' else '' }}"><td>{{ row.name }}</td><td>{{ row.type or '—' }}</td><td>{{ row.repetition_type }}</td><td class="num">{{ row.num_children if row.num_children is not none else '' }}</td><td>{{ row.converted_type or '' }}</td><td>{{ row.duckdb_type or '' }}</td></tr>{% endfor %}</tbody>
     </table></div>
     {{ u.show_query(physical.query, "model-physical") }}
+    {% elif files.error %}
+    {{ u.scan_failed(files.error) }}
     {% else %}
     <p class="empty">{{ table }} has no Parquet file. Its rows are inlined in the catalog, or it has no rows.</p>
     {% endif %}
@@ -56,7 +58,7 @@
       <tbody>{% for row in sample_rows %}<tr><td class="nowrap">{{ row.column }}</td><td class="u-break">{{ row.value if row.value is not none else 'NULL' }}</td></tr>{% endfor %}</tbody>
     </table></div>
     <p class="u-note"><code>_snapshot</code> and <code>_file</code> are the virtual columns <code>snapshot_id</code> and <code>filename</code>. A <code>_file</code> starting with <code>ducklake_inlined_data</code> means the row is still in the catalog.</p>
-    {% else %}
+    {% elif sample.ok %}
     <p class="empty">This table has no rows.</p>
     {% endif %}
     {{ u.show_query(sample.query, "model-sample") }}

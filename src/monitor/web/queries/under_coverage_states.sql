@@ -1,6 +1,7 @@
 -- Outlets, House seats, and stories per state. A story is a relevant, unique
 -- item the classifier tagged with the state, so one item can count in several
--- states. House seats stand in for population.
+-- states. House seats stand in for population. `from_own_outlets` is how many
+-- of those stories came from outlets filed under that state.
 WITH outlets AS (
     SELECT home_state AS usps,
            count(*) FILTER (WHERE enabled) AS enabled_outlets,
@@ -26,10 +27,14 @@ about AS (
     GROUP BY 1
 ),
 own AS (
-    SELECT so.home_state AS usps, count(*) AS from_own_outlets
-    FROM facts f JOIN sources so USING (source_id)
-    WHERE f.relevant AND f.first_seen_at >= $start AND f.first_seen_at <= $end
-      AND coalesce(so.home_state, '') <> ''
+    SELECT tagged AS usps, count(*) AS from_own_outlets
+    FROM (
+        SELECT unnest(f.states) AS tagged, so.home_state
+        FROM facts f JOIN sources so USING (source_id)
+        WHERE f.relevant AND f.canonical
+          AND f.first_seen_at >= $start AND f.first_seen_at <= $end
+    )
+    WHERE tagged = home_state
     GROUP BY 1
 )
 SELECT st.usps, st.name,

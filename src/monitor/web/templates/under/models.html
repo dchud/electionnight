@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Models: what produced each value</h1>
 <p class="u-lede">Each extracted column comes from one parser, and each row records the parser and its version. Some rows also record a method or a model. Counts are rows, not distinct items.</p>
-{% for message in errors %}{{ u.error_note(message) }}{% endfor %}
+{{ u.scans_failed(errors) }}
 
 <section class="u-section" id="map">
   <div class="u-section-head"><h2 class="u-section-title">Column to producer</h2><span class="panel-note">scanned in a child process, kept for 2 minutes</span></div>
@@ -45,7 +45,7 @@
   <div class="u-section-head"><h2 class="u-section-title">Keyword path against the LLM, on the same items</h2><span class="panel-note">computed here for free; kept for 10 minutes</span></div>
   <div class="u-section-body">
     {% if agreement.error %}
-    {{ u.error_note(agreement.error) }}
+    {{ u.scan_failed(agreement.error) }}
     {% else %}
     {% call u.caveat("Neither column is the truth") %}
     <p>The keyword path is what the pipeline falls back to when the budget or the API forces it. This reruns it over a stable sample of {{ agreement.all.n|u_int }} items the model classified, and compares. Agreement is not accuracy: no error rate was measured against hand-labeled items. Precision and recall below treat the LLM as the reference, which it is not. Most sampled items are first-fetch backlog.</p>
@@ -87,7 +87,7 @@
     <p class="u-note">Prompts are recorded since capture started. Calls before that have no prompt on record. The prompt is the same text for every item in a purpose, which is why prompt caching saves money. Feed text goes in the user message as data, and each prompt says to ignore instructions inside it.</p>
     <div class="u-scroll"><table class="table u-table">
       <thead><tr><th>Purpose</th><th>Hash</th><th class="num">Characters</th><th class="num">Rows written</th><th class="num">Traces</th><th>Last used</th></tr></thead>
-      <tbody>{% for row in prompts.rows %}<tr><td>{{ row.purpose }}</td><td>{{ row.prompt_hash }}</td><td class="num">{{ row.text|length|u_int }}</td><td class="num">{{ row.rows_written }}</td><td class="num">{{ (row.traces or 0)|u_int }}</td><td>{{ row.last_used|u_et }}</td></tr>{% else %}<tr><td colspan="6">No prompts recorded.</td></tr>{% endfor %}</tbody>
+      <tbody>{% for row in prompts.rows %}<tr><td>{{ row.purpose }}</td><td>{{ row.prompt_hash }}</td><td class="num">{{ row.text|length|u_int }}</td><td class="num">{{ row.rows_written }}</td><td class="num">{{ (row.traces or 0)|u_int }}</td><td>{{ row.last_used|u_et }}</td></tr>{% else %}{% if prompts.ok %}<tr><td colspan="6">No prompts recorded.</td></tr>{% endif %}{% endfor %}</tbody>
     </table></div>
     {% for row in prompts.rows %}
     <details class="u-details" data-key="prompt-{{ row.prompt_hash }}"><summary>{{ row.purpose }}: {{ row.prompt_hash }}</summary><pre class="u-pre">{{ row.text }}</pre></details>
@@ -95,7 +95,7 @@
     <h3 class="u-chart-title">Which model answered</h3>
     <div class="u-scroll"><table class="table u-table">
       <thead><tr><th>Purpose</th><th>Requested</th><th>Served</th><th class="num">Calls</th><th>First trace</th></tr></thead>
-      <tbody>{% for row in served.rows %}<tr><td>{{ row.purpose }}</td><td>{{ row.model_requested }}</td><td>{{ row.model_served or 'none: the call failed' }}</td><td class="num">{{ row.calls|u_int }}</td><td>{{ row.first_trace|u_et }}</td></tr>{% else %}<tr><td colspan="5">No traces recorded.</td></tr>{% endfor %}</tbody>
+      <tbody>{% for row in served.rows %}<tr><td>{{ row.purpose }}</td><td>{{ row.model_requested }}</td><td>{{ row.model_served or 'none: the call failed' }}</td><td class="num">{{ row.calls|u_int }}</td><td>{{ row.first_trace|u_et }}</td></tr>{% else %}{% if served.ok %}<tr><td colspan="5">No traces recorded.</td></tr>{% endif %}{% endfor %}</tbody>
     </table></div>
     {{ u.show_query([prompts.query, served.query], "models-prompts") }}
   </div>

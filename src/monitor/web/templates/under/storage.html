@@ -3,6 +3,7 @@
 {% block title %}Storage{% endblock %}
 {% block content %}
 <h1>Storage: how the lake holds the data</h1>
+{{ u.scans_failed(catalog_failures) }}
 <p class="u-lede">DuckLake keeps table definitions, file lists, and small inserts in a SQLite catalog, and larger data in Parquet files. Each commit is a numbered snapshot. Row counts on this page count rows, not records: <a class="text-link" href="/under/inventory">Inventory</a> shows the difference.</p>
 <div class="u-stats">
   <div class="u-stat"><span class="u-stat-label">Rows inlined in the catalog</span><span class="u-stat-value">{{ totals.inlined|u_int }}</span><span class="u-stat-note">waiting for the next flush</span></div>
@@ -39,17 +40,19 @@
     <form class="u-form" method="get" action="#columns"><label>Table <select class="field" name="table" onchange="this.form.submit()">{% for name in tables %}<option value="{{ name }}" {{ 'selected' if name == table else '' }}>{{ name }}</option>{% endfor %}</select></label></form>
   </div>
   <div class="u-section-body">
-    {% if columns.empty %}
+    {% if columns.failed %}
+    {{ u.scan_failed(columns.failed) }}
+    {% elif columns.empty %}
     <p class="empty">{{ columns.note }}</p>
     {% else %}
     <p class="u-note">Largest file, of {{ columns.n_files }}: <code>{{ columns.file_name }}</code>. {{ columns.total_uncompressed|u_bytes }} of column data compressed to {{ columns.total_compressed|u_bytes }}. These sizes come from the file's footer, read in a child process. The two <code>_ducklake_internal_*</code> columns are how a merged file keeps each row's snapshot.</p>
     {{ u.ran_note(columns.ran) }}
     <div class="u-scroll">
     <table class="table u-table">
-      <thead><tr><th>Column</th><th>Type</th><th>Codec</th><th class="u-hide-projector">Encoding</th><th class="num">Compressed</th><th class="num">Uncompressed</th><th class="num">Ratio</th><th>Share of the file</th></tr></thead>
+      <thead><tr><th>Column</th><th>Type</th><th>Codec</th><th class="u-hide-projector">Encoding</th><th class="num">Compressed</th><th class="num">Uncompressed</th><th class="num">Ratio</th><th>Share of column data</th></tr></thead>
       <tbody>
       {% for row in columns.rows %}
-      <tr><td>{{ row.column_path }}</td><td>{{ row.physical_type }}</td><td>{{ row.compression }}</td><td class="u-hide-projector">{{ row.encodings }}</td><td class="num">{{ row.compressed|u_bytes }}</td><td class="num">{{ row.uncompressed|u_bytes }}</td><td class="num">{{ '%.1f' % row.ratio if row.ratio else '—' }}</td><td><span class="bar-track"><span class="bar-fill" style="width:{{ '%.0f' % row.width }}%"></span></span></td></tr>
+      <tr><td>{{ row.column_path }}</td><td>{{ row.physical_type }}</td><td>{{ row.compression }}</td><td class="u-hide-projector">{{ row.encodings }}</td><td class="num">{{ row.compressed|u_bytes }}</td><td class="num">{{ row.uncompressed|u_bytes }}</td><td class="num">{{ '%.1f' % row.ratio if row.ratio else '—' }}</td><td><span class="bar-track"><span class="bar-fill" style="width:{{ '%.0f' % row.width }}%"></span></span> {{ row.share|u_pct(0) }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -98,7 +101,7 @@
     <div class="u-scroll">
     <table class="table u-table">
       <thead><tr><th>Recorded</th><th>Kind</th><th class="num">Tables merged</th><th class="num">Files removed</th><th class="num">Duration</th><th class="num">Backup size</th></tr></thead>
-      <tbody>{% for row in maintenance.rows %}<tr><td>{{ row.recorded_at|u_et }}</td><td>{{ row.kind }}</td><td class="num">{{ row.tables_merged if row.tables_merged is not none else '—' }}</td><td class="num">{{ row.files_removed if row.files_removed is not none else '—' }}</td><td class="num">{{ row.duration_ms }} ms</td><td class="num">{{ row.backup_bytes|u_bytes if row.backup_bytes else '—' }}</td></tr>{% else %}<tr><td colspan="6">No maintenance recorded.</td></tr>{% endfor %}</tbody>
+      <tbody>{% for row in maintenance.rows %}<tr><td>{{ row.recorded_at|u_et }}</td><td>{{ row.kind }}</td><td class="num">{{ row.tables_merged if row.tables_merged is not none else '—' }}</td><td class="num">{{ row.files_removed if row.files_removed is not none else '—' }}</td><td class="num">{{ row.duration_ms }} ms</td><td class="num">{{ row.backup_bytes|u_bytes if row.backup_bytes else '—' }}</td></tr>{% else %}{% if maintenance.ok %}<tr><td colspan="6">No maintenance recorded.</td></tr>{% endif %}{% endfor %}</tbody>
     </table>
     </div>
     {{ u.show_query([scheduled.query, maintenance.query], "storage-maintenance") }}
@@ -114,7 +117,7 @@
       <label>Snapshot B <input class="field" type="number" name="b" value="{{ travel.b }}" min="{{ travel.first }}" max="{{ travel.last }}"></label>
       <button class="button" type="submit">Compare</button>
     </form>
-    {{ u.error_note(travel.error) }}
+    {{ u.scans_failed(travel.failures) }}
     <div class="u-scroll">
     <table class="table u-table">
       <thead><tr><th>{{ travel.table }}</th><th class="num">Rows</th><th class="num">Distinct keys</th><th class="num">Files and inlined blocks</th><th>Newest row</th><th class="num">Newest row's snapshot</th></tr></thead>
@@ -124,12 +127,12 @@
       </tbody>
     </table>
     </div>
-    <p class="u-note">{{ travel.difference|u_int }} rows were added between them. Snapshots run from {{ travel.first }} to {{ travel.last }}. A table created after snapshot A reports an error for it. This scan runs in a child process and is kept for 10 minutes.</p>
+    <p class="u-note">{% if travel.difference is not none %}{{ travel.difference|u_int }} rows were added between them.{% else %}The difference is not known, because both counts are needed.{% endif %} Snapshots run from {{ travel.first }} to {{ travel.last }}. A table created after snapshot A reports an error for it. This scan runs in a child process and is kept for 10 minutes.</p>
     <h3 class="u-chart-title">Newest rows added after snapshot A, and where they sit</h3>
     <div class="u-scroll">
     <table class="table u-table">
       <thead><tr>{% for key in (travel.added.first.keys() if travel.added.rows else []) %}<th>{{ key }}</th>{% endfor %}</tr></thead>
-      <tbody>{% for row in travel.added.rows %}<tr>{% for key, value in row.items() %}<td class="u-break">{{ value }}</td>{% endfor %}</tr>{% else %}<tr><td>No rows were added between these snapshots.</td></tr>{% endfor %}</tbody>
+      <tbody>{% for row in travel.added.rows %}<tr>{% for key, value in row.items() %}<td class="u-break">{{ value }}</td>{% endfor %}</tr>{% else %}{% if travel.added.ok %}<tr><td>No rows were added between these snapshots.</td></tr>{% else %}<tr><td>This scan did not finish.</td></tr>{% endif %}{% endfor %}</tbody>
     </table>
     </div>
     {{ u.show_query(travel.queries, "storage-travel") }}
