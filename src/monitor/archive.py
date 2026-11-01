@@ -27,6 +27,7 @@ import zstandard
 
 from monitor.disk import free_gb
 from monitor.logs import get
+from monitor.offload import is_configured
 from monitor.settings import Settings
 
 log = get(__name__)
@@ -113,7 +114,7 @@ class ArchiveWriter:
 
     def has_room(self) -> bool:
         """With nowhere to offload to, stop before the disk gets tight."""
-        if self.options.s3_bucket:
+        if is_configured(self.settings):
             return free_gb(self.directory) >= self.settings.disk.degrade_gb
         return free_gb(self.directory) >= self.options.min_free_gb
 

@@ -160,6 +160,9 @@ def test_archive_stops_when_disk_is_low_and_no_bucket(settings, monkeypatch):
     assert archive.add("pages", "k", "s", b"x") is None
     assert archive.dropped == 1
     settings.archive.s3_bucket = "bucket"
+    assert archive.add("pages", "k", "s", b"x") is None
+    settings.archive.s3_access_key_id = SecretStr("id")
+    settings.archive.s3_secret_access_key = SecretStr("secret")
     assert archive.add("pages", "k", "s", b"x") is not None
 
 
