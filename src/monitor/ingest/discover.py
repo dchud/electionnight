@@ -34,7 +34,10 @@ FRESH_HOURS_SMALL = 7 * 24
 SMALL_SCOPES = {"local", "state", "analysis"}
 GLOBAL_CONCURRENCY = 48
 
-BATTLEGROUND = "GA MI NC ME NH OH TX IA AK NE MN AZ WI PA NV KS NY".split()
+# Used for the report when `config/races.yaml` has not been built.
+DEFAULT_BATTLEGROUND = (
+    "GA MI NC ME NH OH TX IA AK NE MN AZ WI PA NV KS NY".split()
+)
 ALL_STATES = (
     "AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN "
     "MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA "
@@ -255,6 +258,15 @@ def merge_existing(fresh: Source, existing: Source | None) -> Source:
     return fresh
 
 
+def battleground_states(config_dir: Path) -> list[str]:
+    """Battleground states from the race watchlist."""
+    path = config_dir / "races.yaml"
+    if not path.exists():
+        return DEFAULT_BATTLEGROUND
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return data.get("battleground_states") or DEFAULT_BATTLEGROUND
+
+
 def coverage_counts(sources: list[Source]) -> dict[str, Counter]:
     """Enabled outlet counts by state, by language, and in total."""
     enabled = [s for s in sources if s.enabled]
@@ -266,13 +278,20 @@ def coverage_counts(sources: list[Source]) -> dict[str, Counter]:
 
 
 def render_report(
-    results: list[OutletResult], sources: list[Source], now: datetime
+    results: list[OutletResult],
+    sources: list[Source],
+    now: datetime,
+    battleground: list[str] | None = None,
 ) -> str:
     counts = coverage_counts(sources)
     feeds = sum(len(s.feed_urls) for s in sources if s.enabled)
     outlets = sum(1 for s in sources if s.enabled)
     under = [s for s in ALL_STATES if counts["state"][s] < 2]
-    bg_under = [s for s in BATTLEGROUND if counts["state"][s] < 4]
+    bg_under = [
+        s
+        for s in battleground or DEFAULT_BATTLEGROUND
+        if counts["state"][s] < 4
+    ]
     lines = [
         "# Feed validation",
         "",
@@ -364,7 +383,15 @@ def run_discover(
     now = datetime.now(UTC)
     report = settings.paths.reports / "feed_validation.md"
     report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text(render_report(results, sources, now), encoding="utf-8")
+    report.write_text(
+        render_report(
+            results,
+            sources,
+            now,
+            battleground_states(settings.paths.config),
+        ),
+        encoding="utf-8",
+    )
     feeds = sum(len(s.feed_urls) for s in sources)
     print(
         f"{sum(s.enabled for s in sources)} of {len(sources)} outlets healthy,"

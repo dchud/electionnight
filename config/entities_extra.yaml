@@ -1,0 +1,102 @@
+# National figures added to the candidate roster by hand.
+#
+# `monitor ref build-candidates` merges these into `data/ref/entities.jsonl`.
+# An entry whose name and state match a candidate merges with that candidate.
+# `state` is set for people whose office belongs to a state and left null for
+# national figures. `wiki_title` names the article when it differs from the
+# name, and supplies the Wikidata id. `incumbent` means the person holds the
+# listed office.
+#
+# Office-holders were checked on 2026-11-01 against the Wikipedia articles for
+# each office or person, plus web search for the party and committee chairs.
+retrieved_on: "2026-11-01"
+sources:
+  - https://en.wikipedia.org/wiki/United_States_Senate
+  - https://en.wikipedia.org/wiki/United_States_House_of_Representatives
+  - https://en.wikipedia.org/wiki/List_of_current_United_States_governors
+  - https://en.wikipedia.org/wiki/Democratic_National_Committee
+  - https://en.wikipedia.org/wiki/Republican_National_Committee
+  - https://en.wikipedia.org/wiki/Democratic_Governors_Association
+  - https://en.wikipedia.org/wiki/Republican_Governors_Association
+  - https://www.wunc.org/2026-10-25/big-name-campaign-surrogates-make-final-overtures-to-voters-as-election-day-nears
+  - https://www.newsweek.com/map-shows-where-top-2028-democrats-are-campaigning-ahead-of-midterms-12613460
+entities:
+  # Executive branch
+  - {canonical_name: Donald Trump, party: Republican, office: President of the United States, incumbent: true}
+  - {canonical_name: JD Vance, party: Republican, office: Vice President of the United States, incumbent: true, aliases: [J.D. Vance]}
+  - {canonical_name: Marco Rubio, party: Republican, office: Secretary of State, incumbent: true}
+  - {canonical_name: Todd Blanche, party: Republican, office: Attorney General, incumbent: true}
+  - {canonical_name: Markwayne Mullin, party: Republican, office: Secretary of Homeland Security, incumbent: true}
+  - {canonical_name: Robert F. Kennedy Jr., party: null, office: Secretary of Health and Human Services, incumbent: true}
+  - {canonical_name: Stephen Miller, party: Republican, office: White House Deputy Chief of Staff, incumbent: true, wiki_title: Stephen Miller (political advisor)}
+
+  # Congressional leaders
+  - {canonical_name: Mike Johnson, party: Republican, state: LA, office: Speaker of the House, incumbent: true, wiki_title: Mike Johnson}
+  - {canonical_name: Steve Scalise, party: Republican, state: LA, office: House Majority Leader, incumbent: true}
+  - {canonical_name: Tom Emmer, party: Republican, state: MN, office: House Majority Whip, incumbent: true}
+  - {canonical_name: Hakeem Jeffries, party: Democratic, state: NY, office: House Minority Leader, incumbent: true}
+  - {canonical_name: Katherine Clark, party: Democratic, state: MA, office: House Minority Whip, incumbent: true}
+  - {canonical_name: John Thune, party: Republican, state: SD, office: Senate Majority Leader, incumbent: true}
+  - {canonical_name: John Barrasso, party: Republican, state: WY, office: Senate Majority Whip, incumbent: true}
+  - {canonical_name: Chuck Schumer, party: Democratic, state: NY, office: Senate Minority Leader, incumbent: true}
+  - {canonical_name: Dick Durbin, party: Democratic, state: IL, office: Senate Minority Whip, incumbent: true}
+
+  # Party and campaign committee chairs
+  - {canonical_name: Ken Martin, party: Democratic, office: Chair of the Democratic National Committee, incumbent: true, wiki_title: Ken Martin (politician)}
+  - {canonical_name: Joe Gruters, party: Republican, office: Chair of the Republican National Committee, incumbent: true}
+  - {canonical_name: Tim Scott, party: Republican, state: SC, office: Chair of the National Republican Senatorial Committee, incumbent: true}
+  - {canonical_name: Kirsten Gillibrand, party: Democratic, state: NY, office: Chair of the Democratic Senatorial Campaign Committee, incumbent: true}
+  - {canonical_name: Richard Hudson, party: Republican, state: NC, office: Chair of the National Republican Congressional Committee, incumbent: true, wiki_title: Richard Hudson (American politician)}
+  - {canonical_name: Suzan DelBene, party: Democratic, state: WA, office: Chair of the Democratic Congressional Campaign Committee, incumbent: true}
+  - {canonical_name: Greg Gianforte, party: Republican, state: MT, office: Governor of Montana and Chair of the Republican Governors Association, incumbent: true}
+  - {canonical_name: Andy Beshear, party: Democratic, state: KY, office: Governor of Kentucky and Chair of the Democratic Governors Association, incumbent: true}
+
+  # Governors
+  - {canonical_name: Gavin Newsom, party: Democratic, state: CA, office: Governor of California, incumbent: true}
+  - {canonical_name: Greg Abbott, party: Republican, state: TX, office: Governor of Texas, incumbent: true}
+  - {canonical_name: Ron DeSantis, party: Republican, state: FL, office: Governor of Florida, incumbent: true}
+  - {canonical_name: Kathy Hochul, party: Democratic, state: NY, office: Governor of New York, incumbent: true}
+  - {canonical_name: Josh Shapiro, party: Democratic, state: PA, office: Governor of Pennsylvania, incumbent: true}
+  - {canonical_name: Gretchen Whitmer, party: Democratic, state: MI, office: Governor of Michigan, incumbent: true}
+  - {canonical_name: JB Pritzker, party: Democratic, state: IL, office: Governor of Illinois, incumbent: true}
+  - {canonical_name: Brian Kemp, party: Republican, state: GA, office: Governor of Georgia, incumbent: true}
+  - {canonical_name: Tony Evers, party: Democratic, state: WI, office: Governor of Wisconsin, incumbent: true}
+  - {canonical_name: Katie Hobbs, party: Democratic, state: AZ, office: Governor of Arizona, incumbent: true}
+  - {canonical_name: Joe Lombardo, party: Republican, state: NV, office: Governor of Nevada, incumbent: true}
+  - {canonical_name: Tim Walz, party: Democratic, state: MN, office: Governor of Minnesota, incumbent: true}
+  - {canonical_name: Wes Moore, party: Democratic, state: MD, office: Governor of Maryland, incumbent: true}
+  - {canonical_name: Maura Healey, party: Democratic, state: MA, office: Governor of Massachusetts, incumbent: true}
+  - {canonical_name: Abigail Spanberger, party: Democratic, state: VA, office: Governor of Virginia, incumbent: true}
+  - {canonical_name: Mikie Sherrill, party: Democratic, state: NJ, office: Governor of New Jersey, incumbent: true}
+  - {canonical_name: Josh Stein, party: Democratic, state: NC, office: Governor of North Carolina, incumbent: true}
+  - {canonical_name: Mike DeWine, party: Republican, state: OH, office: Governor of Ohio, incumbent: true}
+  - {canonical_name: Sarah Huckabee Sanders, party: Republican, state: AR, office: Governor of Arkansas, incumbent: true}
+
+  # Prominent surrogates and other national figures
+  - {canonical_name: Barack Obama, party: Democratic, office: Former President of the United States, incumbent: false}
+  - {canonical_name: Joe Biden, party: Democratic, office: Former President of the United States, incumbent: false}
+  - {canonical_name: Bill Clinton, party: Democratic, office: Former President of the United States, incumbent: false}
+  - {canonical_name: Kamala Harris, party: Democratic, office: Former Vice President of the United States, incumbent: false, aliases: [Kamala]}
+  - {canonical_name: Hillary Clinton, party: Democratic, office: Former Secretary of State, incumbent: false}
+  - {canonical_name: Pete Buttigieg, party: Democratic, office: Former Secretary of Transportation, incumbent: false}
+  - {canonical_name: Bernie Sanders, party: Independent, state: VT, office: U.S. Senator from Vermont, incumbent: true, aliases: [Bernie]}
+  - {canonical_name: Elizabeth Warren, party: Democratic, state: MA, office: U.S. Senator from Massachusetts, incumbent: true}
+  - {canonical_name: Alexandria Ocasio-Cortez, party: Democratic, state: NY, office: U.S. Representative from New York, incumbent: true}
+  - {canonical_name: Nancy Pelosi, party: Democratic, state: CA, office: U.S. Representative from California, incumbent: true}
+  - {canonical_name: Mitch McConnell, party: Republican, state: KY, office: U.S. Senator from Kentucky, incumbent: true}
+  - {canonical_name: John Cornyn, party: Republican, state: TX, office: U.S. Senator from Texas, incumbent: true}
+  - {canonical_name: Ted Cruz, party: Republican, state: TX, office: U.S. Senator from Texas, incumbent: true}
+  - {canonical_name: Zohran Mamdani, party: Democratic, state: NY, office: Mayor of New York City, incumbent: true, aliases: [Zohran]}
+  - {canonical_name: Elon Musk, ent_type: PERSON, party: null, office: null, incumbent: false}
+
+  # Parties and national committees
+  - {canonical_name: Democratic Party, ent_type: PARTY, party: Democratic, wiki_title: Democratic Party (United States), aliases: [Democrats, Dems, Democratic]}
+  - {canonical_name: Republican Party, ent_type: PARTY, party: Republican, wiki_title: Republican Party (United States), aliases: [Republicans, GOP, Republican]}
+  - {canonical_name: Democratic National Committee, ent_type: ORG, party: Democratic, aliases: [DNC]}
+  - {canonical_name: Republican National Committee, ent_type: ORG, party: Republican, aliases: [RNC]}
+  - {canonical_name: Democratic Senatorial Campaign Committee, ent_type: ORG, party: Democratic, aliases: [DSCC]}
+  - {canonical_name: National Republican Senatorial Committee, ent_type: ORG, party: Republican, aliases: [NRSC]}
+  - {canonical_name: Democratic Congressional Campaign Committee, ent_type: ORG, party: Democratic, aliases: [DCCC]}
+  - {canonical_name: National Republican Congressional Committee, ent_type: ORG, party: Republican, aliases: [NRCC]}
+  - {canonical_name: Democratic Governors Association, ent_type: ORG, party: Democratic, aliases: [DGA]}
+  - {canonical_name: Republican Governors Association, ent_type: ORG, party: Republican, aliases: [RGA]}

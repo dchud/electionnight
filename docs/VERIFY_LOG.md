@@ -12,13 +12,13 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
 | V5 | Snapshot listing function | pass 2026-11-01: `lake.snapshots()` columns: ['snapshot_id', 'snapshot_time', 'schema_version', 'changes', 'author', 'commit_message', 'commit_extra_info'] |
 | V6 | Embedding model available through fastembed | pass 2026-11-01: intfloat/multilingual-e5-small, custom ONNX export, returns 384 dimensions |
 | V7 | Anthropic key, model ids, request settings, prompt caching | pass 2026-11-01: claude-haiku-5-5 parse with effort low and thinking disabled OK, cache read 2906 tokens on the second call; claude-sonnet-5-5 adaptive at medium OK; SDK 2.3.0 |
-| V8 | htmx 2 SSE extension attribute syntax | |
-| V9 | Vendored asset versions | |
-| V10 | OpenFEC endpoint and filters for 2026 candidates | |
-| V11 | Race ratings sources reachable and parsed | |
-| V12 | Poll-closing times confirmed | |
-| V13 | Lean ratings confirmed with citations | |
-| V14 | Battleground and close-race list confirmed | |
+| V8 | htmx 2 SSE extension attribute syntax | pass 2026-11-01: htmx 2.0.11 and htmx-ext-sse 2.2.4: `hx-ext="sse"`, `sse-connect`, `sse-swap`, and `hx-trigger="sse:snapshot throttle:10s"`, exercised in a browser |
+| V9 | Vendored asset versions | pass 2026-11-01: `scripts/vendor_assets.sh` pins htmx 2.0.11, sse 2.2.4, vega 6.4.0, vega-lite 6.4.1, vega-embed 7.3.0, d3 7.9.0, topojson-client 3.1.0, Inter 5.3.0, us-atlas 3.0.1, Tailwind 4.3.3 |
+| V10 | OpenFEC endpoint and filters for 2026 candidates | pass 2026-11-01: `/v1/candidates/` honors `election_year`, `cycle`, `candidate_status`, `is_active_candidate`, `has_raised_funds`, `state`, `district`, `incumbent_challenge`. `election_type=G` is ignored, so Wikipedia candidate tables decide who is on the ballot |
+| V11 | Race ratings sources reachable and parsed | pass 2026-11-01: Wikipedia `action=parse` on the 2026 Senate, governor, House, attorney general, secretary of state, lieutenant governor, and ballot measure pages. Sabato pages returned 403, so its ratings come from the Wikipedia column. Ratings not checked against raters' own sites |
+| V12 | Poll-closing times confirmed | pass 2026-11-01: https://www.270towin.com/poll-closing-times/, cross-checked with The Green Papers and Wikipedia. Differs from the spec on KS, SD, ND, NH, ID, OR, AK; see `config/poll_closings.yaml` |
+| V13 | Lean ratings confirmed with citations | pending owner review: `config/lean_ratings.csv` and `reports/lean_review.md` |
+| V14 | Battleground and close-race list confirmed | pending owner review: derived list AK FL GA IA KS ME MI MN NE NH NV OH OR SC TX WI |
 
 ## Differences from the spec
 
@@ -48,3 +48,14 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
 - **Budget caps.** `LLM__HARD_USD_CAP` applies to total spend across all days.
 - **Configuration.** Tunables are environment variables in `.env`. There is no
   `config/settings.toml`.
+- **Frontend versions.** Altair 6 generates Vega-Lite 6 specs, so the
+  dashboard uses Vega 6 and Vega-Lite 6 rather than 5.
+- **Dashboard queries.** Panels query an in-memory fact table in the web
+  process, because every panel honors Focus, Level, Language, and Unique, which
+  pre-aggregated bins cannot serve. `gold.*` is still computed.
+- **Time axis.** On the dashboard, an item published more than 2 hours before
+  it was first seen sits at its published time, so a feed's first fetch does
+  not appear as one spike. `gold.*` bins use `first_seen_at` unchanged.
+- **Stream colors.** No palette of 10 hues avoiding party blue and red passes
+  the colorblind checks. The first 6 are validated; the rest rely on direct
+  labels and hover.
