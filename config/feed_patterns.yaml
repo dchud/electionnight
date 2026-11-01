@@ -180,6 +180,8 @@ abc.net.au/news:
 smh.com.au:
   - https://www.smh.com.au/rss/world.xml
 rnz.co.nz:
+  - https://www.rnz.co.nz/rss/national.xml
+  - https://www.rnz.co.nz/rss/news.xml
   - https://www.rnz.co.nz/rss/world.xml
 timesofindia.indiatimes.com:
   - https://timesofindia.indiatimes.com/rssfeeds/30359486.cms

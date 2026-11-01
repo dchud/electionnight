@@ -366,6 +366,7 @@ def run_discover(
     limit: int | None = None,
     seed_path: Path = Path("sources_seed.csv"),
 ) -> None:
+    """Rediscover seed outlets. Outlets added by hand stay in the list."""
     seed = read_seed(seed_path)
     if limit:
         seed = seed[:limit]
@@ -379,6 +380,12 @@ def run_discover(
         source.feed_urls = [url for url, _ in result.good]
         source.enabled = bool(source.feed_urls)
         sources.append(source)
+    seen = {source.source_id for source in sources}
+    sources.extend(
+        source
+        for source_id, source in previous.items()
+        if source_id not in seen and limit is None
+    )
     write_sources(settings, sources)
     now = datetime.now(UTC)
     report = settings.paths.reports / "feed_validation.md"

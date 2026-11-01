@@ -74,7 +74,7 @@ cbc-news,CBC News,https://www.cbc.ca/news,https://www.cbc.ca/webfeed/rss/rss-pol
 the-globe-and-mail,The Globe and Mail,https://www.theglobeandmail.com,https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/world/|https://www.theglobeandmail.com/arc/outboundfeeds/rss/?outputType=xml,international,,CA,en,NA,,,,,,false,metered,3,true,
 abc-news-australia,ABC News (Australia),https://www.abc.net.au/news,https://www.abc.net.au/news/feed/2942460/rss.xml,international,,AU,en,NA,,,,,,false,none,3,true,World feed
 sydney-morning-herald,Sydney Morning Herald,https://www.smh.com.au,https://www.smh.com.au/rss/politics/federal.xml|https://www.smh.com.au/rss/world.xml|https://www.smh.com.au/rss/feed.xml,international,,AU,en,NA,,,,,,false,metered,3,true,World feed
-rnz,RNZ,https://www.rnz.co.nz,,international,,NZ,en,NA,,,,,,false,none,3,false,World feed
+rnz,RNZ,https://www.rnz.co.nz,https://www.rnz.co.nz/rss/national.xml|https://www.rnz.co.nz/rss/news.xml,international,,NZ,en,NA,,,,,,false,none,3,true,World feed
 the-times-of-india,The Times of India,https://timesofindia.indiatimes.com,https://timesofindia.indiatimes.com/rssfeeds/296589292.cms|https://timesofindia.indiatimes.com/rssfeeds/30359486.cms,international,,IN,en,NA,,,,,,false,none,3,true,World/US feed
 the-hindu,The Hindu,https://www.thehindu.com,https://www.thehindu.com/elections/feeder/default.rss|https://www.thehindu.com/news/international/feeder/default.rss|https://www.thehindu.com/feeder/default.rss,international,,IN,en,NA,,,,,,false,metered,3,true,World feed
 dawn,Dawn,https://www.dawn.com,https://www.dawn.com/feeds/world|https://www.dawn.com/feeds/home/|https://www.dawn.com/feeds/home,international,,PK,en,NA,,,,,,false,none,3,true,World feed
@@ -272,3 +272,51 @@ wisconsin-watch,Wisconsin Watch,https://wisconsinwatch.org,https://wisconsinwatc
 wyofile,WyoFile,https://wyofile.com,https://wyofile.com/category/politics/feed/|https://wyofile.com/feed/|https://wyofile.com/comments/feed/,state,WY,US,en,Unrated,,,,,,false,none,3,true,
 cowboy-state-daily,Cowboy State Daily,https://cowboystatedaily.com,https://cowboystatedaily.com/rss.xml,state,WY,US,en,Unrated,,,,,,false,none,3,true,
 casper-star-tribune,Casper Star-Tribune,https://trib.com,,local,WY,US,en,Unrated,,,,,,false,metered,3,false,
+ktoo,KTOO,https://www.ktoo.org,https://www.ktoo.org/category/politics/feed/|https://www.ktoo.org/feed/,state,AK,US,en,Unrated,,,,,,false,none,2,true,Public media
+juneau-empire,Juneau Empire,https://www.juneauempire.com,https://www.juneauempire.com/feed/,local,AK,US,en,Unrated,,,,,,false,none,3,true,
+alaska-s-news-source,Alaska's News Source,https://www.alaskasnewssource.com,https://www.alaskasnewssource.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.alaskasnewssource.com/arc/outboundfeeds/rss/?outputType=xml,local,AK,US,en,Unrated,,,,,,false,none,2,true,TV
+florida-politics,Florida Politics,https://floridapolitics.com,https://floridapolitics.com/feed/|https://floridapolitics.com/comments/feed/,state,FL,US,en,Unrated,,,,,,false,none,2,true,
+wusf,WUSF,https://www.wusf.org,https://www.wusf.org/politics-issues.rss,local,FL,US,en,Unrated,,,,,,false,none,2,true,Public radio
+wfsu,WFSU,https://news.wfsu.org,https://news.wfsu.org/tags/politics.rss,state,FL,US,en,Unrated,,,,,,false,none,3,true,Public radio
+wabe,WABE,https://www.wabe.org,https://www.wabe.org/politics/feed/,local,GA,US,en,Unrated,,,,,,false,none,1,true,Public radio
+capitol-beat,Capitol Beat,https://capitol-beat.org,https://capitol-beat.org/feed/,state,GA,US,en,Unrated,,,,,,false,none,1,true,
+atlanta-news-first,Atlanta News First,https://www.atlantanewsfirst.com,https://www.atlantanewsfirst.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.atlantanewsfirst.com/arc/outboundfeeds/rss/?outputType=xml,local,GA,US,en,Unrated,,,,,,false,none,2,true,TV
+the-gazette-cedar-rapids,The Gazette (Cedar Rapids),https://www.thegazette.com,http://www.thegazette.com/search/?f=rss&t=article&c=news/politics&l=50&s=start_time&sd=desc,local,IA,US,en,Unrated,,,,,,false,metered,1,true,
+radio-iowa,Radio Iowa,https://www.radioiowa.com,https://www.radioiowa.com/feed/,state,IA,US,en,Unrated,,,,,,false,none,1,true,
+kcrg,KCRG,https://www.kcrg.com,https://www.kcrg.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.kcrg.com/arc/outboundfeeds/rss/?outputType=xml,local,IA,US,en,Unrated,,,,,,false,none,2,true,TV
+kmuw,KMUW,https://www.kmuw.org,https://www.kmuw.org/politics.rss,local,KS,US,en,Unrated,,,,,,false,none,1,true,Public radio
+the-beacon,The Beacon,https://thebeaconnews.org,https://thebeaconnews.org/feed/,local,KS,US,en,Unrated,,,,,,false,none,2,true,Nonprofit
+kwch,KWCH,https://www.kwch.com,https://www.kwch.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.kwch.com/arc/outboundfeeds/rss/?outputType=xml,local,KS,US,en,Unrated,,,,,,false,none,2,true,TV
+mlive,MLive,https://www.mlive.com,https://www.mlive.com/arc/outboundfeeds/rss/category/politics/?outputType=xml|https://www.mlive.com/arc/outboundfeeds/rss/?outputType=xml,local,MI,US,en,Unrated,,,,,,false,metered,1,true,
+wdet,WDET,https://wdet.org,https://wdet.org/feed/,local,MI,US,en,Unrated,,,,,,false,none,2,true,Public radio
+wkar,WKAR,https://www.wkar.org,https://www.wkar.org/news.rss,state,MI,US,en,Unrated,,,,,,false,none,2,true,Public radio
+minnpost,MinnPost,https://www.minnpost.com,https://www.minnpost.com/feed/,state,MN,US,en,Unrated,,,,,,false,none,1,true,
+duluth-news-tribune,Duluth News Tribune,https://www.duluthnewstribune.com,https://www.duluthnewstribune.com/topics/government-and-politics.rss|https://www.duluthnewstribune.com/index.rss,local,MN,US,en,Unrated,,,,,,false,metered,3,true,
+lincoln-journal-star,Lincoln Journal Star,https://journalstar.com,https://journalstar.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc,local,NE,US,en,Unrated,,,,,,false,metered,1,true,
+indepthnh,InDepthNH,https://indepthnh.org,https://indepthnh.org/category/politics/feed/|https://indepthnh.org/feed/,state,NH,US,en,Unrated,,,,,,false,none,1,true,
+concord-monitor,Concord Monitor,https://www.concordmonitor.com,https://www.concordmonitor.com/category/politics/feed/|https://www.concordmonitor.com/feed/,local,NH,US,en,Unrated,,,,,,false,metered,1,true,
+kunr,KUNR,https://www.kunr.org,https://www.kunr.org/news.rss,state,NV,US,en,Unrated,,,,,,false,none,1,true,Public radio
+las-vegas-sun,Las Vegas Sun,https://lasvegassun.com,https://lasvegassun.com/feeds/headlines/all/,local,NV,US,en,Unrated,,,,,,false,none,1,true,
+this-is-reno,This Is Reno,https://thisisreno.com,https://thisisreno.com/feed/,local,NV,US,en,Unrated,,,,,,false,none,3,true,
+signal-ohio,Signal Ohio,https://signalohio.org,https://signalohio.org/feed/,state,OH,US,en,Unrated,,,,,,false,none,1,true,
+wosu,WOSU,https://www.wosu.org,https://www.wosu.org/politics-government.rss,local,OH,US,en,Unrated,,,,,,false,none,2,true,Public radio
+wvxu,WVXU,https://www.wvxu.org,https://www.wvxu.org/politics.rss,local,OH,US,en,Unrated,,,,,,false,none,2,true,Public radio
+willamette-week,Willamette Week,https://www.wweek.com,https://www.wweek.com/arc/outboundfeeds/rss/?outputType=xml,local,OR,US,en,Unrated,,,,,,false,none,2,true,
+salem-reporter,Salem Reporter,https://www.salemreporter.com,https://www.salemreporter.com/category/politics/feed/|https://www.salemreporter.com/feed/|https://www.salemreporter.com/comments/feed/,local,OR,US,en,Unrated,,,,,,false,none,2,true,
+jefferson-public-radio,Jefferson Public Radio,https://www.ijpr.org,https://www.ijpr.org/elections.rss,local,OR,US,en,Unrated,,,,,,false,none,3,true,
+south-carolina-public-radio,South Carolina Public Radio,https://www.southcarolinapublicradio.org,https://www.southcarolinapublicradio.org/politics.rss,state,SC,US,en,Unrated,,,,,,false,none,1,true,
+wltx,WLTX,https://www.wltx.com,https://www.wltx.com/feeds/syndication/rss/news/politics|https://www.wltx.com/feeds/syndication/rss/news/politics/elections|https://www.wltx.com/feeds/syndication/rss/news,local,SC,US,en,Unrated,,,,,,false,none,2,true,TV
+texas-public-radio,Texas Public Radio,https://www.tpr.org,https://www.tpr.org/index.rss|https://www.tpr.org/news.rss,local,TX,US,en,Unrated,,,,,,false,none,1,true,
+houston-public-media,Houston Public Media,https://www.houstonpublicmedia.org,https://www.houstonpublicmedia.org/tag/politics/feed/|https://www.houstonpublicmedia.org/rsslatest.xml|https://www.houstonpublicmedia.org/feed/,local,TX,US,en,Unrated,,,,,,false,none,1,true,
+el-paso-matters,El Paso Matters,https://elpasomatters.org,https://elpasomatters.org/category/politics/feed/|https://elpasomatters.org/feed/,local,TX,US,en,Unrated,,,,,,false,none,2,true,Nonprofit
+san-antonio-report,San Antonio Report,https://sanantonioreport.org,https://sanantonioreport.org/feed/,local,TX,US,en,Unrated,,,,,,false,none,2,true,Nonprofit
+wisconsin-state-journal,Wisconsin State Journal,https://madison.com,https://madison.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc,local,WI,US,en,Unrated,,,,,,false,metered,1,true,
+urban-milwaukee,Urban Milwaukee,https://urbanmilwaukee.com,https://urbanmilwaukee.com/category/politics/feed/|http://feeds.feedburner.com/UrbanMilwaukee|https://urbanmilwaukee.com/feed/,local,WI,US,en,Unrated,,,,,,false,none,2,true,
+louisville-public-media,Louisville Public Media,https://www.lpm.org,https://www.lpm.org/news/politics.rss|https://www.lpm.org/latest.rss,local,KY,US,en,Unrated,,,,,,false,none,2,true,Public radio
+kentucky-public-radio-wku,Kentucky Public Radio WKU,https://www.wkyufm.org,https://www.wkyufm.org/news.rss,state,KY,US,en,Unrated,,,,,,false,none,3,true,Public radio
+indiana-public-media,Indiana Public Media,https://indianapublicmedia.org,https://www.ipm.org/index.rss,state,IN,US,en,Unrated,,,,,,false,none,3,true,Public media
+talk-business-politics,Talk Business & Politics,https://talkbusiness.net,https://talkbusiness.net/category/politics/feed/|https://talkbusiness.net/feed/,state,AR,US,en,Unrated,,,,,,false,none,3,true,
+delaware-public-media,Delaware Public Media,https://www.delawarepublic.org,https://www.delawarepublic.org/tags/politics.rss|https://www.delawarepublic.org/news.rss,state,DE,US,en,Unrated,,,,,,false,none,3,true,Public radio
+boise-state-public-radio,Boise State Public Radio,https://www.boisestatepublicradio.org,https://www.boisestatepublicradio.org/2024-election-coverage.rss,state,ID,US,en,Unrated,,,,,,false,none,3,true,Public radio
+ocean-state-media,Ocean State Media,https://oceanstatemedia.org,https://www.oceanstatemedia.org/elections.rss|https://www.oceanstatemedia.org/politics.rss,state,RI,US,en,Unrated,,,,,,false,none,3,true,Public media
+wpri,WPRI,https://www.wpri.com,https://www.wpri.com/news/politics/feed/|https://www.wpri.com/feed/,local,RI,US,en,Unrated,,,,,,false,none,3,true,TV
