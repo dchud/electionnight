@@ -3,18 +3,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from monitor.lake import BatchWriter, connect, init_lake
+from monitor.lake import BatchWriter, connect
 from monitor.orchestrator import Database, Stage
 from monitor.parsers.base import Item, ParserOutput, needs_parser_sql
 from monitor.parsers.lang import LangParser, resolve_language
-from monitor.settings import Paths, Settings
-
-
-@pytest.fixture
-def settings(tmp_path):
-    configured = Settings(paths=Paths.under(tmp_path))
-    init_lake(configured)
-    return configured
 
 
 class Recording:

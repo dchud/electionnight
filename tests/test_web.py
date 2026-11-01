@@ -2,10 +2,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from conftest import clone_lake
 from fastapi.testclient import TestClient
 
-from monitor.lake import BatchWriter, connect, init_lake
-from monitor.settings import Paths, Settings
+from monitor.lake import BatchWriter, connect
 from monitor.web.app import create_app, first_sentence, render_cited
 from monitor.web.filters import Filters, FocusSets, race_state_pair, since_4pm
 from monitor.web.panels import (
@@ -19,13 +19,6 @@ from monitor.web.panels import (
 
 ET_OFFSET = timedelta(hours=-5)
 NOW = datetime(2026, 11, 3, 20, 0, tzinfo=UTC)
-
-
-@pytest.fixture
-def settings(tmp_path):
-    configured = Settings(paths=Paths.under(tmp_path, config=Path("config")))
-    init_lake(configured)
-    return configured
 
 
 def seed(settings):
@@ -169,8 +162,10 @@ def seed(settings):
     conn.close()
 
 
-@pytest.fixture
-def client(settings):
+@pytest.fixture(scope="module")
+def client(lake_template, tmp_path_factory):
+    """One app for this module's tests, which only read."""
+    settings = clone_lake(lake_template, tmp_path_factory.mktemp("web"))
     seed(settings)
     with TestClient(create_app(settings)) as test_client:
         yield test_client

@@ -4,7 +4,7 @@ import pytest
 
 from monitor.control import process_requests
 from monitor.disk import DiskGuard, DiskLevel, disk_figures
-from monitor.lake import BatchWriter, connect, init_lake
+from monitor.lake import BatchWriter, connect
 from monitor.maintenance import (
     backup_catalog,
     backups_to_keep,
@@ -17,13 +17,6 @@ from monitor.maintenance import (
 from monitor.settings import Paths, Settings
 
 NOW = datetime(2026, 11, 3, 18, 0, tzinfo=UTC)
-
-
-@pytest.fixture
-def settings(tmp_path):
-    configured = Settings(paths=Paths.under(tmp_path))
-    init_lake(configured)
-    return configured
 
 
 def write_rows(conn, settings, batches=6):

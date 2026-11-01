@@ -6,7 +6,7 @@ import pytest
 
 from monitor import analytics
 from monitor.ingest.sources import Source
-from monitor.lake import BatchWriter, connect, init_lake
+from monitor.lake import BatchWriter, connect
 from monitor.llm.citations import split_sentences, validate_cited_text
 from monitor.llm.schemas import ItemA
 from monitor.orchestrator import Database
@@ -33,17 +33,9 @@ from monitor.parsers.storylines import (
     ema_update,
 )
 from monitor.rollups import ROLLUPS, RollupEngine, diff_rows
-from monitor.settings import Paths, Settings
 
 CONFIG = Path("config")
 NOW = datetime(2026, 11, 3, 20, 0, tzinfo=UTC)
-
-
-@pytest.fixture
-def settings(tmp_path):
-    configured = Settings(paths=Paths.under(tmp_path))
-    init_lake(configured)
-    return configured
 
 
 @pytest.fixture

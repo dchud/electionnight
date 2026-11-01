@@ -12,18 +12,10 @@ from monitor.ingest.poller import (
     next_delay,
 )
 from monitor.ingest.sources import Source
-from monitor.lake import BatchWriter, connect, init_lake
-from monitor.settings import Paths, Settings
+from monitor.lake import BatchWriter, connect
 
 FIXTURES = Path(__file__).parent / "fixtures" / "feeds"
 FEED_URL = "https://example.com/feed"
-
-
-@pytest.fixture
-def settings(tmp_path):
-    configured = Settings(paths=Paths.under(tmp_path))
-    init_lake(configured)
-    return configured
 
 
 @pytest.fixture

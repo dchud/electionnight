@@ -6,7 +6,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel
 
-from monitor.lake import BatchWriter, connect, init_lake
+from monitor.lake import BatchWriter, connect
 from monitor.llm.budget import (
     Budget,
     BudgetState,
@@ -21,7 +21,6 @@ from monitor.llm.client import (
     LlmTruncated,
     LlmUnavailable,
 )
-from monitor.settings import Paths, Settings
 
 
 class Answer(BaseModel):
@@ -64,13 +63,6 @@ class FakeClient:
 
     async def beta_create(self, **params):
         return await self.create(**params)
-
-
-@pytest.fixture
-def settings(tmp_path):
-    configured = Settings(paths=Paths.under(tmp_path))
-    init_lake(configured)
-    return configured
 
 
 def client_with(settings, *replies):

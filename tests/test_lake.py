@@ -16,14 +16,6 @@ from monitor.lake import (
     writer_is_running,
     writer_lock,
 )
-from monitor.settings import Paths, Settings
-
-
-@pytest.fixture
-def settings(tmp_path):
-    configured = Settings(paths=Paths.under(tmp_path))
-    init_lake(configured)
-    return configured
 
 
 def test_init_twice_creates_every_table(settings):
