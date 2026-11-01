@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy
+mkdir -p tmp
 uv run pytest
 uv run python scripts/lint_process_labels.py
 echo "check.sh passed"
