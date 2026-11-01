@@ -38,6 +38,8 @@ def _direct(settings: Settings, command: str, **options: Any) -> str:
         from monitor.parsers.briefs import brief_standalone
 
         return brief_standalone(settings, **options)
+    if command == "relabel":
+        raise ValueError("relabel needs a running pipeline")
     raise ValueError(f"unknown command: {command}")
 
 

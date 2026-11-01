@@ -7,7 +7,11 @@ import pytest
 from monitor import analytics
 from monitor.ingest.sources import Source
 from monitor.lake import BatchWriter, connect
-from monitor.llm.citations import split_sentences, validate_cited_text
+from monitor.llm.citations import (
+    split_sentences,
+    validate_cited_text,
+    validate_structured,
+)
 from monitor.llm.schemas import ItemA
 from monitor.orchestrator import Database
 from monitor.parsers.base import Item
@@ -487,3 +491,46 @@ def test_rollup_restart_loads_stored_state(settings):
     writer.flush()
     assert RollupEngine(settings, writer).run(conn, now=NOW) == {}
     conn.close()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sen. Warnock spoke in Atlanta.[1]",
+        "Polls closed on Oct. 26, a record for early voting.[1]",
+        "U.S. Rep. Kaptur and J. D. Vance spoke.[1]",
+        "The race in Ga. is close, officials said.[1]",
+        'Trump said he would be "Mr. Veto" if Democrats win.[1]',
+    ],
+)
+def test_abbreviations_do_not_split_a_sentence(text):
+    assert split_sentences(text) == [text]
+    result = validate_cited_text(text, {"1": "a"})
+    assert result.sentences_dropped == 0
+    assert result.markdown == text.replace("[1]", "[^1]")
+
+
+def test_uncited_sentence_is_still_trimmed_after_an_abbreviation():
+    text = "Sen. Warnock spoke. The crowd was large.[1] It rained."
+    result = validate_cited_text(text, {"1": "a"})
+    assert result.markdown == "The crowd was large.[^1]"
+    assert result.sentences_dropped == 2
+
+
+def test_structured_sentences_stay_whole():
+    result = validate_structured(
+        [
+            [
+                ("Voting ended on Oct. 26, a record.", ["1"]),
+                ("No source here.", []),
+                ("Sen. Warnock spoke.", ["2", "9"]),
+            ]
+        ],
+        {"1": "a", "2": "b"},
+    )
+    assert result.markdown == (
+        "Voting ended on Oct. 26, a record.[^1] Sen. Warnock spoke.[^2]"
+    )
+    assert result.citations == {"1": "a", "2": "b"}
+    assert result.sentences_dropped == 1
+    assert result.citations_dropped == 1

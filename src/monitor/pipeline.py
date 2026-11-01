@@ -110,6 +110,7 @@ class Pipeline:
         }
         self.async_handlers: dict[str, Callable[..., Awaitable[str]]] = {
             "brief": self._handle_brief,
+            "relabel": self._handle_relabel,
         }
         self.poller: Poller | None = None
         self.llm: LlmClient | None = None
@@ -149,6 +150,12 @@ class Pipeline:
             f"brief written: {result.sentences_kept} sentences, "
             f"{result.sentences_dropped} removed"
         )
+
+    async def _handle_relabel(self) -> str:
+        if self.storylines is None:
+            return "storylines are not running"
+        count = await self.storylines.relabel_active()
+        return f"relabeled {count} storylines"
 
     async def every(
         self,
@@ -352,7 +359,7 @@ class Pipeline:
             "updated_at": datetime.now(UTC),
             "started_at": self.started_at,
             "commit": self.commit,
-            "last_commit_at": self.writer.last_commit_at,
+            "last_commit_at": self.writer.last_commit_at or self.started_at,
             "last_maintenance_at": self.last_maintenance,
             "last_backup_at": self.last_backup,
             "last_rollup_at": self.last_rollup,

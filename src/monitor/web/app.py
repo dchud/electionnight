@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 
+from monitor.llm.citations import split_sentences
 from monitor.logs import configure, get
 from monitor.settings import Settings, get_settings
 from monitor.web.drilldown import Drill
@@ -88,8 +89,7 @@ def first_sentence(markdown: str | None) -> str:
     """The first sentence, with its citation markers."""
     if not markdown:
         return ""
-    match = re.match(r"(.+?[.!?。！？](?:\[\^\w+\])*)(?:\s|$)", markdown, re.S)
-    return match.group(1) if match else markdown
+    return split_sentences(markdown)[0]
 
 
 def create_templates() -> Jinja2Templates:

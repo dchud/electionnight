@@ -174,6 +174,14 @@ def brief(
 
 
 @app.command()
+def relabel() -> None:
+    """Rewrite labels and summaries of active storylines."""
+    from monitor.control import run_or_request
+
+    typer.echo(run_or_request(get_settings(), "relabel"))
+
+
+@app.command()
 def disk() -> None:
     """Show disk use by category and free space."""
     from monitor.disk import report_disk

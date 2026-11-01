@@ -520,6 +520,20 @@ class StorylineParser:
         storyline.dirty = True
         storyline.last_snapshot_at = None
 
+    async def relabel_active(self) -> int:
+        """Rewrite the label and summary of every active storyline."""
+        if self.llm is None:
+            return 0
+        if not self.loaded:
+            await self._load_state()
+        active = [
+            s for s in self.engine.storylines.values() if s.status == "active"
+        ]
+        for storyline in active:
+            await self._label(storyline)
+        self.flush_snapshots()
+        return len(active)
+
     def flush_snapshots(self, now: datetime | None = None) -> int:
         """Append a new version for storylines that changed."""
         now = now or datetime.now(UTC)
