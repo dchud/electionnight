@@ -4,7 +4,7 @@
   <tbody>
   {% for row in lean_rows %}
   <tr>
-    <td>{% if row.glyph %}<span class="glyph">{{ row.glyph }}</span> {% endif %}{{ row.bucket }}</td>
+    <td>{% if row.glyph %}<span class="glyph" title="{{ row.bucket|lean_title }}">{{ row.glyph }}</span> {% endif %}{{ row.bucket }}</td>
     <td class="num"><span class="count-link" data-evidence="kind=entity&key={{ page_key }}&copies=all&opinion=exclude{% if row.bucket != 'All' %}&bucket={{ row.bucket }}{% endif %}" role="button" tabindex="0">{{ row.mentions }}</span></td>
     {% if row.hidden %}
     <td colspan="2" class="panel-note">Hidden: n under 5</td>
