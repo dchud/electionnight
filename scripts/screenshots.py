@@ -58,9 +58,10 @@ def main() -> None:
                     f"'{settings['projector']}');"
                 )
                 page = context.new_page()
+                where = f"{mode} {size}"
                 page.on(
                     "pageerror",
-                    lambda error: problems.append(f"{mode} {size}: {error}"),
+                    lambda error, at=where: problems.append(f"{at}: {error}"),
                 )
                 for path in args.pages:
                     page.goto(f"{args.base}{path}?{args.query}")
