@@ -11,7 +11,8 @@ import json
 import os
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +62,45 @@ def run_or_request(settings: Settings, command: str, **options: Any) -> str:
             return payload["result"]
         time.sleep(POLL_SECONDS)
     raise TimeoutError(f"no reply from the pipeline for {command}")
+
+
+class SpoolWriter:
+    """Holds lake rows from a CLI process until the pipeline can write them.
+
+    It has the same `add` as `BatchWriter`, so a command that calls Claude can
+    record its ledger rows without writing to the lake itself.
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        settings.paths.control.mkdir(parents=True, exist_ok=True)
+        self.path = settings.paths.control / f"{uuid.uuid4().hex}.spool.jsonl"
+
+    def add(self, table: str, rows: Iterable[dict[str, Any]]) -> None:
+        with self.path.open("a", encoding="utf-8") as handle:
+            for row in rows:
+                record = {"table": table, "row": row}
+                handle.write(json.dumps(record, default=str) + "\n")
+
+
+def drain_spool(control: Path, add: Callable[[str, list[Any]], None]) -> int:
+    """Move spooled rows into the writer. Called from inside the pipeline."""
+    if not control.exists():
+        return 0
+    moved = 0
+    for path in sorted(control.glob("*.spool.jsonl")):
+        by_table: dict[str, list[Any]] = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            record = json.loads(line)
+            row = record["row"]
+            for key, value in row.items():
+                if key.endswith("_at") and isinstance(value, str):
+                    row[key] = datetime.fromisoformat(value)
+            by_table.setdefault(record["table"], []).append(row)
+        for table, rows in by_table.items():
+            add(table, rows)
+            moved += len(rows)
+        path.unlink()
+    return moved
 
 
 def process_requests(control: Path, handlers: dict[str, Handler]) -> int:

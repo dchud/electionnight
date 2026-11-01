@@ -245,6 +245,21 @@ class Poller:
         finally:
             await self.client.aclose()
 
+    def details(self) -> list[dict[str, Any]]:
+        """Per-feed state for the status page."""
+        return [
+            {
+                "source_id": feed.source.source_id,
+                "feed_url": feed.url,
+                "failures": feed.failures,
+                "open": feed.is_open,
+                "last_error": feed.last_error,
+                "last_success_at": feed.last_success_at,
+                "n_new": feed.n_new_total,
+            }
+            for feed in self.feeds
+        ]
+
     def health(self) -> dict[str, int]:
         healthy = sum(1 for f in self.feeds if f.failures == 0)
         return {"healthy": healthy, "total": len(self.feeds)}
