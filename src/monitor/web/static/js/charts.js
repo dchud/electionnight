@@ -167,7 +167,12 @@
     const result = await window.vegaEmbed(stage, spec, {
       actions: false,
       renderer: "svg",
-      tooltip: { theme: themeName() === "dark" ? "dark" : "light" },
+      // Far enough from the pointer that a large cursor does not cover it.
+      tooltip: {
+        theme: themeName() === "dark" ? "dark" : "light",
+        offsetX: 48,
+        offsetY: 48,
+      },
       mode: "vega-lite",
       logLevel: window.vega.Error,
     });

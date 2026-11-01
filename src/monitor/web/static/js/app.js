@@ -787,23 +787,21 @@
   });
   document.addEventListener("DOMContentLoaded", () => paintDots(document));
 
-  /* A story chip says what it means at once, as the map's states do. A title
-     stays in the page until first use, so it still works without this. */
+  /* A story chip says what it means at once, above the chip, where a large
+     cursor does not cover it. A title stays in the page until first use, so
+     it still works without this. */
   const CHIPS =
     ".badge[title], .chip[title], .glyph[title], .tone-dot[title], [data-tip]";
 
-  function placeChipTip(tip, event) {
-    const gap = 14;
-    const right = event.clientX + gap + tip.offsetWidth;
-    const below = event.clientY + gap + tip.offsetHeight;
+  function placeChipTip(tip, chip) {
+    const box = chip.getBoundingClientRect();
+    const gap = 6;
+    const left = box.left + box.width / 2 - tip.offsetWidth / 2;
+    const above = box.top - gap - tip.offsetHeight;
     tip.style.left =
-      (right > window.innerWidth
-        ? event.clientX - gap - tip.offsetWidth
-        : event.clientX + gap) + "px";
-    tip.style.top =
-      (below > window.innerHeight
-        ? event.clientY - gap - tip.offsetHeight
-        : event.clientY + gap) + "px";
+      Math.max(4, Math.min(left, window.innerWidth - tip.offsetWidth - 4)) +
+      "px";
+    tip.style.top = (above >= 4 ? above : box.bottom + gap) + "px";
   }
 
   function hideChipTip() {
@@ -826,11 +824,7 @@
     tip.textContent = chip.dataset.tip;
     tip.dataset.chip = "1";
     tip.hidden = false;
-    placeChipTip(tip, event);
-  });
-  document.addEventListener("pointermove", (event) => {
-    const tip = document.getElementById("tip");
-    if (tip && tip.dataset.chip) placeChipTip(tip, event);
+    placeChipTip(tip, chip);
   });
   document.addEventListener("pointerout", (event) => {
     const chip = event.target.closest && event.target.closest("[data-tip]");
