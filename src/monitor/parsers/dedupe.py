@@ -224,7 +224,7 @@ class DedupeParser:
                     "item_id": item.item_id,
                     "dup_group_id": group_id,
                     "is_canonical": match is None,
-                    "method": match.method if match else "url",
+                    "method": match.method if match else "none",
                     "similarity": match.similarity if match else None,
                     "parser": self.name,
                     "parser_version": self.version,

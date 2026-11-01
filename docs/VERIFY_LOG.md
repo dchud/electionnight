@@ -59,3 +59,11 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
 - **Stream colors.** No palette of 10 hues avoiding party blue and red passes
   the colorblind checks. The first 6 are validated; the rest rely on direct
   labels and hover.
+- **Replaced files.** Spec section 8.3 expects files replaced by compaction to
+  be held by retained snapshots. A merged file keeps each row's snapshot range,
+  so time travel works without them; a scratch-lake test confirmed
+  `AT (VERSION => n)` is exact after deleting them, with no snapshot expired.
+  Maintenance deletes replaced files after 2 hours. Without this, each merge
+  left a full copy behind: 228 MB on disk against 38 MB live after 2 hours.
+- **Local NER fallback.** spaCy is not installed. Spec section 17.2 has Stage B
+  queue during an API outage and catch up, so the fallback would not run.

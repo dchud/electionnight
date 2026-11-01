@@ -270,6 +270,15 @@ class Stage:
             tasks.append(asyncio.ensure_future(self.feeder()))
         return tasks
 
+    def oldest_live_age(self) -> float:
+        """Seconds the oldest waiting live item has been in the system."""
+        waiting = [
+            item.first_seen_at.timestamp()
+            for item in list(self.live._queue)  # type: ignore[attr-defined]
+            if item.first_seen_at
+        ]
+        return time.time() - min(waiting) if waiting else 0.0
+
     def status(self) -> dict[str, Any]:
         return {
             "parser": self.parser.name,
@@ -279,4 +288,6 @@ class Stage:
             "errors": self.errors,
             "lag_seconds": round(self.lag_seconds, 1),
             "paused": self.paused,
+            "backfill_paused": self.pause_backfill,
+            "oldest_live_age": round(self.oldest_live_age(), 1),
         }

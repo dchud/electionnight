@@ -11,7 +11,7 @@ import json
 import os
 import time
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -103,6 +103,35 @@ def drain_spool(control: Path, add: Callable[[str, list[Any]], None]) -> int:
     return moved
 
 
+def _reply(control: Path, request_id: str, reply: dict[str, Any]) -> None:
+    temporary = control / f"{request_id}.tmp"
+    temporary.write_text(json.dumps(reply))
+    os.replace(temporary, control / f"{request_id}.result.json")
+
+
+async def process_async_requests(
+    control: Path, handlers: dict[str, Callable[..., Awaitable[str]]]
+) -> int:
+    """Run pending requests whose handlers call the API."""
+    if not control.exists():
+        return 0
+    handled = 0
+    for request in sorted(control.glob("*.request.json")):
+        payload = json.loads(request.read_text())
+        handler = handlers.get(payload["command"])
+        if handler is None:
+            continue
+        request_id = request.name.removesuffix(".request.json")
+        request.unlink()
+        try:
+            reply = {"result": await handler(**payload.get("options", {}))}
+        except Exception as error:
+            reply = {"error": f"{type(error).__name__}: {error}"}
+        _reply(control, request_id, reply)
+        handled += 1
+    return handled
+
+
 def process_requests(control: Path, handlers: dict[str, Handler]) -> int:
     """Run pending requests. Called from inside the pipeline."""
     if not control.exists():
@@ -111,6 +140,8 @@ def process_requests(control: Path, handlers: dict[str, Handler]) -> int:
     for request in sorted(control.glob("*.request.json")):
         request_id = request.name.removesuffix(".request.json")
         payload = json.loads(request.read_text())
+        if payload["command"] not in handlers:
+            continue
         request.unlink()
         reply: dict[str, Any]
         try:
@@ -118,8 +149,6 @@ def process_requests(control: Path, handlers: dict[str, Handler]) -> int:
             reply = {"result": handler(**payload.get("options", {}))}
         except Exception as error:
             reply = {"error": f"{type(error).__name__}: {error}"}
-        temporary = control / f"{request_id}.tmp"
-        temporary.write_text(json.dumps(reply))
-        os.replace(temporary, control / f"{request_id}.result.json")
+        _reply(control, request_id, reply)
         handled += 1
     return handled

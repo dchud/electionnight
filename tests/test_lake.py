@@ -85,13 +85,41 @@ def test_vectors_round_trip_and_support_cosine(settings):
     conn.close()
 
 
-def test_failed_flush_returns_rows_to_buffer(settings):
+def test_bad_rows_do_not_hold_back_other_tables(settings):
     conn = connect(settings)
     writer = BatchWriter(conn, settings)
     writer.add("raw.fetches", [{"no_such_column": 1}])
-    with pytest.raises(duckdb.Error):
-        writer.flush()
+    writer.add("raw.items", [{"item_id": "good"}])
+    assert writer.flush() == {"raw.items": 1}
+    assert conn.execute("SELECT count(*) FROM lake.raw.items").fetchall() == [
+        (1,)
+    ]
     assert writer.pending() == 1
+    conn.close()
+
+
+def test_rows_that_keep_failing_are_set_aside(settings):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    writer.add("raw.fetches", [{"no_such_column": 1}])
+    for _ in range(3):
+        writer.flush()
+    assert writer.pending() == 0
+    rejected = settings.paths.control / "rejected-raw.fetches.jsonl"
+    assert "no_such_column" in rejected.read_text()
+    conn.close()
+
+
+def test_locked_catalog_never_sets_rows_aside(settings):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    rows = [{"fetch_id": "a"}]
+    for _ in range(5):
+        writer._hold_back(
+            "raw.fetches", rows, duckdb.TransactionException("database locked")
+        )
+    assert writer.pending() == 5
+    assert not (settings.paths.control / "rejected-raw.fetches.jsonl").exists()
     conn.close()
 
 

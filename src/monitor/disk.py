@@ -89,7 +89,7 @@ def disk_figures(
     )
     return {
         "lake_live": live / GB,
-        "retained_by_snapshots": max(total_lake - live, 0) / GB,
+        "awaiting_cleanup": max(total_lake - live, 0) / GB,
         "catalog": catalog / GB,
         "backups": dir_size(paths.backups) / GB,
         "models": dir_size(paths.models) / GB,
@@ -110,8 +110,8 @@ def report_disk(settings: Settings) -> str:
         figures = disk_figures(settings, conn)
         lines = [
             f"{'lake live data':<24}{figures['lake_live']:>9.3f} GB",
-            f"{'retained by snapshots':<24}"
-            f"{figures['retained_by_snapshots']:>9.3f} GB",
+            f"{'compacted, awaiting cleanup':<28}"
+            f"{figures['awaiting_cleanup']:>5.3f} GB",
             f"{'catalog':<24}{figures['catalog']:>9.3f} GB",
             f"{'backups':<24}{figures['backups']:>9.3f} GB",
             f"{'models':<24}{figures['models']:>9.3f} GB",

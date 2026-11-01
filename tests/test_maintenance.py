@@ -167,13 +167,47 @@ def test_disk_figures_report_every_category(settings):
     figures = disk_figures(settings, conn)
     assert set(figures) >= {
         "lake_live",
-        "retained_by_snapshots",
+        "awaiting_cleanup",
         "catalog",
         "backups",
         "models",
         "logs",
         "free",
     }
+    conn.close()
+
+
+def test_cleanup_removes_replaced_files_and_keeps_time_travel(settings):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    versions = []
+    for batch in range(4):
+        writer.add(
+            "nlp.embeddings",
+            [{"item_id": f"{batch}-{n}", "vec": [0.1]} for n in range(5)],
+        )
+        writer.flush()
+        snapshot = conn.execute(
+            "SELECT max(snapshot_id) FROM lake.snapshots()"
+        ).fetchall()[0][0]
+        versions.append((snapshot, (batch + 1) * 5))
+    before = conn.execute("SELECT count(*) FROM lake.snapshots()").fetchall()
+    run_maintenance(conn, now=datetime.now(UTC))
+    on_disk = len(list(settings.paths.data.rglob("*.parquet")))
+    assert on_disk >= 5
+    later = datetime.now(UTC) + timedelta(hours=3)
+    result = run_maintenance(conn, now=later)
+    assert result["files_removed"] >= 4
+    assert len(list(settings.paths.data.rglob("*.parquet"))) < on_disk
+    assert (
+        conn.execute("SELECT count(*) FROM lake.snapshots()").fetchall()[0][0]
+        >= before[0][0]
+    )
+    for version, expected in versions:
+        rows = conn.execute(
+            f"SELECT count(*) FROM lake.nlp.embeddings AT (VERSION => {version})"
+        ).fetchall()
+        assert rows[0][0] == expected
     conn.close()
 
 

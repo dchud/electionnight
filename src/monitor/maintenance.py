@@ -22,13 +22,29 @@ from monitor.settings import Settings
 
 log = get(__name__)
 
+CLEANUP_AGE = timedelta(hours=2)
 BACKUP_NAME = re.compile(r"catalog-(\d{8}-\d{4})\.sqlite\.zst$")
 
 
-def run_maintenance(conn: duckdb.DuckDBPyConnection) -> None:
-    """Flush inlined rows to Parquet and merge small files."""
+def run_maintenance(
+    conn: duckdb.DuckDBPyConnection, now: datetime | None = None
+) -> dict[str, int]:
+    """Flush inlined rows, merge small files, delete replaced files.
+
+    A merged file carries the snapshot range of each row, so time travel works
+    without the files it replaced. Those are deleted once they are 2 hours
+    old, which leaves any query still reading them time to finish.
+    """
+    cutoff = (now or datetime.now(UTC)) - CLEANUP_AGE
     conn.execute("CALL ducklake_flush_inlined_data('lake')").fetchall()
-    conn.execute("CALL ducklake_merge_adjacent_files('lake')").fetchall()
+    merged = conn.execute(
+        "CALL ducklake_merge_adjacent_files('lake')"
+    ).fetchall()
+    removed = conn.execute(
+        "CALL ducklake_cleanup_old_files('lake', "
+        f"older_than => TIMESTAMPTZ '{cutoff.isoformat()}')"
+    ).fetchall()
+    return {"tables_merged": len(merged), "files_removed": len(removed)}
 
 
 def backup_catalog(settings: Settings, now: datetime | None = None) -> Path:

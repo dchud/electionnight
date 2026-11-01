@@ -14,7 +14,11 @@ from zoneinfo import ZoneInfo
 
 import duckdb
 
-from monitor.control import drain_spool, process_requests
+from monitor.control import (
+    drain_spool,
+    process_async_requests,
+    process_requests,
+)
 from monitor.disk import DiskGuard, DiskLevel
 from monitor.ingest.poller import Poller, load_seen, load_validators
 from monitor.ingest.sources import load_sources
@@ -25,11 +29,17 @@ from monitor.logs import configure, get
 from monitor.maintenance import backup_catalog, prune, run_maintenance
 from monitor.orchestrator import Database, Stage
 from monitor.parsers.base import Item, item_from_poller
+from monitor.parsers.briefs import BriefWriter
 from monitor.parsers.classify_a import ClassifyParser
 from monitor.parsers.dedupe import DedupeParser
 from monitor.parsers.embed import EmbedParser
+from monitor.parsers.entities import EntityPass, EntityResolver
+from monitor.parsers.extract_b import ExtractParser
+from monitor.parsers.fetch_text import FetchTextParser
+from monitor.parsers.geo import Gazetteer
 from monitor.parsers.lang import LangParser
 from monitor.parsers.storylines import StorylineParser
+from monitor.ref.loader import sync_ref_tables
 from monitor.rollups import RollupEngine
 from monitor.settings import Settings
 
@@ -41,6 +51,12 @@ STATUS_SECONDS = 10
 STORYLINE_PASS_SECONDS = 600
 REF_SYNC_SECONDS = 60
 NIGHTLY_REBUILD_HOUR_ET = 4
+ENTITY_PASS_SECONDS = 300
+BRIEF_CHECK_SECONDS = 60
+LADDER_SECONDS = 15
+# Lag at which the pipeline sheds background work, and at which it resumes.
+LAG_HIGH_SECONDS = 120.0
+LAG_LOW_SECONDS = 60.0
 
 
 class Pipeline:
@@ -63,11 +79,19 @@ class Pipeline:
             "prune": self._handle_prune,
             "rollups": self._handle_rollups,
         }
+        self.async_handlers: dict[str, Callable[..., Awaitable[str]]] = {
+            "brief": self._handle_brief,
+        }
         self.poller: Poller | None = None
         self.llm: LlmClient | None = None
         self.stages: list[Stage] = []
         self.first_stage: Stage | None = None
         self.storylines: StorylineParser | None = None
+        self.embed: EmbedParser | None = None
+        self.extract_stage: Stage | None = None
+        self.entity_pass: EntityPass | None = None
+        self.briefs: BriefWriter | None = None
+        self.shedding = False
         self.rollups = RollupEngine(settings, self.writer)
         self.ref_state: dict[str, Any] = {}
         self.started_at = datetime.now(UTC)
@@ -82,6 +106,17 @@ class Pipeline:
     def _handle_rollups(self, rebuild: bool = False) -> str:
         counts = self.rollups.run(self.conn, rebuild=rebuild)
         return f"appended {sum(counts.values())} rows: {counts}"
+
+    async def _handle_brief(self, focus: str = "all") -> str:
+        if self.briefs is None:
+            return "briefs are off: this pipeline runs without the LLM"
+        result = await self.briefs.write(focus)
+        if result is None:
+            return "too few items in the window; no brief written"
+        return (
+            f"brief written: {result.sentences_kept} sentences, "
+            f"{result.sentences_dropped} removed"
+        )
 
     async def every(
         self,
@@ -115,9 +150,9 @@ class Pipeline:
             log.info("committed", **counts)
 
     async def maintenance_job(self) -> None:
-        await self.db.run(run_maintenance, self.conn)
+        result = await self.db.run(run_maintenance, self.conn)
         self.last_maintenance = datetime.now(UTC)
-        log.info("maintenance_done")
+        log.info("maintenance_done", **result)
 
     async def backup_job(self) -> None:
         path = await self.db.run(backup_catalog, self.settings)
@@ -141,10 +176,10 @@ class Pipeline:
             )
 
     async def control_job(self) -> None:
-        await self.db.run(
-            process_requests, self.settings.paths.control, self.handlers
-        )
-        drain_spool(self.settings.paths.control, self.writer.add)
+        control = self.settings.paths.control
+        await self.db.run(process_requests, control, self.handlers)
+        await process_async_requests(control, self.async_handlers)
+        drain_spool(control, self.writer.add)
 
     async def rollup_job(self) -> None:
         counts = await self.db.run(self.rollups.run, self.conn)
@@ -171,8 +206,6 @@ class Pipeline:
             await asyncio.to_thread(self.storylines.periodic)
 
     async def ref_sync_job(self) -> None:
-        from monitor.ref.loader import sync_ref_tables
-
         counts = await self.db.run(
             sync_ref_tables,
             self.conn,
@@ -182,6 +215,32 @@ class Pipeline:
         )
         if counts:
             log.info("ref_synced", **counts)
+
+    async def entity_job(self) -> None:
+        if self.entity_pass is not None:
+            counts = await self.entity_pass.run()
+            if any(counts.values()):
+                log.info("entity_pass", **counts)
+
+    async def brief_job(self) -> None:
+        if self.briefs is not None and await self.briefs.maybe_write():
+            log.info("brief_scheduled")
+
+    async def ladder_job(self) -> None:
+        """Automatic degradation: shed background work when behind."""
+        lag = max(
+            (stage.oldest_live_age() for stage in self.stages), default=0.0
+        )
+        if not self.shedding and lag > LAG_HIGH_SECONDS:
+            self.shedding = True
+            log.warning("shedding_load", lag_seconds=round(lag))
+        elif self.shedding and lag < LAG_LOW_SECONDS:
+            self.shedding = False
+            log.info("load_restored", lag_seconds=round(lag))
+        for stage in self.stages:
+            stage.pause_backfill = self.shedding
+        if self.embed is not None:
+            self.embed.throttle = 0.5 if self.shedding else 1.0
 
     async def status_job(self) -> None:
         path = self.settings.paths.status
@@ -201,6 +260,7 @@ class Pipeline:
             "feeds": self.poller.health() if self.poller else {},
             "feed_details": self.poller.details() if self.poller else [],
             "stages": [stage.status() for stage in self.stages],
+            "shedding": self.shedding,
             "llm": self.llm.status() if self.llm else {"disabled": True},
             "disk": {
                 "level": self.guard.level().name,
@@ -232,6 +292,19 @@ class Pipeline:
             ),
             self.every(REF_SYNC_SECONDS, "ref_sync", self.ref_sync_job),
             self.every(STATUS_SECONDS, "status", self.status_job),
+            self.every(
+                ENTITY_PASS_SECONDS,
+                "entities",
+                self.entity_job,
+                first_after=90,
+            ),
+            self.every(
+                BRIEF_CHECK_SECONDS,
+                "briefs",
+                self.brief_job,
+                first_after=120,
+            ),
+            self.every(LADDER_SECONDS, "ladder", self.ladder_job),
         ]
 
     def build_stages(self) -> list[Stage]:
@@ -240,63 +313,80 @@ class Pipeline:
         sources = {s.source_id: s for s in load_sources(settings)}
         threshold = settings.nlp.relevance_threshold
 
+        def relevant(item: Item) -> bool:
+            return item.relevant and item.relevance_conf >= threshold
+
         def relevant_canonical(item: Item) -> bool:
-            return (
-                item.relevant
-                and item.relevance_conf >= threshold
-                and item.is_canonical
-            )
+            return relevant(item) and item.is_canonical
 
         self.storylines = StorylineParser(
             settings, self.db, self.writer, self.llm
         )
-        chain = [
-            Stage(
-                LangParser(),
-                self.db,
-                self.writer,
-                linger_seconds=0.2,
-                backfill_batch=2000,
-            ),
-            Stage(
-                ClassifyParser(settings, self.llm, sources),
-                self.db,
-                self.writer,
-                linger_seconds=1.0,
-                backfill_batch=240,
-            ),
-            Stage(
-                EmbedParser(settings),
-                self.db,
-                self.writer,
-                linger_seconds=0.5,
-                backfill_batch=640,
-            ),
-            Stage(
-                DedupeParser(settings, self.db),
-                self.db,
-                self.writer,
-                linger_seconds=0.2,
-                backfill_batch=640,
-            ),
-            Stage(
-                self.storylines,
-                self.db,
-                self.writer,
-                accept=relevant_canonical,
-                linger_seconds=0.2,
-                backfill_batch=320,
-            ),
+        self.embed = EmbedParser(settings)
+        stage = lambda parser, **options: Stage(  # noqa: E731
+            parser, self.db, self.writer, **options
+        )
+        lang = stage(LangParser(), linger_seconds=0.2, backfill_batch=2000)
+        classify = stage(
+            ClassifyParser(settings, self.llm, sources),
+            linger_seconds=1.0,
+            backfill_batch=240,
+        )
+        embed = stage(self.embed, linger_seconds=0.5, backfill_batch=640)
+        dedupe = stage(
+            DedupeParser(settings, self.db),
+            linger_seconds=0.2,
+            backfill_batch=640,
+        )
+        story = stage(
+            self.storylines,
+            accept=relevant_canonical,
+            linger_seconds=0.2,
+            backfill_batch=320,
+        )
+        all_stages = [lang, classify, embed, dedupe, story]
+        links = [
+            (lang, classify),
+            (classify, embed),
+            (embed, dedupe),
+            (dedupe, story),
         ]
+        if self.llm is not None:
+            resolver = EntityResolver(settings)
+            fetch = stage(
+                FetchTextParser(settings, sources, self.guard),
+                accept=relevant,
+                linger_seconds=0.0,
+                backfill_batch=48,
+            )
+            extract = stage(
+                ExtractParser(
+                    settings,
+                    self.llm,
+                    self.db,
+                    sources,
+                    resolver,
+                    Gazetteer.load(settings.paths.ref),
+                ),
+                accept=relevant,
+                linger_seconds=0.0,
+                backfill_batch=48,
+            )
+            self.extract_stage = extract
+            self.entity_pass = EntityPass(
+                settings, self.db, self.writer, self.llm, resolver
+            )
+            self.briefs = BriefWriter(settings, self.db, self.writer, self.llm)
+            all_stages += [fetch, extract]
+            links += [(classify, fetch), (fetch, extract)]
         if self.stage_filter is not None:
-            chain = [
-                stage
-                for stage in chain
-                if stage.parser.name in self.stage_filter
+            all_stages = [
+                s for s in all_stages if s.parser.name in self.stage_filter
             ]
-        for stage, following in zip(chain, chain[1:], strict=False):
-            stage.then(following)
-        return chain
+        for first, second in links:
+            if first in all_stages and second in all_stages:
+                first.then(second)
+        return all_stages
 
     def on_new_items(self, rows: list[dict[str, Any]]) -> None:
         if self.first_stage is None:
@@ -323,6 +413,8 @@ class Pipeline:
             )
         self.stages = self.build_stages()
         self.first_stage = self.stages[0] if self.stages else None
+        if self.entity_pass is not None:
+            await self.entity_pass.reload()
         self.poller = self.build_poller()
         log.info(
             "pipeline_started",

@@ -52,6 +52,7 @@ extend-immutable-calls = ["typer.Option", "typer.Argument"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/monitor/cli.py" = ["B008"]
+"src/monitor/control.py" = ["ASYNC240"]
 "src/monitor/parsers/storylines.py" = ["E501"]
 
 [tool.pytest.ini_options]

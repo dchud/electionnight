@@ -28,6 +28,7 @@ from monitor.settings import Settings
 log = get(__name__)
 
 SCHEMAS = ("raw", "nlp", "gold", "ref")
+MAX_FLUSH_FAILURES = 3
 
 PARSER_COLS = "parser TEXT, parser_version TEXT,"
 
@@ -294,6 +295,7 @@ class BatchWriter:
         self._lock = threading.Lock()
         self.last_commit_at: datetime | None = None
         self.in_flight = False
+        self._failures: dict[str, int] = {}
 
     def add(self, table: str, rows: Iterable[dict[str, Any]]) -> None:
         if table not in TABLES:
@@ -308,13 +310,7 @@ class BatchWriter:
         with self._lock:
             return sum(len(rows) for rows in self._buffers.values())
 
-    def flush(self) -> dict[str, int]:
-        """Commit everything buffered. Failed rows return to the buffer."""
-        with self._lock:
-            batch = {k: v for k, v in self._buffers.items() if v}
-            self._buffers = defaultdict(list)
-        if not batch:
-            return {}
+    def _commit(self, batch: dict[str, list[dict[str, Any]]]) -> None:
         cursor = self._conn.cursor()
         self.in_flight = True
         try:
@@ -332,17 +328,77 @@ class BatchWriter:
                 cursor.execute("ROLLBACK")
             except duckdb.Error:
                 log.warning("rollback_failed")
-            with self._lock:
-                for table, rows in batch.items():
-                    self._buffers[table] = rows + self._buffers[table]
             raise
         finally:
             self.in_flight = False
             cursor.close()
-        self.last_commit_at = utcnow()
-        counts = {table: len(rows) for table, rows in batch.items()}
-        self._write_signal(counts)
+
+    def flush(self) -> dict[str, int]:
+        """Commit everything buffered in one transaction.
+
+        If that fails, each table is tried on its own, so one table's bad rows
+        cannot hold back the rest. Rows that fail because of their content are
+        set aside after repeated failures; a locked catalog just retries.
+        """
+        with self._lock:
+            batch = {k: v for k, v in self._buffers.items() if v}
+            self._buffers = defaultdict(list)
+        if not batch:
+            return {}
+        try:
+            self._commit(batch)
+            counts = {table: len(rows) for table, rows in batch.items()}
+        except Exception as error:
+            log.warning(
+                "flush_failed",
+                tables=sorted(batch),
+                error=f"{type(error).__name__}: {error}"[:300],
+            )
+            counts = self._flush_each(batch)
+        if counts:
+            self.last_commit_at = utcnow()
+            self._write_signal(counts)
         return counts
+
+    def _flush_each(
+        self, batch: dict[str, list[dict[str, Any]]]
+    ) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for table, rows in batch.items():
+            try:
+                self._commit({table: rows})
+            except Exception as error:
+                self._hold_back(table, rows, error)
+            else:
+                counts[table] = len(rows)
+                self._failures.pop(table, None)
+        return counts
+
+    def _hold_back(
+        self, table: str, rows: list[dict[str, Any]], error: Exception
+    ) -> None:
+        transient = isinstance(
+            error, duckdb.TransactionException | duckdb.IOException
+        )
+        failures = self._failures.get(table, 0) + 1
+        if transient or failures < MAX_FLUSH_FAILURES:
+            self._failures[table] = failures
+            with self._lock:
+                self._buffers[table] = rows + self._buffers[table]
+            return
+        self._failures.pop(table, None)
+        path = self._settings.paths.control / f"rejected-{table}.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            for row in rows:
+                handle.write(json.dumps(row, default=str) + "\n")
+        log.error(
+            "rows_rejected",
+            table=table,
+            n=len(rows),
+            path=str(path),
+            error=f"{type(error).__name__}: {error}"[:300],
+        )
 
     def _write_signal(self, counts: dict[str, int]) -> None:
         path = self._settings.paths.last_commit
