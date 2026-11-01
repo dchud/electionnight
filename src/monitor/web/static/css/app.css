@@ -765,9 +765,6 @@ main {
 #us-map {
   height: 100%;
 }
-.badge[title], .chip[title], .glyph[title], .tone-dot[title] {
-  cursor: help;
-}
 .map-svg {
   width: 100%;
   height: 100%;
