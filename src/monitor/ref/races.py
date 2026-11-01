@@ -44,6 +44,7 @@ from monitor.settings import Settings
 log = get(__name__)
 
 YEAR = 2026
+YEAR_TEXT = str(YEAR)
 
 SENATE = "senate"
 GOVERNOR = "governor"
@@ -183,6 +184,8 @@ AT_LARGE_STATES = {
     "WY",
 }
 MAX_DISTRICT = 60
+# What a measure's key has that no other race's key has.
+BALLOT_MEASURE_CODE = "-M-"
 
 TOSS_UP = "Toss-up"
 CLOSE_PREFIXES = ("Tilt ", "Lean ")
@@ -282,6 +285,106 @@ def _plain(text: str) -> str:
     return re.sub(r"[\s_]+", " ", cleaned).strip()
 
 
+STATE_NAME_RE = re.compile(
+    r"\b(?:"
+    + "|".join(sorted(map(re.escape, STATE_NAMES), key=len, reverse=True))
+    + r")s?\b"
+)
+FEDERAL_RE = re.compile(r"\b(?:us|u s|united states|federal|congress\w*)\b")
+DISTRICT_NUMBER_RE = re.compile(r"\d{1,2}(?:st|nd|rd|th)?")
+HOUSE_PREFIX_RE = re.compile(
+    r"\b(?:us|u s|united states|house|of|representatives?|rep|congressman|"
+    r"congresswoman|member)\b"
+)
+RACE_WORDS = {
+    "the",
+    "race",
+    "seat",
+    "contest",
+    "election",
+    "elections",
+    "general",
+    "special",
+    "for",
+    "office",
+    YEAR_TEXT,
+}
+OFFICE_WORDS = {
+    SENATE: {
+        "sen",
+        "senate",
+        "senator",
+        "senators",
+        "us",
+        "u",
+        "s",
+        "united",
+        "states",
+        "federal",
+        "of",
+    },
+    GOVERNOR: {"gov", "governor", "governors", "gubernatorial", "state", "of"},
+    LT_GOVERNOR: {
+        "lieutenant",
+        "lt",
+        "ltgov",
+        "lg",
+        "gov",
+        "governor",
+        "governors",
+        "state",
+        "of",
+    },
+    ATTORNEY_GENERAL: {
+        "attorney",
+        "attorneys",
+        "general",
+        "generals",
+        "atty",
+        "gen",
+        "ag",
+        "state",
+        "of",
+    },
+    SECRETARY_OF_STATE: {"secretary", "sec", "sos", "of", "state", "states"},
+    HOUSE: {
+        "house",
+        "representatives",
+        "representative",
+        "rep",
+        "reps",
+        "us",
+        "u",
+        "s",
+        "united",
+        "states",
+        "of",
+        "congress",
+        "congressional",
+        "congressman",
+        "congresswoman",
+        "member",
+        "cd",
+        "h",
+        "district",
+        "delegate",
+        "resident",
+        "commissioner",
+        "at",
+        "large",
+        "federal",
+    },
+}
+
+
+def _is_bare_district(text: str) -> bool:
+    """True for office text that is only a code such as `TX-35`."""
+    return re.fullmatch(
+        r"(?:[A-Za-z]{2}[-\s]?\d{1,2}|[A-Za-z .']+\s\d{1,2}(?:st|nd|rd|th)?)",
+        text.strip(),
+    ) is not None and not re.search(r"district", text, re.I)
+
+
 def normalize_state(value: object) -> str | None:
     """Return the USPS code for a state name, abbreviation, or code."""
     if value is None:
@@ -294,7 +397,27 @@ def normalize_state(value: object) -> str | None:
     return STATE_NAMES.get(plain) or AP_STATE_ABBREVIATIONS.get(plain)
 
 
+def _office_is_clear(kind: str, text: str) -> bool:
+    """True when the text holds only words that belong to this office.
+
+    A state's name before "Senate" or "House" means that state's chamber,
+    unless the text also says the office is federal.
+    """
+    named_state = STATE_NAME_RE.search(text) is not None
+    if kind in {SENATE, HOUSE} and named_state:
+        if not FEDERAL_RE.search(text):
+            return False
+    words = re.sub(r"[^\w\s]", " ", STATE_NAME_RE.sub(" ", text)).split()
+    allowed = OFFICE_WORDS[kind] | RACE_WORDS
+    return all(
+        word in allowed
+        or (kind == HOUSE and DISTRICT_NUMBER_RE.fullmatch(word))
+        for word in words
+    )
+
+
 def _classify_office(office: str) -> str | None:
+    """The office, or None unless the text is clearly that office."""
     text = _plain(office).replace("-", " ")
     if not text:
         return None
@@ -322,15 +445,19 @@ def _classify_office(office: str) -> str | None:
     )
     for office_kind, pattern in rules:
         if re.search(pattern, text):
-            return office_kind
+            if office_kind == BALLOT_MEASURE:
+                return office_kind
+            return office_kind if _office_is_clear(office_kind, text) else None
     return None
 
 
-def _parse_district(value: object) -> tuple[str | None, str | None]:
+def parse_district(value: object) -> tuple[str | None, str | None]:
     """Split a district form into (state, two-digit number or "AL").
 
     Accepts forms such as `TX-35`, `35`, `35th`, `CD-35`, `District 35`,
     `Texas 35`, `Texas's 35th congressional district`, `AK-AL`, and `at-large`.
+    Text naming anything else, such as `City Council District 5`, is not a
+    congressional district and gives (None, None).
     """
     if value is None or isinstance(value, bool):
         return None, None
@@ -341,9 +468,12 @@ def _parse_district(value: object) -> tuple[str | None, str | None]:
         r"([A-Za-z]{2})[-\s]?(\d{1,2}|AL|al|at[-\s]?large)", text
     )
     if code:
-        return code.group(1).upper(), _district_token(code.group(2))
+        prefix = code.group(1).upper()
+        token = _district_token(code.group(2))
+        if prefix == "CD":
+            return None, token
+        return (prefix, token) if prefix in USPS_CODES else (None, None)
     lowered = _plain(text).replace(",", " ").replace("-", " ")
-    token = None
     if re.search(r"\bat ?large\b", lowered) or lowered in {"al", "a l"}:
         token = "AL"
     else:
@@ -356,8 +486,11 @@ def _parse_district(value: object) -> tuple[str | None, str | None]:
         " ",
         lowered,
     )
+    prefix = HOUSE_PREFIX_RE.sub(" ", prefix)
     prefix = re.sub(r"s\s*$", "", prefix.strip()) if "'" in text else prefix
-    return normalize_state(prefix.strip()), token
+    prefix = prefix.strip()
+    state = normalize_state(prefix)
+    return (None, None) if prefix and state is None else (state, token)
 
 
 def _district_token(value: str) -> str:
@@ -408,14 +541,16 @@ def normalize_race_key(
     office_text = "" if office is None else str(office).strip()
     measure_text = "" if measure is None else str(measure).strip()
     kind = _classify_office(office_text)
-    district_state, token = _parse_district(district)
-    if measure_text and kind in {None, BALLOT_MEASURE}:
+    district_state, token = parse_district(district)
+    if measure_text:
+        if kind not in {None, BALLOT_MEASURE}:
+            return None
         usps = normalize_state(state)
         slug = measure_slug(measure_text, usps) if usps else None
         return f"{YEAR}-{usps}-M-{slug}" if slug else None
     if kind is None and office_text:
-        office_state, office_token = _parse_district(office_text)
-        if office_token is None:
+        office_state, office_token = parse_district(office_text)
+        if office_token is None or not _is_bare_district(office_text):
             return None
         kind = HOUSE
         district_state = district_state or office_state
@@ -423,11 +558,13 @@ def normalize_race_key(
     if kind is None and token is not None:
         kind = HOUSE
     if kind == HOUSE and token is None and office_text:
-        office_state, office_token = _parse_district(office_text)
+        office_state, office_token = parse_district(office_text)
         district_state = district_state or office_state
         token = office_token
     usps = district_state or normalize_state(state)
     if usps is None or kind is None:
+        return None
+    if kind != HOUSE and kind != BALLOT_MEASURE and token is not None:
         return None
     if kind == HOUSE:
         code = _district_code(usps, token)

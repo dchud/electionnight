@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -32,6 +34,12 @@ log = get(__name__)
 
 UNAVAILABLE_WAIT_SECONDS = 5.0
 MAX_FREE_TAGS = 3
+REQUEUE_WINDOW = timedelta(hours=6)
+WATCHLIST_PARTIES = {"Democratic", "Republican", "Independent"}
+# Phrases holding a state's name that do not refer to that state.
+NOT_STATE_RE = re.compile(
+    r"\bnew york (?:times|post|daily news|magazine)\b|\bkansas city\b"
+)
 LOW_SIGNAL_SCOPES = {"international"}
 POLITICS_FEED_RE = re.compile(r"politic|election|us-news|usa|america", re.I)
 
@@ -115,21 +123,50 @@ def load_vocabulary(config_dir: Path) -> Vocabulary:
     return Vocabulary(taxonomy["topics"], taxonomy["race_types"], keywords)
 
 
-def condensed_watchlist(config_dir: Path) -> str:
-    """One line per close or watched race, in a stable order."""
+def _candidate_names(ref_dir: Path | None) -> dict[str, str]:
+    """Names of major candidates by entity id, from the roster file."""
+    path = ref_dir / "entities.jsonl" if ref_dir else None
+    if path is None or not path.exists():
+        return {}
+    names = {}
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                row = json.loads(line)
+                if row.get("party") in WATCHLIST_PARTIES:
+                    names[row["entity_id"]] = row["canonical_name"]
+    return names
+
+
+def condensed_watchlist(config_dir: Path, ref_dir: Path | None = None) -> str:
+    """One line per close or watched race, in a stable order.
+
+    A candidate race appears only with its candidates' names. A measure's key
+    carries its name.
+    """
     path = config_dir / "races.yaml"
     if not path.exists():
         return "(none listed)"
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    known = _candidate_names(ref_dir)
     lines = []
     for race in data.get("races", []):
         if race.get("close_race") or race.get("watch"):
-            names = ", ".join(race.get("candidate_names") or [])
-            lines.append(f"{race.get('race_key')}: {names}")
+            names = sorted(
+                known[entity_id]
+                for entity_id in race.get("candidates") or []
+                if entity_id in known
+            )
+            if names:
+                lines.append(f"{race.get('race_key')}: {', '.join(names)}")
+            elif race.get("office") == "ballot_measure":
+                lines.append(str(race.get("race_key")))
     return "\n".join(sorted(lines)) or "(none listed)"
 
 
-def build_system_prompt(vocabulary: Vocabulary, config_dir: Path) -> str:
+def build_system_prompt(
+    vocabulary: Vocabulary, config_dir: Path, ref_dir: Path | None = None
+) -> str:
     template = (
         resources.files("monitor.llm")
         .joinpath("prompts/classify_a.md")
@@ -138,7 +175,7 @@ def build_system_prompt(vocabulary: Vocabulary, config_dir: Path) -> str:
     return template.format(
         race_types=", ".join(vocabulary.race_types),
         topics=", ".join(vocabulary.topics),
-        watchlist=condensed_watchlist(config_dir),
+        watchlist=condensed_watchlist(config_dir, ref_dir),
     )
 
 
@@ -150,9 +187,17 @@ def _contains(text: str, phrase: str) -> bool:
 
 
 def states_in_text(text: str) -> list[str]:
-    return sorted(
-        {code for name, code in STATE_NAMES.items() if _contains(text, name)}
-    )
+    """States named in a lowercase text, each name used once.
+
+    Longer names go first, so "west virginia" does not also read as Virginia.
+    """
+    remaining = NOT_STATE_RE.sub(" ", text)
+    found = set()
+    for name in sorted(STATE_NAMES, key=len, reverse=True):
+        if _contains(remaining, name):
+            found.add(STATE_NAMES[name])
+            remaining = re.sub(rf"\b{re.escape(name)}\b", " ", remaining)
+    return sorted(found)
 
 
 def classify_by_keywords(
@@ -295,8 +340,10 @@ class ClassifyParser:
         self.batch_size = settings.llm.batch_a
         self.max_concurrency = settings.llm.concurrency_a
         self.system = build_system_prompt(
-            self.vocabulary, settings.paths.config
+            self.vocabulary, settings.paths.config, settings.paths.ref
         )
+        self.outage_items: list[Item] = []
+        self.requeue: Callable[[Item], None] | None = None
 
     def _low_signal(self, item: Item) -> bool:
         source = self.sources.get(item.source_id)
@@ -402,16 +449,49 @@ class ClassifyParser:
             return output
         while True:
             if not self.llm.should_attempt():
-                self._keywords(output, to_model)
+                self._outage_keywords(output, to_model)
                 return output
             try:
-                await self._call_model(output, to_model)
+                await self._call_model(output, self._owed(output, to_model))
+                self._requeue_after_outage()
                 return output
             except LlmBudgetStop:
-                self._keywords(output, to_model)
+                self._keywords(output, self._owed(output, to_model))
                 return output
             except LlmUnavailable:
                 if self.llm.degraded:
-                    self._keywords(output, to_model)
+                    self._outage_keywords(output, to_model)
                     return output
                 await asyncio.sleep(UNAVAILABLE_WAIT_SECONDS)
+
+    @staticmethod
+    def _owed(output: ParserOutput, items: list[Item]) -> list[Item]:
+        """Items without a result, so a retry keeps what the model returned."""
+        done = {r["item_id"] for r in output.rows.get("nlp.classify_a", [])}
+        return [item for item in items if item.item_id not in done]
+
+    def _outage_keywords(
+        self, output: ParserOutput, items: list[Item]
+    ) -> None:
+        """Classify by keywords, and remember the items for the model."""
+        owed = self._owed(output, items)
+        self._keywords(output, owed)
+        self.outage_items.extend(owed)
+
+    def _requeue_after_outage(self) -> None:
+        """Send recent keyword items to the model once the API answers.
+
+        Keywords chosen because of a budget cap never enter this list, and
+        the list waits while a budget cap applies.
+        """
+        assert self.llm is not None
+        if not self.outage_items or self.requeue is None:
+            return
+        if self.llm.budget.state() is not BudgetState.OK:
+            return
+        items, self.outage_items = self.outage_items, []
+        cutoff = datetime.now(UTC) - REQUEUE_WINDOW
+        for item in items:
+            if item.first_seen_at and item.first_seen_at >= cutoff:
+                item.backfill = True
+                self.requeue(item)

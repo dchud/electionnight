@@ -49,6 +49,7 @@ from monitor.parsers.race_calls import (
 from monitor.web.panels import PollClose
 
 NOW = datetime(2026, 11, 3, 23, 0, tzinfo=UTC)
+AFTER_POLLS = datetime(2026, 11, 4, 3, 0, tzinfo=UTC)
 ARTICLE = (
     "The Associated Press projected that Maria Rivera won Ohio's Senate "
     "race.\nRivera, a tireless campaigner, thanked volunteers. Tom Cole "
@@ -376,7 +377,7 @@ async def test_extraction_writes_every_table(settings, resolver, gazetteer):
         title="T",
         text=ARTICLE,
         states=["OH"],
-        first_seen_at=NOW,
+        first_seen_at=AFTER_POLLS,
     )
     output = await parser.run([item])
     extract = output.rows["nlp.extract_b"][0]
@@ -580,9 +581,7 @@ def test_gazetteer_disambiguates_by_item_state_then_home_then_size(gazetteer):
     assert (
         resolve("Hamilton County", "county", home="OH").county_fips == "39061"
     )
-    fallback = resolve("Hamilton", "county")
-    assert fallback.county_fips == "18057"
-    assert fallback.match_score == 0.5
+    assert resolve("Hamilton", "county") is None
     assert resolve("Springfield", "city", "MO").place_geoid == "2970000"
     assert resolve("Atlanta", "city").place_geoid == "1304000"
     assert resolve("Atlanta", "city", "OH") is None
@@ -645,7 +644,7 @@ def seed_brief_items(writer, count=6, start=NOW):
         [
             {
                 "item_id": f"i{n}",
-                "source_id": "s",
+                "source_id": f"s{n % 3}",
                 "title": f"Headline {n}",
                 "summary": "Summary",
                 "first_seen_at": start - timedelta(minutes=n + 1),

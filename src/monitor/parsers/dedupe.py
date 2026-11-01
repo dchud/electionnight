@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -12,18 +13,70 @@ import xxhash
 from monitor.lake import hash_id
 from monitor.orchestrator import Database
 from monitor.parsers.base import Item, ParserOutput, needs_parser_sql
+from monitor.parsers.classify_a import STATE_NAMES
 from monitor.parsers.embed import EMBED_DIM
 from monitor.settings import Settings
 
-SUFFIX_RE = re.compile(r"\s+[-–—|:]\s+[^-–—|:]{2,40}$")
+# A colon starts a headline's second half, not an outlet's name. French also
+# puts a space before it.
+SUFFIX_RE = re.compile(r"\s+[-–—|]\s+([^-–—|:]{2,40})$")
 WORD_RE = re.compile(r"\w+", re.UNICODE)
 CJK_RE = re.compile(r"[぀-ヿ㐀-鿿]")
 INITIAL_CAPACITY = 4096
+MAX_OUTLET_WORDS = 4
+MIN_WORDS_BEFORE_SUFFIX = 3
+# Four words make seven tokens, as do eight Chinese characters. Shorter titles
+# such as "Live updates" repeat across unrelated stories.
+MIN_TITLE_TOKENS = 7
+OUTLET_CONNECTORS = {"of", "the", "and", "de", "la", "le", "el", "du", "des"}
+# With a state's name, these words make a headline's clause, not an outlet.
+RACE_WORDS = {
+    "senate",
+    "governor",
+    "house",
+    "race",
+    "results",
+    "election",
+    "elections",
+    "polls",
+    "votes",
+    "county",
+    "district",
+    "live",
+    "updates",
+}
+
+
+def _is_outlet_name(suffix: str) -> bool:
+    """True for capitalized words, such as "AP News" or "Texas Tribune".
+
+    A clause such as "Ossoff wins", "Georgia", or "Arizona Senate" is part of
+    the headline.
+    """
+    words = suffix.split()
+    if len(words) > MAX_OUTLET_WORDS:
+        return False
+    lowered = suffix.lower()
+    for name in STATE_NAMES:
+        lowered = lowered.replace(name, " ")
+    if lowered != suffix.lower() and set(lowered.split()) <= RACE_WORDS:
+        return False
+    return all(
+        word[0].isdigit()
+        or word[0].isupper()
+        or word.lower() in OUTLET_CONNECTORS
+        for word in words
+    )
 
 
 def normalize_title(title: str) -> str:
     """Lowercase, remove punctuation and a trailing outlet name."""
-    trimmed = SUFFIX_RE.sub("", title.strip())
+    trimmed = title.strip()
+    match = SUFFIX_RE.search(trimmed)
+    if match and _is_outlet_name(match.group(1)):
+        before = trimmed[: match.start()]
+        if len(WORD_RE.findall(before)) >= MIN_WORDS_BEFORE_SUFFIX:
+            trimmed = before
     return " ".join(WORD_RE.findall(trimmed.lower()))
 
 
@@ -55,6 +108,14 @@ def hamming(a: int, b: int) -> int:
     return (a ^ b).bit_count()
 
 
+def title_hash_of(title: str) -> int | None:
+    """A title's hash, or None when it is too short to identify a story."""
+    normalized = normalize_title(title)
+    if len(title_tokens(normalized)) < MIN_TITLE_TOKENS:
+        return None
+    return simhash64(normalized)
+
+
 @dataclass
 class Match:
     group_id: str
@@ -72,12 +133,16 @@ class DedupeIndex:
         self.min_cosine = nlp.dedupe_cosine
         self.size = 0
         self.hashes = np.zeros(INITIAL_CAPACITY, dtype=np.uint64)
+        self.titled = np.zeros(INITIAL_CAPACITY, dtype=bool)
+        self.relevant = np.zeros(INITIAL_CAPACITY, dtype=bool)
         self.vectors = np.zeros(
             (INITIAL_CAPACITY, EMBED_DIM), dtype=np.float32
         )
         self.times = np.zeros(INITIAL_CAPACITY, dtype=np.float64)
         self.days: list[str] = []
         self.groups: list[str] = []
+        self.states: list[frozenset[str]] = []
+        self.positions: dict[str, int] = {}
         self.last_nearest: tuple[str | None, float | None, int | None] = (
             None,
             None,
@@ -87,6 +152,8 @@ class DedupeIndex:
     def _grow(self) -> None:
         capacity = len(self.hashes) * 2
         self.hashes = np.resize(self.hashes, capacity)
+        self.titled = np.resize(self.titled, capacity)
+        self.relevant = np.resize(self.relevant, capacity)
         vectors = np.zeros((capacity, EMBED_DIM), dtype=np.float32)
         vectors[: self.size] = self.vectors[: self.size]
         self.vectors = vectors
@@ -94,36 +161,83 @@ class DedupeIndex:
 
     def add(
         self,
-        title_hash: int,
+        title_hash: int | None,
         vector: np.ndarray,
         seen_at: datetime,
         day: str,
         group_id: str,
+        item_id: str | None = None,
+        states: Iterable[str] = (),
+        relevant: bool = False,
     ) -> None:
+        """Add an item, or replace it if this index already holds it."""
+        position = self.positions.get(item_id) if item_id else None
+        if position is not None:
+            self._write(position, title_hash, vector, seen_at, relevant)
+            self.days[position] = day
+            self.groups[position] = group_id
+            self.states[position] = frozenset(states)
+            return
         if self.size == len(self.hashes):
             self._grow()
-        self.hashes[self.size] = title_hash
-        self.vectors[self.size] = vector
-        self.times[self.size] = seen_at.timestamp()
+        self._write(self.size, title_hash, vector, seen_at, relevant)
         self.days.append(day)
         self.groups.append(group_id)
+        self.states.append(frozenset(states))
+        if item_id:
+            self.positions[item_id] = self.size
         self.size += 1
+
+    def _write(
+        self,
+        position: int,
+        title_hash: int | None,
+        vector: np.ndarray,
+        seen_at: datetime,
+        relevant: bool,
+    ) -> None:
+        self.hashes[position] = title_hash or 0
+        self.titled[position] = title_hash is not None
+        self.relevant[position] = relevant
+        self.vectors[position] = vector
+        self.times[position] = seen_at.timestamp()
+
+    def _same_place(self, index: int, states: frozenset[str]) -> bool:
+        """False only when both items name states and share none."""
+        other = self.states[index]
+        return not states or not other or bool(states & other)
 
     def find(
         self,
-        title_hash: int,
+        title_hash: int | None,
         vector: np.ndarray,
         seen_at: datetime,
         day: str,
+        item_id: str | None = None,
+        states: Iterable[str] = (),
+        relevant: bool = False,
     ) -> Match | None:
+        """The item's duplicate group, if it has one.
+
+        An item already in the index is being run again. It never matches
+        itself, and it matches only items seen before it, so re-running every
+        item leaves each group's first item canonical. A relevant item joins
+        only groups started by a relevant item, so the canonical copy of a
+        relevant story is always relevant.
+        """
         self.last_nearest = (None, None, None)
         if self.size == 0:
             return None
         now = seen_at.timestamp()
         span = self.window.total_seconds()
         in_window = np.abs(self.times[: self.size] - now) <= span
+        own = self.positions.get(item_id) if item_id else None
+        if own is not None:
+            in_window[own] = False
+        if relevant:
+            in_window &= self.relevant[: self.size]
         distances = np.bitwise_count(
-            self.hashes[: self.size] ^ np.uint64(title_hash)
+            self.hashes[: self.size] ^ np.uint64(title_hash or 0)
         )
         scores = self.vectors[: self.size] @ vector
         if in_window.any():
@@ -134,12 +248,33 @@ class DedupeIndex:
                 float(scores[top]),
                 int(distances[windowed].min()),
             )
-        close = np.flatnonzero(in_window & (distances <= self.max_distance))
-        if close.size:
-            best = close[np.argmin(distances[close])]
-            return Match(self.groups[best], "title_hash", 1.0)
+        if own is not None:
+            same_poll = self.times[: self.size] == now
+            same_poll[own:] = False
+            in_window &= (self.times[: self.size] < now) | same_poll
+        place = frozenset(states)
+        if title_hash is not None:
+            # An identical title is one story syndicated to two places, even
+            # when each copy was tagged with its own state. A near-identical
+            # title can be a template with only the state changed.
+            close = [
+                index
+                for index in np.flatnonzero(
+                    in_window
+                    & self.titled[: self.size]
+                    & (distances <= self.max_distance)
+                )
+                if distances[index] == 0 or self._same_place(int(index), place)
+            ]
+            if close:
+                best = min(close, key=lambda index: distances[index])
+                return Match(self.groups[best], "title_hash", 1.0)
         candidates = np.flatnonzero(in_window & (scores >= self.min_cosine))
-        same_day = [i for i in candidates if self.days[i] == day]
+        same_day = [
+            i
+            for i in candidates
+            if self.days[i] == day and self._same_place(int(i), place)
+        ]
         if same_day:
             best = max(same_day, key=lambda i: scores[i])
             return Match(self.groups[best], "embedding", float(scores[best]))
@@ -178,23 +313,39 @@ class DedupeParser:
         rows = await self.db.fetch(
             """
             SELECT i.title, e.vec, i.first_seen_at,
-                   coalesce(i.published_at, i.first_seen_at), d.dup_group_id
+                   coalesce(i.published_at, i.first_seen_at), d.dup_group_id,
+                   d.item_id, coalesce(c.states, []),
+                   coalesce(c.election_relevant
+                            AND c.relevance_conf >= $threshold, FALSE)
             FROM lake.nlp.dup_groups d
             JOIN lake.raw.items i USING (item_id)
             JOIN lake.nlp.embeddings e USING (item_id)
+            LEFT JOIN (
+                SELECT item_id, states, election_relevant, relevance_conf
+                FROM lake.nlp.classify_a
+                QUALIFY row_number() OVER (
+                    PARTITION BY item_id ORDER BY created_at DESC) = 1
+            ) c USING (item_id)
             WHERE i.first_seen_at >= $since
             QUALIFY row_number() OVER (
                 PARTITION BY d.item_id ORDER BY d.created_at DESC) = 1
             """,
-            {"since": since},
+            {
+                "since": since,
+                "threshold": self.settings.nlp.relevance_threshold,
+            },
         )
-        for title, vec, seen_at, published, group_id in rows:
+        for row in rows:
+            title, vec, seen_at, published, group, item_id, states, keep = row
             self.index.add(
-                simhash64(normalize_title(title or "")),
+                title_hash_of(title or ""),
                 np.array(vec, dtype=np.float32),
                 seen_at,
                 published.strftime("%Y-%m-%d"),
-                group_id,
+                group,
+                item_id,
+                states,
+                keep,
             )
         self.loaded = True
 
@@ -223,16 +374,35 @@ class DedupeParser:
             if item.vec is None:
                 output.mark(item.item_id, "retry", "embedding not committed")
                 continue
-            title_hash = simhash64(normalize_title(item.title))
+            title_hash = title_hash_of(item.title)
             seen_at = item.first_seen_at or datetime.now(UTC)
             day = published_day(item)
-            match = self.index.find(title_hash, item.vec, seen_at, day)
+            threshold = self.settings.nlp.relevance_threshold
+            relevant = item.relevant and item.relevance_conf >= threshold
+            match = self.index.find(
+                title_hash,
+                item.vec,
+                seen_at,
+                day,
+                item.item_id,
+                item.states,
+                relevant,
+            )
             group_id = (
                 match.group_id if match else hash_id("dup", item.item_id)
             )
             item.is_canonical = match is None
             nearest, cosine, distance = self.index.last_nearest
-            self.index.add(title_hash, item.vec, seen_at, day, group_id)
+            self.index.add(
+                title_hash,
+                item.vec,
+                seen_at,
+                day,
+                group_id,
+                item.item_id,
+                item.states,
+                relevant,
+            )
             output.add(
                 "nlp.cluster_decisions",
                 {

@@ -452,3 +452,57 @@ def test_refresh_copies_entity_ids_from_roster(settings):
     assert by_key["2026-GA-SEN"]["candidates"] == ["abc"]
     assert path.read_text().startswith("# Race watchlist")
     assert refresh_race_candidates(settings) == 0
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("TX", "City Council District 5"),
+        ("TX", "City Council", "5"),
+        ("GA", "State Senate District 12"),
+        ("GA", "State Senate", "12"),
+        ("TX", "Texas House District 12"),
+        ("MI", "Michigan Senate"),
+        ("MI", "Michigan Senate", "20"),
+        ("MI", "Senate", "20"),
+        ("MN", "State Senate District 5"),
+        ("CA", "Assembly District 15"),
+        ("GA", "Public Service Commission District 3"),
+        ("FL", "County Commission District 3"),
+        ("NY", "School Board District 4"),
+        ("IL", "Ward 5 Alderman"),
+        ("MD", "Maryland House of Delegates"),
+        ("MD", "House of Delegates", "12"),
+        ("OH", "Ohio House of Representatives", "12"),
+        ("TX", "US House", "HD-12"),
+        ("WI", "Supreme Court Seat 3"),
+        ("MA", "Governor's Council District 4"),
+        ("GA", "Governor's Council", "4"),
+        ("OH", "Senate", "TX-35"),
+        ("GA", "Governor", "4"),
+        ("CA", "Senate", None, "Proposition 50"),
+        ("ZZ", "Governor"),
+        ("TX", "Deputy Attorney General"),
+        ("TX", "District Attorney", "5"),
+    ],
+)
+def test_normalize_race_key_rejects_what_is_not_clearly_the_race(args):
+    assert normalize_race_key(*args) is None
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (("TX", "House", "CD-35"), "2026-TX-H35"),
+        (("TX", "US House District 35"), "2026-TX-H35"),
+        (("OH", "Ohio U.S. Senate"), "2026-OH-SEN"),
+        (("OH", "U.S. Senate race"), "2026-OH-SEN"),
+        (("OH", "Governor of Ohio"), "2026-OH-GOV"),
+        (("OH", "Ohio governor's race"), "2026-OH-GOV"),
+        (("OH", "Ohio's 12th Congressional District"), "2026-OH-H12"),
+        (("OH", "Ohio Attorney General"), "2026-OH-AG"),
+        (("OH", "Ohio Secretary of State"), "2026-OH-SOS"),
+    ],
+)
+def test_normalize_race_key_keeps_clear_races(args, expected):
+    assert normalize_race_key(*args) == expected

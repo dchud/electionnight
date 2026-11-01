@@ -6,7 +6,7 @@ import asyncio
 import itertools
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
 import anthropic
@@ -24,9 +24,13 @@ T = TypeVar("T", bound=BaseModel)
 
 # A cache entry lives five minutes from its last use. Requests sent before the
 # first response starts cannot read it, so a cold prefix goes out alone first.
+# The others wait for it only this long, so a hung API cannot hold them.
 CACHE_COLD_SECONDS = 270.0
+COLD_WAIT_SECONDS = 15.0
 PROBE_SECONDS = 30.0
 REQUEST_TIMEOUT_SECONDS = 120.0
+# The API refused this request, so sending it again cannot help.
+INVALID_STATUSES = {400, 413}
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
@@ -43,7 +47,7 @@ class LlmTruncated(LlmError):
 
 
 class LlmInvalid(LlmError):
-    """The response failed schema validation twice."""
+    """The response failed validation twice, or the API refused the request."""
 
 
 class LlmUnavailable(LlmError):
@@ -56,7 +60,7 @@ class LlmBudgetStop(LlmError):
 
 @dataclass
 class _CacheGate:
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    leader: asyncio.Event | None = None
     last_success: float = 0.0
 
 
@@ -129,20 +133,32 @@ class LlmClient:
         self.misc = asyncio.Semaphore(llm.concurrency_misc)
         self.gates: dict[str, _CacheGate] = {}
         self.failing_since: float | None = None
+        self.pending: dict[str, float] = {}
+        self.last_answer = 0.0
         self.last_probe = 0.0
         self.last_error: str | None = None
         self.seen_prompts: set[str] = set()
         self.counter = itertools.count()
 
+    def _silent_since(self) -> float | None:
+        """Since when a request has waited with no answer to any request."""
+        if not self.pending:
+            return None
+        return max(min(self.pending.values()), self.last_answer)
+
     @property
     def degraded(self) -> bool:
-        """True once failures have lasted past the configured window.
+        """True once failures or silence last past the configured window.
 
         With no network at all, items wait instead of falling to keywords.
         """
-        if self.failing_since is None or not self.network_up():
+        if not self.network_up():
             return False
-        elapsed = time.monotonic() - self.failing_since
+        moments = (self.failing_since, self._silent_since())
+        since = min((m for m in moments if m is not None), default=None)
+        if since is None:
+            return False
+        elapsed = time.monotonic() - since
         return elapsed >= self.settings.llm.degrade_after_seconds
 
     def should_attempt(self) -> bool:
@@ -172,10 +188,10 @@ class LlmClient:
         self.failing_since = None
         self.last_error = None
 
-    def _note_failure(self, error: str) -> None:
+    def _note_failure(self, error: str, since: float | None = None) -> None:
         self.last_error = error
         if self.failing_since is None and self.network_up():
-            self.failing_since = time.monotonic()
+            self.failing_since = since or time.monotonic()
 
     def _ledger(
         self,
@@ -265,26 +281,53 @@ class LlmClient:
             ],
         )
 
-    async def _send(self, params: dict[str, Any], beta: bool) -> Any:
-        if beta:
-            return await self.client.beta.messages.create(
-                **params,
-                betas=[FALLBACK_BETA],
-                fallbacks="default",
-            )
-        return await self.client.messages.create(**params)
+    async def _send(
+        self, params: dict[str, Any], beta: bool, timeout: float
+    ) -> Any:
+        """One call, with its SDK retries, ended at a deadline.
+
+        The deadline is never shorter than one attempt's timeout, so a slow
+        answer still arrives. Retries of quick failures happen inside it.
+        """
+        options: dict[str, Any] = {}
+        if timeout != REQUEST_TIMEOUT_SECONDS:
+            options["timeout"] = timeout
+        deadline = max(timeout, self.settings.llm.degrade_after_seconds)
+        async with asyncio.timeout(deadline):
+            if beta:
+                return await self.client.beta.messages.create(
+                    **params,
+                    betas=[FALLBACK_BETA],
+                    fallbacks="default",
+                    **options,
+                )
+            return await self.client.messages.create(**params, **options)
 
     async def _send_gated(
-        self, gate_key: str, params: dict[str, Any], beta: bool
+        self,
+        gate_key: str,
+        params: dict[str, Any],
+        beta: bool,
+        timeout: float,
     ) -> Any:
         gate = self.gates.setdefault(gate_key, _CacheGate())
         if time.monotonic() - gate.last_success > CACHE_COLD_SECONDS:
-            async with gate.lock:
-                if time.monotonic() - gate.last_success > CACHE_COLD_SECONDS:
-                    response = await self._send(params, beta)
+            if gate.leader is None:
+                leader = gate.leader = asyncio.Event()
+                try:
+                    response = await self._send(params, beta, timeout)
                     gate.last_success = time.monotonic()
                     return response
-        response = await self._send(params, beta)
+                finally:
+                    leader.set()
+                    gate.leader = None
+            leading = gate.leader
+            try:
+                async with asyncio.timeout(COLD_WAIT_SECONDS):
+                    await leading.wait()
+            except TimeoutError:
+                pass
+        response = await self._send(params, beta, timeout)
         gate.last_success = time.monotonic()
         return response
 
@@ -295,6 +338,7 @@ class LlmClient:
         beta: bool,
         batch_id: str | None,
         item_ids: list[str] | None,
+        timeout: float,
     ) -> Any:
         if not self.budget.allows(purpose):
             raise LlmBudgetStop(purpose)
@@ -302,25 +346,41 @@ class LlmClient:
         started = time.monotonic()
         model = params["model"]
         call_id = hash_id(purpose, utcnow().isoformat(), next(self.counter))
+
+        def failed(status: str, since: float | None = None) -> None:
+            self._note_failure(status, since)
+            self._ledger(call_id, purpose, model, None, 0, "error")
+            self._trace(
+                call_id, purpose, params, None, status, batch_id, item_ids
+            )
+
         async with semaphore:
+            # A call allowed extra time says nothing about a hung API.
+            watched = timeout <= REQUEST_TIMEOUT_SECONDS
+            sent = time.monotonic() if watched else None
+            if sent is not None:
+                self.pending[call_id] = sent
             try:
-                response = await self._send_gated(purpose, params, beta)
+                response = await self._send_gated(
+                    purpose, params, beta, timeout
+                )
+            except TimeoutError as error:
+                failed("deadline", sent)
+                raise LlmUnavailable("deadline") from error
             except anthropic.APIStatusError as error:
                 status = f"HTTP {error.status_code}"
-                self._note_failure(status)
-                self._ledger(call_id, purpose, model, None, 0, "error")
-                self._trace(
-                    call_id, purpose, params, None, status, batch_id, item_ids
-                )
+                self.last_answer = time.monotonic()
+                failed(status)
+                if error.status_code in INVALID_STATUSES:
+                    raise LlmInvalid(status) from error
                 raise LlmUnavailable(status) from error
             except anthropic.APIConnectionError as error:
                 status = type(error).__name__
-                self._note_failure(status)
-                self._ledger(call_id, purpose, model, None, 0, "error")
-                self._trace(
-                    call_id, purpose, params, None, status, batch_id, item_ids
-                )
+                failed(status, sent)
                 raise LlmUnavailable(status) from error
+            finally:
+                self.pending.pop(call_id, None)
+        self.last_answer = time.monotonic()
         latency = int((time.monotonic() - started) * 1000)
         self._note_success()
         stop = response.stop_reason
@@ -348,6 +408,7 @@ class LlmClient:
         beta_fallback: bool = False,
         batch_id: str | None = None,
         item_ids: list[str] | None = None,
+        request_timeout: float | None = None,
     ) -> T:
         """Call the model for a validated object, retrying once if invalid."""
         params = build_message_params(
@@ -362,7 +423,12 @@ class LlmClient:
         last_error: Exception | None = None
         for _attempt in range(2):
             response = await self._request(
-                purpose, params, beta_fallback, batch_id, item_ids
+                purpose,
+                params,
+                beta_fallback,
+                batch_id,
+                item_ids,
+                request_timeout or REQUEST_TIMEOUT_SECONDS,
             )
             try:
                 return schema.model_validate_json(first_text(response))

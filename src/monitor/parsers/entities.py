@@ -13,7 +13,7 @@ from rapidfuzz import fuzz
 
 from monitor.lake import hash_id
 from monitor.llm.client import LlmClient, LlmError
-from monitor.llm.schemas import EntityResolutionBatch
+from monitor.llm.schemas import EntityResolution, EntityResolutionBatch
 from monitor.logs import get
 from monitor.orchestrator import Database
 from monitor.settings import Settings
@@ -21,6 +21,8 @@ from monitor.settings import Settings
 log = get(__name__)
 
 UNRESOLVED_PER_PASS = 30
+HAND_ORIGIN = "hand"
+SUFFIX_RE = re.compile(r"\b(jr|sr|ii|iii|iv)\b")
 TITLES = re.compile(
     r"^(?:(?:u\.?s\.?\s+)?(?:sen|senator|rep|representative|gov|governor|"
     r"lt\.? gov|president|vice president|vp|former|mayor|attorney general|"
@@ -48,8 +50,26 @@ def normalize_name(name: str) -> str:
     decomposed = unicodedata.normalize("NFKD", text)
     plain = "".join(c for c in decomposed if not unicodedata.combining(c))
     plain = re.sub(r"[^\w\s]", " ", plain.lower())
-    plain = re.sub(r"\b(jr|sr|ii|iii|iv)\b", " ", plain)
+    plain = SUFFIX_RE.sub(" ", plain)
     return " ".join(plain.split())
+
+
+def generational_suffix(name: str) -> str | None:
+    """The `jr` or `iii` in a name, if it has one."""
+    match = SUFFIX_RE.search(re.sub(r"[^\w\s]", " ", name.lower()))
+    return match.group(1) if match else None
+
+
+def _same_person_name(full: list[str], other: list[str]) -> bool:
+    """True when two names agree on surname and first name or initial."""
+    if full[-1] != other[-1]:
+        return False
+    first, second = full[0], other[0]
+    return (
+        first == second
+        or (len(first) == 1 and second.startswith(first))
+        or (len(second) == 1 and first.startswith(second))
+    )
 
 
 @dataclass(frozen=True)
@@ -58,30 +78,41 @@ class Known:
     canonical_name: str
     state: str | None
     ent_type: str
+    national: bool = False
 
 
 class EntityResolver:
-    """Exact, then normalized, then fuzzy within the state context."""
+    """Exact, then normalized, then fuzzy within the state context.
+
+    Wrong attribution is worse than none. A sole candidate from another state
+    is rejected unless the candidate is national, and a surname alone or a
+    missing generational suffix never overrides a full name that disagrees.
+    """
 
     def __init__(self, settings: Settings) -> None:
         self.threshold = settings.nlp.entity_fuzzy_score
         self.exact: dict[str, list[Known]] = defaultdict(list)
         self.normalized: dict[str, list[Known]] = defaultdict(list)
         self.by_state: dict[str, list[tuple[str, Known]]] = defaultdict(list)
+        self.names: dict[str, list[str]] = defaultdict(list)
 
     def load(self, rows: list[dict[str, Any]]) -> None:
         self.exact.clear()
         self.normalized.clear()
         self.by_state.clear()
+        self.names.clear()
         for row in rows:
+            origin = str(row.get("origin") or "").split("+")
             known = Known(
                 row["entity_id"],
                 row["canonical_name"],
                 row.get("state"),
                 row.get("ent_type") or "PERSON",
+                row.get("state") is None or HAND_ORIGIN in origin,
             )
             names = [row["canonical_name"], *(row.get("aliases") or [])]
             for name in dict.fromkeys(n for n in names if n):
+                self.names[known.entity_id].append(name)
                 self.exact[name.casefold()].append(known)
                 key = normalize_name(name)
                 if key:
@@ -90,42 +121,96 @@ class EntityResolver:
                         self.by_state[known.state].append((key, known))
 
     def add(self, known: Known) -> None:
+        self.names[known.entity_id].append(known.canonical_name)
         self.exact[known.canonical_name.casefold()].append(known)
         key = normalize_name(known.canonical_name)
         self.normalized[key].append(known)
         if known.state:
             self.by_state[known.state].append((key, known))
 
+    def names_of(self, entity_id: str | None) -> list[str]:
+        """Every name known for an entity."""
+        return list(self.names.get(entity_id, [])) if entity_id else []
+
     @staticmethod
     def _pick(candidates: list[Known], states: list[str]) -> Known | None:
         """One candidate, using state context to choose among several."""
         unique = {c.entity_id: c for c in candidates}
         if len(unique) == 1:
-            return next(iter(unique.values()))
+            sole = next(iter(unique.values()))
+            elsewhere = states and sole.state not in states
+            return None if elsewhere and not sole.national else sole
         in_context = [c for c in unique.values() if c.state in states]
         return in_context[0] if len(in_context) == 1 else None
+
+    def _agrees(
+        self,
+        known: Known,
+        name: str,
+        full: list[str] | None,
+        suffixes: set[str],
+    ) -> bool:
+        """False when the mention rules this candidate out.
+
+        A generational suffix on the mention must be on the candidate. A name
+        of one word must not conflict with the mention's full name.
+        """
+        if not self._suffix_fits(known, suffixes):
+            return False
+        if full is None or len(normalize_name(name).split()) > 1:
+            return True
+        others = (
+            normalize_name(other).split()
+            for other in self.names_of(known.entity_id)
+        )
+        return any(
+            _same_person_name(full, other)
+            for other in others
+            if len(other) > 1
+        )
+
+    @staticmethod
+    def _suffix_fits(known: Known, suffixes: set[str]) -> bool:
+        own = generational_suffix(known.canonical_name)
+        return not suffixes or suffixes == {own}
 
     def resolve(
         self, names: list[str], ent_type: str, states: list[str]
     ) -> tuple[str | None, str | None]:
         """Returns (entity id, how it matched)."""
         candidates = [n for n in names if n]
+        words = [normalize_name(name).split() for name in candidates]
+        full = next((w for w in words if len(w) > 1), None)
+        suffixes = {
+            suffix for suffix in map(generational_suffix, candidates) if suffix
+        }
         for name in candidates:
             known = self._pick(self.exact.get(name.casefold(), []), states)
-            if known and known.ent_type == ent_type:
+            if (
+                known
+                and known.ent_type == ent_type
+                and self._agrees(known, name, full, suffixes)
+            ):
                 return known.entity_id, "exact"
         for name in candidates:
             found = self.normalized.get(normalize_name(name), [])
             known = self._pick(found, states)
-            if known and known.ent_type == ent_type:
+            if (
+                known
+                and known.ent_type == ent_type
+                and self._agrees(known, name, full, suffixes)
+            ):
                 return known.entity_id, "normalized"
         best: Known | None = None
         best_score = 0.0
+        compared = [" ".join(full)] if full else candidates
         for state in states:
             for key, known in self.by_state.get(state, []):
                 if known.ent_type != ent_type:
                     continue
-                for name in candidates:
+                if not self._suffix_fits(known, suffixes):
+                    continue
+                for name in compared:
                     score = fuzz.WRatio(normalize_name(name), key)
                     if score > best_score:
                         best, best_score = known, score
@@ -150,12 +235,12 @@ class EntityPass:
         self.writer = writer
         self.llm = llm
         self.resolver = resolver
-        self.attempted: set[str] = set()
+        self.attempted: set[tuple[str, str | None]] = set()
 
     async def reload(self) -> None:
         rows = await self.db.fetch(
             """
-            SELECT entity_id, canonical_name, state, ent_type, aliases
+            SELECT entity_id, canonical_name, state, ent_type, aliases, origin
             FROM lake.ref.entities
             QUALIFY row_number() OVER (
                 PARTITION BY entity_id ORDER BY created_at DESC) = 1
@@ -169,27 +254,27 @@ class EntityPass:
                     "state": row[2],
                     "ent_type": row[3],
                     "aliases": row[4],
+                    "origin": row[5],
                 }
                 for row in rows
             ]
         )
 
     async def _unresolved(self) -> list[dict[str, Any]]:
+        """Frequent unresolved names, one row per surface and state."""
         rows = await self.db.fetch(
             """
-            SELECT surface, any_value(state), any_value(party),
-                   any_value(office), count(*) AS n
+            SELECT surface, state, any_value(party), any_value(office),
+                   count(*) AS n
             FROM (
                 SELECT * FROM lake.nlp.mentions
                 QUALIFY row_number() OVER (
                     PARTITION BY mention_id ORDER BY created_at DESC) = 1
             )
             WHERE entity_id IS NULL AND ent_type = 'PERSON'
-            GROUP BY surface
+            GROUP BY surface, state
             ORDER BY n DESC
-            LIMIT $limit
-            """,
-            {"limit": UNRESOLVED_PER_PASS * 4},
+            """
         )
         fresh = [
             {
@@ -200,11 +285,14 @@ class EntityPass:
                 "n": row[4],
             }
             for row in rows
-            if row[0] not in self.attempted
+            if (row[0], row[1]) not in self.attempted
         ]
         return fresh[:UNRESOLVED_PER_PASS]
 
-    async def _apply(self, surface: str, entity_id: str, how: str) -> int:
+    async def _apply(
+        self, surface: str, state: str | None, entity_id: str, how: str
+    ) -> int:
+        """Resolve the unresolved mentions of one surface in one state."""
         rows = await self.db.fetch(
             """
             SELECT mention_id, item_id, surface, char_start, char_end,
@@ -216,8 +304,9 @@ class EntityPass:
                     PARTITION BY mention_id ORDER BY created_at DESC) = 1
             )
             WHERE surface = $surface AND entity_id IS NULL
+              AND state IS NOT DISTINCT FROM $state
             """,
-            {"surface": surface},
+            {"surface": surface, "state": state},
         )
         columns = (
             "mention_id",
@@ -261,7 +350,7 @@ class EntityPass:
             if entity_id:
                 entry["entity_id"] = entity_id
                 counts["mentions"] += await self._apply(
-                    entry["surface"], entity_id, how or "alias"
+                    entry["surface"], entry["state"], entity_id, how or "alias"
                 )
         unknown = [e for e in batch if "entity_id" not in e]
         if not unknown or self.llm is None or not self.llm.should_attempt():
@@ -279,9 +368,12 @@ class EntityPass:
         except LlmError as error:
             log.warning("entity_pass_failed", error=type(error).__name__)
             return counts
-        self.attempted.update(e["surface"] for e in unknown)
+        self.attempted.update((e["surface"], e["state"]) for e in unknown)
         for resolution in result.resolutions:
             if not resolution.is_person or not resolution.canonical_name:
+                continue
+            asked = self._entry_for(unknown, resolution)
+            if asked is None:
                 continue
             states = [resolution.state] if resolution.state else []
             entity_id, _ = self.resolver.resolve(
@@ -316,6 +408,20 @@ class EntityPass:
                 counts["new_entities"] += 1
             if entity_id:
                 counts["mentions"] += await self._apply(
-                    resolution.surface, entity_id, "llm"
+                    resolution.surface, asked["state"], entity_id, "llm"
                 )
         return counts
+
+    @staticmethod
+    def _entry_for(
+        unknown: list[dict[str, Any]], resolution: EntityResolution
+    ) -> dict[str, Any] | None:
+        """The request an answer belongs to, matched on surface and state.
+
+        An answer states one person. When a surface was sent with several
+        states, the answer must name one of them.
+        """
+        same = [e for e in unknown if e["surface"] == resolution.surface]
+        if len(same) == 1:
+            return same[0]
+        return next((e for e in same if e["state"] == resolution.state), None)
