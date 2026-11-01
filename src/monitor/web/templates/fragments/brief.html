@@ -1,0 +1,10 @@
+{% if brief %}
+<div class="brief-nav mb-1">
+  <button hx-get="/frag/brief?{{ qs }}&offset={{ offset + 1 }}" hx-target="#brief" {{ 'disabled' if offset + 1 >= total else '' }} data-brief="prev">← Earlier</button>
+  <button hx-get="/frag/brief?{{ qs }}&offset={{ offset - 1 }}" hx-target="#brief" {{ 'disabled' if offset == 0 else '' }} data-brief="next">Later →</button>
+  <span class="panel-note">{{ brief.created_at|et_time }} · covers {{ brief.window_start|et_time }}–{{ brief.window_end|et_time }}</span>
+</div>
+<div class="brief">{{ brief.markdown|cited(brief.citation_map) }}</div>
+{% else %}
+<div class="empty">No brief has been written yet.</div>
+{% endif %}

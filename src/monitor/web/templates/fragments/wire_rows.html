@@ -1,0 +1,16 @@
+{% for item in items %}
+<div class="wire-row {{ 'fresh' if fresh else '' }}" data-article="{{ item.item_id }}">
+  <span class="wire-time">{{ item.first_seen_at|et_time }}</span>
+  <span class="wire-head">{{ item.headline }}</span>
+  <span class="wire-meta">
+    <span>{{ item.outlet }}</span>
+    {% if item.glyph %}<span class="glyph" title="{{ item.lean }}">{{ item.glyph }}</span>{% else %}<span class="glyph">{{ item.lean }}</span>{% endif %}
+    {% if item.language != 'en' %}<span class="badge">{{ item.language|upper }}</span>{% endif %}
+    {% if item.primary_level and item.primary_level != 'none' %}<span class="badge">{{ item.primary_level[0]|upper }}</span>{% endif %}
+    {% for state in item.states[:4] %}<span class="chip">{{ state }}</span>{% endfor %}
+    {% if item.tone is not none %}<span class="tone-dot" data-tone="{{ item.tone }}" title="Tone {{ '%.1f' % item.tone }}"></span>{% endif %}
+  </span>
+</div>
+{% else %}
+{% if not fresh %}<div class="empty">No relevant stories match these filters.</div>{% endif %}
+{% endfor %}

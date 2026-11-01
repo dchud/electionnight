@@ -1,0 +1,6 @@
+<h2 class="panel-title mb-1">{{ total }} stories</h2>
+<div class="filter-line">{{ description }}</div>
+{% include "fragments/wire_rows.html" %}
+{% if (page + 1) * page_size < total %}
+<button class="drawer-close mt-2" hx-get="/frag/evidence?{{ next_params }}&page={{ page + 1 }}" hx-target="#drawer-body">Next {{ page_size }}</button>
+{% endif %}

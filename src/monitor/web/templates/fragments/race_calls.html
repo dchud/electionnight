@@ -1,0 +1,19 @@
+{% if rows %}
+<table class="table">
+  <thead><tr><th>Race</th><th>Winner</th><th>Status</th><th>Called by</th><th>Outlets</th><th>First reported</th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+  <tr class="clickable" data-claims="{{ row.item_ids|join(',') }}">
+    <td>{{ row.race }}</td>
+    <td>{% if row.party %}<span class="party-chip" data-party="{{ row.party }}"></span>{% endif %}{{ row.winner_name or '—' }}</td>
+    <td>{{ row.status }}</td>
+    <td>{{ (row.called_by or [])|join(', ') or 'unspecified' }}</td>
+    <td class="num">{{ row.outlets }}</td>
+    <td class="num">{{ row.first_reported|et_time }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">No race-call claims in the news for these filters.</div>
+{% endif %}

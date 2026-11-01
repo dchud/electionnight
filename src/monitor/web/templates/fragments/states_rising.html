@@ -1,0 +1,9 @@
+{% for row in rows %}
+<div class="rising-row" data-evidence="kind=state&key={{ row.usps }}">
+  <span class="chip">{{ row.usps }}</span>
+  <span><span class="rising-bar block" style="width:{{ '%.0f' % row.width }}%"></span></span>
+  <span class="num">{{ '%+.1f' % row.score }}</span>
+</div>
+{% else %}
+<div class="empty">No state activity yet.</div>
+{% endfor %}

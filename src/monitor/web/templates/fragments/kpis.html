@@ -1,0 +1,8 @@
+<div class="kpi" data-evidence="kind=all" title="Stories behind this number">
+  <span class="kpi-label">Relevant stories/min</span>
+  <span class="kpi-row"><span class="kpi-value">{{ '%.1f' % kpis.per_minute }}</span>
+    <svg class="spark" width="90" height="24" viewBox="0 0 120 24" preserveAspectRatio="none" role="img" aria-label="Last 2 hours"><polyline points="{{ kpis.spark }}"/></svg></span>
+</div>
+<div class="kpi"><span class="kpi-label">Active storylines</span><span class="kpi-value">{{ kpis.active_storylines }}</span></div>
+<a class="kpi" href="/status?{{ qs }}"><span class="kpi-label">Healthy feeds</span><span class="kpi-value">{{ kpis.feeds_healthy }} / {{ kpis.feeds_total }}</span></a>
+<div class="kpi"><span class="kpi-label">Next polls close</span><span class="kpi-value" style="font-size:.95rem">{{ kpis.next_close }}</span></div>

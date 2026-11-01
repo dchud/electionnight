@@ -1,0 +1,23 @@
+{% for card in cards %}
+<div class="card">
+  <div class="card-top">
+    <a class="card-label" href="/story/{{ card.storyline_id }}?{{ qs }}">{{ card.label }}</a>
+    {% if card.is_new %}<span class="tag-new">NEW</span>{% endif %}
+  </div>
+  <div class="card-row">
+    <svg class="spark" width="110" height="22" viewBox="0 0 120 24" preserveAspectRatio="none" role="img" aria-label="Last 2 hours"><polyline points="{{ card.spark }}"/></svg>
+    <span class="velocity" title="Velocity score">{{ '%+.1f' % card.score }}</span>
+    <span class="num">{{ card.observed }} in 15 min</span>
+    <span class="num">{{ card.outlets }} outlets</span>
+    {% if card.lean_segments %}
+    <span class="lean-bar" title="Share of each lean bucket's coverage: L, LL, C, LR, R">
+      {% for seg in card.lean_segments %}<span class="lean-seg" style="opacity:{{ '%.2f' % (0.12 + seg.intensity * 0.88) }}" title="{{ seg.bucket }}: {{ '%.1f' % (seg.share * 100) }}%"></span>{% endfor %}
+    </span>
+    {% endif %}
+    {% for state in (card.states or [])[:5] %}<span class="chip">{{ state }}</span>{% endfor %}
+  </div>
+  {% if card.summary %}<div class="card-summary">{{ card.summary|first_sentence|cited(card.citations) }}</div>{% endif %}
+</div>
+{% else %}
+<div class="empty">No active storylines in the last 2 hours for these filters.</div>
+{% endfor %}

@@ -1,0 +1,106 @@
+# Poll closing times for the Nov 3, 2026 general election.
+#
+# Times are 24-hour Eastern Standard Time clock times, the latest scheduled
+# closing for each part of a state. `first_close` is when polls start closing
+# in that state and `all_close` is when the last ones close. A time before
+# 12:00 falls on Nov 4. Voters in line at closing time may still vote.
+as_published_url: https://www.270towin.com/poll-closing-times/
+cross_check_urls:
+  - https://www.thegreenpapers.com/G26/closing.phtml?format=gc
+  - https://en.wikipedia.org/wiki/2026_United_States_Senate_elections#Election_dates
+retrieved_on: "2026-11-01"
+election_date: "2026-11-03"
+timezone: America/New_York
+states:
+  AL: {first_close: "20:00", all_close: "20:00"}
+  AK:
+    first_close: "00:00"
+    all_close: "01:00"
+    note: Alaska Time first; Hawaii-Aleutian Time western Aleutians last.
+  AZ: {first_close: "21:00", all_close: "21:00"}
+  AR: {first_close: "20:30", all_close: "20:30"}
+  CA: {first_close: "23:00", all_close: "23:00"}
+  CO: {first_close: "21:00", all_close: "21:00"}
+  CT: {first_close: "20:00", all_close: "20:00"}
+  DE: {first_close: "20:00", all_close: "20:00"}
+  DC: {first_close: "20:00", all_close: "20:00"}
+  FL:
+    first_close: "19:00"
+    all_close: "20:00"
+    note: Central Time panhandle last.
+  GA: {first_close: "19:00", all_close: "19:00"}
+  HI: {first_close: "00:00", all_close: "00:00"}
+  ID:
+    first_close: "22:00"
+    all_close: "23:00"
+    note: Mountain Time south first; Pacific Time north last.
+  IL: {first_close: "20:00", all_close: "20:00"}
+  IN:
+    first_close: "18:00"
+    all_close: "19:00"
+    note: Central Time northwest and southwest corners last.
+  IA: {first_close: "21:00", all_close: "21:00"}
+  KS:
+    first_close: "20:00"
+    all_close: "21:00"
+    note: Mountain Time western counties last.
+  KY:
+    first_close: "18:00"
+    all_close: "19:00"
+    note: Central Time west last.
+  LA: {first_close: "21:00", all_close: "21:00"}
+  ME: {first_close: "20:00", all_close: "20:00"}
+  MD: {first_close: "20:00", all_close: "20:00"}
+  MA: {first_close: "20:00", all_close: "20:00"}
+  MI:
+    first_close: "20:00"
+    all_close: "21:00"
+    note: Central Time Upper Peninsula counties last.
+  MN: {first_close: "21:00", all_close: "21:00"}
+  MS: {first_close: "20:00", all_close: "20:00"}
+  MO: {first_close: "20:00", all_close: "20:00"}
+  MT: {first_close: "22:00", all_close: "22:00"}
+  NE: {first_close: "21:00", all_close: "21:00"}
+  NV: {first_close: "22:00", all_close: "22:00"}
+  NH:
+    first_close: "19:00"
+    all_close: "20:00"
+    note: >-
+      The as-published table lists 20:00 with a footnote that many polling
+      places close one hour earlier. Hours are set by municipality.
+  NJ: {first_close: "20:00", all_close: "20:00"}
+  NM: {first_close: "21:00", all_close: "21:00"}
+  NY: {first_close: "21:00", all_close: "21:00"}
+  NC: {first_close: "19:30", all_close: "19:30"}
+  ND:
+    first_close: "20:00"
+    all_close: "21:00"
+    note: >-
+      County commissions set hours. The state allows closing between 19:00 and
+      21:00 local time, so a county using the late end of that window closes
+      up to 23:00 Eastern. The Green Papers lists 22:00 and 23:00.
+  OH: {first_close: "19:30", all_close: "19:30"}
+  OK: {first_close: "20:00", all_close: "20:00"}
+  OR:
+    first_close: "22:00"
+    all_close: "23:00"
+    note: Mountain Time Malheur County first; Pacific Time rest last.
+  PA: {first_close: "20:00", all_close: "20:00"}
+  RI: {first_close: "20:00", all_close: "20:00"}
+  SC: {first_close: "19:00", all_close: "19:00"}
+  SD:
+    first_close: "20:00"
+    all_close: "21:00"
+    note: Mountain Time west last.
+  TN: {first_close: "20:00", all_close: "20:00"}
+  TX:
+    first_close: "20:00"
+    all_close: "21:00"
+    note: Mountain Time El Paso and Hudspeth counties last.
+  UT: {first_close: "22:00", all_close: "22:00"}
+  VT: {first_close: "19:00", all_close: "19:00"}
+  VA: {first_close: "19:00", all_close: "19:00"}
+  WA: {first_close: "23:00", all_close: "23:00"}
+  WV: {first_close: "19:30", all_close: "19:30"}
+  WI: {first_close: "21:00", all_close: "21:00"}
+  WY: {first_close: "21:00", all_close: "21:00"}

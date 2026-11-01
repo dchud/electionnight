@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Election Night Monitor{% endblock %}</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/css/app.css">
+<script>
+  (function () {
+    try {
+      var root = document.documentElement;
+      root.dataset.theme = localStorage.getItem("theme") || "light";
+      if (localStorage.getItem("projector") === "1") root.dataset.projector = "1";
+    } catch (error) {}
+  })();
+</script>
+<script src="/static/vendor/htmx.min.js" defer></script>
+<script src="/static/vendor/sse.min.js" defer></script>
+<script src="/static/vendor/vega.min.js" defer></script>
+<script src="/static/vendor/vega-lite.min.js" defer></script>
+<script src="/static/vendor/vega-embed.min.js" defer></script>
+<script src="/static/vendor/d3.min.js" defer></script>
+<script src="/static/vendor/topojson-client.min.js" defer></script>
+<script src="/static/js/app.js" defer></script>
+<script src="/static/js/charts.js" defer></script>
+<script src="/static/js/map.js" defer></script>
+</head>
+<body hx-ext="sse" sse-connect="/events?{{ qs }}" data-qs="{{ qs }}"
+      data-replay-on="{{ '1' if filters.is_replay else '0' }}"
+      data-tour-seconds="{{ tour_seconds }}">
+{% include "partials/header.html" %}
+{% block content %}{% endblock %}
+<aside id="drawer" class="drawer" aria-label="Details">
+  <div class="drawer-head"><button class="drawer-close" data-close-drawer>Close (Esc)</button></div>
+  <div id="drawer-body" class="drawer-body"></div>
+</aside>
+<div id="popover" class="popover" hidden></div>
+<div id="tip" class="tip" hidden></div>
+<div id="tour-bar" class="tour-bar"></div>
+</body>
+</html>

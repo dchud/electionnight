@@ -1,0 +1,288 @@
+"""Vega-Lite specs, built once with Altair. Data is streamed in by the browser.
+
+Colors, fonts, and sizes come from the theme config set in the browser, so one
+spec serves the light, dark, and projector themes.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from functools import cache
+from typing import Any
+
+import altair as alt
+
+PARTY_DOMAIN = ["Democratic", "Republican", "Other"]
+LEAN_ORDER = ["L", "LL", "C", "LR", "R", "All"]
+MATRIX_ORDER = ["L", "LL", "C", "LR", "R", "Non-US"]
+TIME_AXIS = alt.Axis(
+    format="%-I:%M %p", title=None, grid=False, labelFlush=False
+)
+
+
+def _named(name: str = "table") -> alt.Chart:
+    return alt.Chart(alt.NamedData(name))
+
+
+def _poll_rule_layers() -> list[alt.Chart]:
+    rule = (
+        _named("rules")
+        .mark_rule(strokeDash=[3, 3], opacity=0.6)
+        .encode(x=alt.X("time:T"))
+    )
+    text = (
+        _named("rules")
+        .mark_text(align="left", dx=3, dy=2, baseline="top", angle=0)
+        .encode(x=alt.X("time:T"), y=alt.value(0), text="label:N")
+    )
+    return [rule, text]
+
+
+def stream(stack: Any) -> dict[str, Any]:
+    highlight = alt.selection_point(
+        name="focus",
+        fields=["storyline_id"],
+        on="pointerover",
+        clear="pointerout",
+    )
+    area = (
+        _named()
+        .mark_area(interpolate="monotone", stroke="transparent")
+        .encode(
+            x=alt.X("bin_start:T", axis=TIME_AXIS),
+            y=alt.Y(
+                "sum(n):Q",
+                stack=stack,
+                axis=None
+                if stack == "center"
+                else alt.Axis(format="%", title=None),
+            ),
+            color=alt.Color(
+                "label:N",
+                sort=alt.EncodingSortField("total", order="descending"),
+                legend=alt.Legend(
+                    title=None,
+                    orient="bottom",
+                    columns=3,
+                    labelLimit=320,
+                    symbolType="square",
+                ),
+            ),
+            order=alt.Order("total:Q", sort="descending"),
+            opacity=alt.condition(highlight, alt.value(0.95), alt.value(0.35)),
+            tooltip=[
+                alt.Tooltip("label:N", title="Storyline"),
+                alt.Tooltip("bin_start:T", title="Bin", format="%-I:%M %p"),
+                alt.Tooltip("sum(n):Q", title="Stories"),
+            ],
+            href=alt.value(None),
+        )
+        .add_params(highlight)
+    )
+    chart = alt.layer(area, *_poll_rule_layers()).properties(
+        width="container", height="container"
+    )
+    return chart.to_dict()
+
+
+def topic_heat() -> dict[str, Any]:
+    chart = (
+        _named()
+        .mark_rect(cornerRadius=2, stroke=None)
+        .encode(
+            x=alt.X("bin_start:T", axis=TIME_AXIS),
+            x2="bin_end:T",
+            y=alt.Y(
+                "topic:N",
+                title=None,
+                sort=alt.EncodingSortField("total", order="descending"),
+                axis=alt.Axis(labelLimit=170, labelOverlap=False),
+            ),
+            color=alt.Color(
+                "n:Q",
+                scale=alt.Scale(scheme="viridis"),
+                legend=alt.Legend(title="Stories", orient="bottom"),
+            ),
+            tooltip=[
+                alt.Tooltip("topic:N", title="Topic"),
+                alt.Tooltip("bin_start:T", title="Bin", format="%-I:%M %p"),
+                alt.Tooltip("n:Q", title="Stories"),
+            ],
+        )
+        .properties(width="container", height="container")
+    )
+    return chart.to_dict()
+
+
+def bump() -> dict[str, Any]:
+    color = alt.Color(
+        "party:N",
+        scale=alt.Scale(
+            domain=PARTY_DOMAIN,
+            range=[
+                {"expr": "partyDem"},
+                {"expr": "partyRep"},
+                {"expr": "partyOther"},
+            ],
+        ),
+        legend=alt.Legend(title=None, orient="bottom"),
+    )
+    base = _named().encode(
+        x=alt.X("bin_start:T", axis=TIME_AXIS),
+        y=alt.Y(
+            "rank:Q",
+            scale=alt.Scale(reverse=True, domain=[1, 12]),
+            axis=alt.Axis(title="Rank", tickMinStep=1),
+        ),
+        color=color,
+        detail="entity_id:N",
+        tooltip=[
+            alt.Tooltip("entity:N", title="Entity"),
+            alt.Tooltip("rank:Q", title="Rank"),
+            alt.Tooltip("n:Q", title="Mentions"),
+            alt.Tooltip("bin_start:T", title="Bin", format="%-I:%M %p"),
+        ],
+    )
+    lines = base.mark_line(strokeWidth=2, interpolate="monotone")
+    points = base.mark_circle(size=64, opacity=1)
+    labels = (
+        _named()
+        .transform_joinaggregate(last="max(bin_start)")
+        .transform_filter("datum.bin_start == datum.last")
+        .mark_text(align="left", dx=8)
+        .encode(
+            x=alt.X("bin_start:T"),
+            y=alt.Y("rank:Q", scale=alt.Scale(reverse=True, domain=[1, 12])),
+            text="entity:N",
+        )
+    )
+    chart = alt.layer(lines, points, labels).properties(
+        width="container", height="container"
+    )
+    chart = chart.configure_view(strokeWidth=0)
+    return chart.to_dict()
+
+
+def tone_by_lean() -> dict[str, Any]:
+    tone_scale = alt.Scale(domain=[-2, 2])
+    base = _named().encode(
+        y=alt.Y("entity:N", title=None),
+        yOffset=alt.YOffset("bucket:N", sort=LEAN_ORDER),
+    )
+    bars = base.mark_rule(strokeWidth=2).encode(
+        x=alt.X("ci_low:Q", scale=tone_scale, title="Mean tone"),
+        x2="ci_high:Q",
+        color=alt.Color("bucket:N", sort=LEAN_ORDER, legend=None),
+    )
+    dots = base.mark_point(size=70, strokeWidth=2).encode(
+        x=alt.X("mean:Q", scale=tone_scale),
+        color=alt.Color(
+            "bucket:N",
+            sort=LEAN_ORDER,
+            scale=alt.Scale(
+                domain=LEAN_ORDER,
+                range=[
+                    "#999999",
+                    "#777777",
+                    "#555555",
+                    "#3a3a3a",
+                    "#1f1f1f",
+                    {"expr": "toneAccent"},
+                ],
+            ),
+            legend=alt.Legend(title=None, orient="bottom"),
+        ),
+        fill=alt.condition(
+            "datum.low_n", alt.value("transparent"), alt.Color("bucket:N")
+        ),
+        tooltip=[
+            alt.Tooltip("entity:N", title="Entity"),
+            alt.Tooltip("bucket:N", title="Bucket"),
+            alt.Tooltip("mean:Q", title="Mean tone", format=".2f"),
+            alt.Tooltip("ci_low:Q", title="95% low", format=".2f"),
+            alt.Tooltip("ci_high:Q", title="95% high", format=".2f"),
+            alt.Tooltip("n:Q", title="n"),
+        ],
+    )
+    zero = (
+        alt.Chart(alt.Data(values=[{"x": 0}]))
+        .mark_rule(opacity=0.5)
+        .encode(x="x:Q")
+    )
+    chart = alt.layer(zero, bars, dots).properties(
+        width="container", height="container"
+    )
+    return chart.to_dict()
+
+
+def coverage_matrix() -> dict[str, Any]:
+    chart = (
+        _named()
+        .mark_rect(cornerRadius=2)
+        .encode(
+            x=alt.X(
+                "bucket:N",
+                sort=MATRIX_ORDER,
+                title=None,
+                axis=alt.Axis(orient="top", labelAngle=0),
+            ),
+            y=alt.Y(
+                "label:N",
+                title=None,
+                sort=alt.EncodingSortField("divergence", order="descending"),
+                axis=alt.Axis(labelLimit=360),
+            ),
+            color=alt.Color(
+                "share:Q",
+                scale=alt.Scale(scheme="viridis"),
+                legend=alt.Legend(
+                    title="Share of bucket", orient="bottom", format=".0%"
+                ),
+            ),
+            tooltip=[
+                alt.Tooltip("label:N", title="Storyline"),
+                alt.Tooltip("bucket:N", title="Bucket"),
+                alt.Tooltip("share:Q", title="Share", format=".1%"),
+            ],
+        )
+        .properties(width="container", height="container")
+    )
+    return chart.to_dict()
+
+
+def global_press() -> dict[str, Any]:
+    chart = (
+        _named()
+        .mark_area(interpolate="monotone", opacity=0.85)
+        .encode(
+            x=alt.X("bin_start:T", axis=alt.Axis(format="%-I %p", title=None)),
+            y=alt.Y(
+                "share:Q", axis=alt.Axis(format="%", title=None, tickCount=2)
+            ),
+            row=alt.Row("language:N", title=None),
+            tooltip=[
+                alt.Tooltip("language:N", title="Language"),
+                alt.Tooltip("bin_start:T", title="Bin", format="%-I:%M %p"),
+                alt.Tooltip("share:Q", title="Share", format=".1%"),
+                alt.Tooltip("n:Q", title="Stories"),
+            ],
+        )
+        .properties(width=170, height=44)
+    )
+    return chart.to_dict()
+
+
+SPECS: dict[str, Callable[[], dict[str, Any]]] = {
+    "stream": lambda: stream("center"),
+    "stream:normalize": lambda: stream("normalize"),
+    "topic_heat": topic_heat,
+    "bump": bump,
+    "tone_by_lean": tone_by_lean,
+    "coverage_matrix": coverage_matrix,
+    "global_press": global_press,
+}
+
+
+@cache
+def cached_spec(name: str) -> dict[str, Any]:
+    return SPECS[name]()

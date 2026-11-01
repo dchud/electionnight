@@ -1,0 +1,17 @@
+<h2 style="font-size:1.2rem;font-weight:650;margin:0 0 .3rem">{{ item.headline }}</h2>
+{% if item.title != item.headline %}<p class="panel-note" style="margin:0 0 .4rem">{{ item.title }}</p>{% endif %}
+<div class="wire-meta mb-2">
+  <span>{{ item.outlet }}</span>
+  {% if item.glyph %}<span class="glyph">{{ item.glyph }}</span>{% endif %}
+  <a href="/sources#{{ item.source_id }}">{{ item.lean }}</a>
+  <span>First seen {{ item.seen_raw_at|et_datetime }}</span>
+  {% if item.published_at %}<span>Published {{ item.published_at|et_datetime }}</span>{% endif %}
+</div>
+<p>{{ item.summary }}</p>
+<p><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer" style="text-decoration:underline">Open original</a></p>
+<div class="wire-meta">
+  {% if item.primary_level != 'none' %}<span class="badge">{{ item.primary_level }}</span>{% endif %}
+  {% for state in item.states %}<span class="chip">{{ state }}</span>{% endfor %}
+  {% for topic in item.topics %}<span class="chip">{{ topic }}</span>{% endfor %}
+  {% if item.is_opinion %}<span class="badge">opinion</span>{% endif %}
+</div>
