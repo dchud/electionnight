@@ -1,0 +1,274 @@
+name,homepage,scope,home_state,country,language,lean_hint,state_affiliated,paywall,poll_tier,notes
+Associated Press,https://apnews.com,wire,,US,en,C,false,none,1,No official public RSS; try politics section feed discovery; else rely on syndication
+Reuters,https://www.reuters.com,wire,,US,en,C,false,metered,1,Public RSS discontinued; discovery may fail - acceptable
+UPI,https://www.upi.com,wire,,US,en,C,false,none,2,
+Bloomberg,https://www.bloomberg.com,national,,US,en,LL,false,hard,2,Politics feed if available; headlines only
+The New York Times,https://www.nytimes.com,national,,US,en,LL,false,metered,1,Use Politics + US feeds (rss.nytimes.com)
+The Washington Post,https://www.washingtonpost.com,national,,US,en,LL,false,metered,1,Politics feed
+The Wall Street Journal,https://www.wsj.com,national,,US,en,C,false,hard,1,News (not opinion) feeds; headlines/summaries only
+USA Today,https://www.usatoday.com,national,,US,en,LL,false,none,1,
+CNN,https://www.cnn.com,national,,US,en,LL,false,none,1,Politics feed
+Fox News,https://www.foxnews.com,national,,US,en,R,false,none,1,Politics feed (moxie.foxnews.com)
+NBC News,https://www.nbcnews.com,national,,US,en,LL,false,none,1,Politics feed
+CBS News,https://www.cbsnews.com,national,,US,en,LL,false,none,1,Politics feed
+ABC News,https://abcnews.go.com,national,,US,en,LL,false,none,1,Politics feed
+NPR,https://www.npr.org,national,,US,en,LL,false,none,1,Politics + Elections feeds
+PBS News,https://www.pbs.org/newshour,national,,US,en,C,false,none,1,Politics feed
+MS NOW (formerly MSNBC),https://www.ms.now,national,,US,en,L,false,none,2,VERIFY domain after 2025 rebrand
+CNBC,https://www.cnbc.com,national,,US,en,C,false,none,2,Politics feed
+Politico,https://www.politico.com,national,,US,en,LL,false,none,1,Politics + Congress feeds
+The Hill,https://thehill.com,national,,US,en,C,false,none,1,Campaign + Homenews feeds
+Axios,https://www.axios.com,national,,US,en,LL,false,none,1,Politics feed
+Punchbowl News,https://punchbowl.news,national,,US,en,C,false,metered,2,
+Roll Call,https://rollcall.com,national,,US,en,C,false,none,1,Elections feed
+NOTUS,https://www.notus.org,national,,US,en,C,false,none,2,
+Semafor,https://www.semafor.com,national,,US,en,C,false,none,2,Politics vertical
+Newsweek,https://www.newsweek.com,national,,US,en,C,false,none,2,
+Time,https://time.com,national,,US,en,LL,false,metered,2,Politics feed
+The Atlantic,https://www.theatlantic.com,national,,US,en,L,false,metered,3,Politics feed; analysis-heavy
+Vox,https://www.vox.com,national,,US,en,L,false,none,3,Politics feed
+The 19th,https://19thnews.org,national,,US,en,LL,false,none,2,
+Christian Science Monitor,https://www.csmonitor.com,national,,US,en,C,false,metered,2,USA/Politics feed
+Business Insider,https://www.businessinsider.com,national,,US,en,LL,false,metered,3,Politics feed
+National Review,https://www.nationalreview.com,national,,US,en,R,false,metered,2,News + Corner
+The Dispatch,https://thedispatch.com,national,,US,en,LR,false,metered,2,
+Washington Examiner,https://www.washingtonexaminer.com,national,,US,en,R,false,none,1,Politics/campaigns feed
+The Free Press,https://www.thefp.com,national,,US,en,C,false,metered,3,
+Reason,https://reason.com,national,,US,en,LR,false,none,3,Politics feed
+New York Post,https://nypost.com,national,,US,en,R,false,none,1,Politics/US news feed
+The Washington Times,https://www.washingtontimes.com,national,,US,en,LR,false,none,2,Politics feed
+Washington Free Beacon,https://freebeacon.com,national,,US,en,R,false,none,3,
+The Bulwark,https://www.thebulwark.com,national,,US,en,LL,false,metered,3,
+RealClearPolitics,https://www.realclearpolitics.com,analysis,,US,en,LR,false,none,2,Mostly aggregator: keep only original articles if feed allows; else disable
+Deseret News (national politics),https://www.deseret.com,national,UT,US,en,C,false,none,2,Also counts for UT
+Stateline,https://stateline.org,state,,US,en,LL,false,none,1,Multi-state; home_state blank
+Votebeat,https://www.votebeat.org,analysis,,US,en,C,false,none,1,Election administration specialist
+Bolts,https://boltsmag.org,analysis,,US,en,LL,false,none,2,State/local races
+Cook Political Report,https://www.cookpolitical.com,analysis,,US,en,C,false,metered,2,Ratings source too
+Sabato's Crystal Ball,https://centerforpolitics.org/crystalball,analysis,,US,en,C,false,none,2,Ratings source too
+Inside Elections,https://insideelections.com,analysis,,US,en,C,false,metered,3,
+Ballotpedia News,https://news.ballotpedia.org,analysis,,US,en,C,false,none,2,Ballot measures and down-ballot
+Decision Desk HQ,https://decisiondeskhq.com,analysis,,US,en,C,false,none,1,Race calls are reported by others too
+Split Ticket,https://split-ticket.org,analysis,,US,en,C,false,none,3,
+Silver Bulletin,https://www.natesilver.net,analysis,,US,en,C,false,metered,3,Substack feed
+Election Law Blog,https://electionlawblog.org,analysis,,US,en,C,false,none,2,Legal challenges
+Univision Noticias,https://www.univision.com/noticias,national,,US,es,LL,false,none,2,US Spanish-language
+Telemundo Noticias,https://www.telemundo.com/noticias,national,,US,es,LL,false,none,2,US Spanish-language
+La Opinión,https://laopinion.com,local,CA,US,es,LL,false,none,2,US Spanish-language
+El Nuevo Herald,https://www.elnuevoherald.com,local,FL,US,es,C,false,metered,2,US Spanish-language
+BBC News,https://www.bbc.com/news,international,,GB,en,NA,false,none,2,US & Canada feed
+The Guardian,https://www.theguardian.com,international,,GB,en,NA,false,none,1,US politics feed (strong US desk)
+Financial Times,https://www.ft.com,international,,GB,en,NA,false,hard,2,US politics feed; headlines only
+The Economist,https://www.economist.com,international,,GB,en,NA,false,hard,3,United States section
+The Times (UK),https://www.thetimes.com,international,,GB,en,NA,false,hard,3,
+The Telegraph,https://www.telegraph.co.uk,international,,GB,en,NA,false,metered,3,US politics feed
+The Independent,https://www.independent.co.uk,international,,GB,en,NA,false,none,2,US politics feed
+Sky News,https://news.sky.com,international,,GB,en,NA,false,none,3,US feed
+Al Jazeera English,https://www.aljazeera.com,international,,QA,en,NA,true,none,2,Qatari state-funded; editorially distinct - keep; flag on Sources page
+Deutsche Welle (English),https://www.dw.com/en,international,,DE,en,NA,false,none,3,Public broadcaster
+France 24 (English),https://www.france24.com/en,international,,FR,en,NA,false,none,3,Public broadcaster
+Euronews,https://www.euronews.com,international,,FR,en,NA,false,none,3,
+Politico Europe,https://www.politico.eu,international,,BE,en,NA,false,none,3,
+Irish Times,https://www.irishtimes.com,international,,IE,en,NA,false,metered,3,World feed
+CBC News,https://www.cbc.ca/news,international,,CA,en,NA,false,none,2,World/politics feed
+The Globe and Mail,https://www.theglobeandmail.com,international,,CA,en,NA,false,metered,3,
+ABC News (Australia),https://www.abc.net.au/news,international,,AU,en,NA,false,none,3,World feed
+Sydney Morning Herald,https://www.smh.com.au,international,,AU,en,NA,false,metered,3,World feed
+RNZ,https://www.rnz.co.nz,international,,NZ,en,NA,false,none,3,World feed
+The Times of India,https://timesofindia.indiatimes.com,international,,IN,en,NA,false,none,3,World/US feed
+The Hindu,https://www.thehindu.com,international,,IN,en,NA,false,metered,3,World feed
+Dawn,https://www.dawn.com,international,,PK,en,NA,false,none,3,World feed
+The Japan Times,https://www.japantimes.co.jp,international,,JP,en,NA,false,metered,3,
+NHK World,https://www3.nhk.or.jp/nhkworld,international,,JP,en,NA,false,none,3,Public broadcaster
+Nikkei Asia,https://asia.nikkei.com,international,,JP,en,NA,false,hard,3,
+South China Morning Post,https://www.scmp.com,international,,HK,en,NA,false,metered,3,US/World feed
+The Straits Times,https://www.straitstimes.com,international,,SG,en,NA,false,metered,3,World feed
+Korea Herald,https://www.koreaherald.com,international,,KR,en,NA,false,none,3,
+Haaretz,https://www.haaretz.com,international,,IL,en,NA,false,metered,3,US news feed
+The Times of Israel,https://www.timesofisrael.com,international,,IL,en,NA,false,none,3,
+Kyiv Independent,https://kyivindependent.com,international,,UA,en,NA,false,none,3,
+Daily Maverick,https://www.dailymaverick.co.za,international,,ZA,en,NA,false,none,3,
+Nation (Kenya),https://nation.africa,international,,KE,en,NA,false,metered,3,
+BBC News Arabic,https://www.bbc.com/arabic,international,,GB,ar,NA,false,none,3,
+Al Jazeera Arabic,https://www.aljazeera.net,international,,QA,ar,NA,true,none,3,Qatari state-funded; flag
+France 24 Arabic,https://www.france24.com/ar,international,,FR,ar,NA,false,none,3,
+DW Arabic,https://www.dw.com/ar,international,,DE,ar,NA,false,none,3,
+Asharq Al-Awsat,https://aawsat.com,international,,SA,ar,NA,true,none,3,Saudi-linked ownership; flag
+BBC News Chinese,https://www.bbc.com/zhongwen,international,,GB,zh,NA,false,none,3,Simplified feed
+Lianhe Zaobao,https://www.zaobao.com.sg,international,,SG,zh,NA,false,none,3,
+DW Chinese,https://www.dw.com/zh,international,,DE,zh,NA,false,none,3,
+RFI Chinese,https://www.rfi.fr/cn,international,,FR,zh,NA,false,none,3,
+Central News Agency (Taiwan),https://www.cna.com.tw,international,,TW,zh,NA,true,none,3,National news agency (state-owned; democratic govt); flag
+Le Monde,https://www.lemonde.fr,international,,FR,fr,NA,false,metered,3,International / Amériques feed
+Le Figaro,https://www.lefigaro.fr,international,,FR,fr,NA,false,metered,3,International feed
+Libération,https://www.liberation.fr,international,,FR,fr,NA,false,metered,3,International feed
+France 24 (French),https://www.france24.com/fr,international,,FR,fr,NA,false,none,3,
+Radio-Canada,https://ici.radio-canada.ca,international,,CA,fr,NA,false,none,3,International feed
+Le Devoir,https://www.ledevoir.com,international,,CA,fr,NA,false,metered,3,International feed
+BBC News Russian,https://www.bbc.com/russian,international,,GB,ru,NA,false,none,3,
+Meduza,https://meduza.io,international,,LV,ru,NA,false,none,3,Independent; exiled
+DW Russian,https://www.dw.com/ru,international,,DE,ru,NA,false,none,3,
+Novaya Gazeta Europe,https://novayagazeta.eu,international,,LV,ru,NA,false,none,3,Independent; exiled
+Kommersant,https://www.kommersant.ru,international,,RU,ru,NA,false,metered,3,Russian domestic press under censorship; note on Sources page
+El País,https://elpais.com,international,,ES,es,NA,false,metered,3,Internacional / EEUU feed
+El Mundo,https://www.elmundo.es,international,,ES,es,NA,false,metered,3,Internacional feed
+BBC News Mundo,https://www.bbc.com/mundo,international,,GB,es,NA,false,none,3,
+CNN en Español,https://cnnespanol.cnn.com,international,,US,es,NA,false,none,3,
+Infobae,https://www.infobae.com,international,,AR,es,NA,false,none,3,América/EEUU feed
+Clarín,https://www.clarin.com,international,,AR,es,NA,false,metered,3,Mundo feed
+El Universal (México),https://www.eluniversal.com.mx,international,,MX,es,NA,false,none,3,Mundo feed
+Alabama Reflector,https://alabamareflector.com,state,AL,US,en,Unrated,false,none,2,States Newsroom
+AL.com,https://www.al.com,local,AL,US,en,Unrated,false,none,2,Politics feed
+Alabama Daily News,https://www.aldailynews.com,state,AL,US,en,Unrated,false,none,3,
+Alaska Beacon,https://alaskabeacon.com,state,AK,US,en,Unrated,false,none,1,States Newsroom; battleground (Senate)
+Anchorage Daily News,https://www.adn.com,local,AK,US,en,Unrated,false,metered,1,Politics feed
+Alaska Public Media,https://alaskapublic.org,state,AK,US,en,Unrated,false,none,2,
+Arizona Mirror,https://azmirror.com,state,AZ,US,en,Unrated,false,none,1,States Newsroom; battleground
+The Arizona Republic,https://www.azcentral.com,local,AZ,US,en,Unrated,false,metered,1,Politics feed
+KJZZ,https://kjzz.org,local,AZ,US,en,Unrated,false,none,2,Public radio
+Arkansas Advocate,https://arkansasadvocate.com,state,AR,US,en,Unrated,false,none,3,States Newsroom
+Arkansas Democrat-Gazette,https://www.arkansasonline.com,local,AR,US,en,Unrated,false,metered,3,
+CalMatters,https://calmatters.org,state,CA,US,en,Unrated,false,none,1,
+Los Angeles Times,https://www.latimes.com,local,CA,US,en,LL,false,metered,1,Politics + California feeds
+San Francisco Chronicle,https://www.sfchronicle.com,local,CA,US,en,Unrated,false,metered,2,
+KQED,https://www.kqed.org,local,CA,US,en,Unrated,false,none,2,Public radio
+The Sacramento Bee,https://www.sacbee.com,local,CA,US,en,Unrated,false,metered,2,Capitol coverage
+Colorado Newsline,https://coloradonewsline.com,state,CO,US,en,Unrated,false,none,2,States Newsroom
+The Colorado Sun,https://coloradosun.com,state,CO,US,en,Unrated,false,none,2,
+The Denver Post,https://www.denverpost.com,local,CO,US,en,Unrated,false,metered,2,Politics feed
+CPR News,https://www.cpr.org,state,CO,US,en,Unrated,false,none,3,Public radio
+CT Mirror,https://ctmirror.org,state,CT,US,en,Unrated,false,none,2,
+CT Insider,https://www.ctinsider.com,local,CT,US,en,Unrated,false,metered,3,
+Connecticut Public,https://www.ctpublic.org,state,CT,US,en,Unrated,false,none,3,
+Spotlight Delaware,https://spotlightdelaware.org,state,DE,US,en,Unrated,false,none,3,
+Delaware Online,https://www.delawareonline.com,local,DE,US,en,Unrated,false,metered,3,
+Florida Phoenix,https://floridaphoenix.com,state,FL,US,en,Unrated,false,none,2,States Newsroom
+Tampa Bay Times,https://www.tampabay.com,local,FL,US,en,Unrated,false,metered,2,Politics feed
+Miami Herald,https://www.miamiherald.com,local,FL,US,en,Unrated,false,metered,2,Politics feed
+WLRN,https://www.wlrn.org,local,FL,US,en,Unrated,false,none,3,Public radio
+Georgia Recorder,https://georgiarecorder.com,state,GA,US,en,Unrated,false,none,1,States Newsroom; battleground
+Atlanta Journal-Constitution,https://www.ajc.com,local,GA,US,en,Unrated,false,metered,1,Politics feed
+GPB News,https://www.gpb.org/news,state,GA,US,en,Unrated,false,none,1,Public broadcaster
+Honolulu Civil Beat,https://www.civilbeat.org,state,HI,US,en,Unrated,false,none,3,
+Honolulu Star-Advertiser,https://www.staradvertiser.com,local,HI,US,en,Unrated,false,metered,3,
+Idaho Capital Sun,https://idahocapitalsun.com,state,ID,US,en,Unrated,false,none,3,States Newsroom
+Idaho Statesman,https://www.idahostatesman.com,local,ID,US,en,Unrated,false,metered,3,
+Capitol News Illinois,https://capitolnewsillinois.com,state,IL,US,en,Unrated,false,none,2,
+Chicago Tribune,https://www.chicagotribune.com,local,IL,US,en,Unrated,false,metered,2,Politics feed
+Chicago Sun-Times,https://chicago.suntimes.com,local,IL,US,en,Unrated,false,none,2,Politics feed
+WBEZ,https://www.wbez.org,local,IL,US,en,Unrated,false,none,3,Public radio
+Indiana Capital Chronicle,https://indianacapitalchronicle.com,state,IN,US,en,Unrated,false,none,2,States Newsroom
+IndyStar,https://www.indystar.com,local,IN,US,en,Unrated,false,metered,2,
+Iowa Capital Dispatch,https://iowacapitaldispatch.com,state,IA,US,en,Unrated,false,none,1,States Newsroom; battleground
+Des Moines Register,https://www.desmoinesregister.com,local,IA,US,en,Unrated,false,metered,1,Politics feed
+Iowa Public Radio,https://www.iowapublicradio.org,state,IA,US,en,Unrated,false,none,2,
+Kansas Reflector,https://kansasreflector.com,state,KS,US,en,Unrated,false,none,1,States Newsroom; governor race
+The Kansas City Star,https://www.kansascity.com,local,MO,US,en,Unrated,false,metered,2,Covers KS + MO
+KCUR,https://www.kcur.org,local,MO,US,en,Unrated,false,none,3,Public radio; KS + MO
+Kentucky Lantern,https://kentuckylantern.com,state,KY,US,en,Unrated,false,none,2,States Newsroom
+Louisville Courier Journal,https://www.courier-journal.com,local,KY,US,en,Unrated,false,metered,2,
+Lexington Herald-Leader,https://www.kentucky.com,local,KY,US,en,Unrated,false,metered,3,
+Louisiana Illuminator,https://lailluminator.com,state,LA,US,en,Unrated,false,none,2,States Newsroom
+The Advocate (Baton Rouge),https://www.theadvocate.com,local,LA,US,en,Unrated,false,metered,3,
+The Times-Picayune | NOLA.com,https://www.nola.com,local,LA,US,en,Unrated,false,metered,3,
+Maine Morning Star,https://mainemorningstar.com,state,ME,US,en,Unrated,false,none,1,States Newsroom; battleground (Senate)
+Portland Press Herald,https://www.pressherald.com,local,ME,US,en,Unrated,false,metered,1,Politics feed
+Bangor Daily News,https://www.bangordailynews.com,local,ME,US,en,Unrated,false,metered,1,Politics feed
+Maine Public,https://www.mainepublic.org,state,ME,US,en,Unrated,false,none,2,
+Maryland Matters,https://marylandmatters.org,state,MD,US,en,Unrated,false,none,2,
+The Baltimore Banner,https://www.thebaltimorebanner.com,local,MD,US,en,Unrated,false,metered,2,
+The Baltimore Sun,https://www.baltimoresun.com,local,MD,US,en,Unrated,false,metered,3,
+The Boston Globe,https://www.bostonglobe.com,local,MA,US,en,LL,false,metered,2,Politics + NH/RI coverage
+WBUR,https://www.wbur.org,local,MA,US,en,Unrated,false,none,2,Public radio
+CommonWealth Beacon,https://commonwealthbeacon.org,state,MA,US,en,Unrated,false,none,3,
+Michigan Advance,https://michiganadvance.com,state,MI,US,en,Unrated,false,none,1,States Newsroom; battleground
+Detroit Free Press,https://www.freep.com,local,MI,US,en,Unrated,false,metered,1,Politics feed
+The Detroit News,https://www.detroitnews.com,local,MI,US,en,Unrated,false,metered,1,Politics feed
+Bridge Michigan,https://www.bridgemi.com,state,MI,US,en,Unrated,false,none,1,
+Michigan Public,https://www.michiganpublic.org,state,MI,US,en,Unrated,false,none,2,
+Minnesota Reformer,https://minnesotareformer.com,state,MN,US,en,Unrated,false,none,1,States Newsroom; battleground (Senate)
+Star Tribune,https://www.startribune.com,local,MN,US,en,Unrated,false,metered,1,Politics feed
+MPR News,https://www.mprnews.org,state,MN,US,en,Unrated,false,none,1,Public radio
+Mississippi Today,https://mississippitoday.org,state,MS,US,en,Unrated,false,none,3,
+Clarion Ledger,https://www.clarionledger.com,local,MS,US,en,Unrated,false,metered,3,
+Missouri Independent,https://missouriindependent.com,state,MO,US,en,Unrated,false,none,2,States Newsroom
+St. Louis Post-Dispatch,https://www.stltoday.com,local,MO,US,en,Unrated,false,metered,2,
+St. Louis Public Radio,https://www.stlpr.org,local,MO,US,en,Unrated,false,none,3,
+Daily Montanan,https://dailymontanan.com,state,MT,US,en,Unrated,false,none,2,States Newsroom
+Montana Free Press,https://montanafreepress.org,state,MT,US,en,Unrated,false,none,2,
+Nebraska Examiner,https://nebraskaexaminer.com,state,NE,US,en,Unrated,false,none,1,States Newsroom; battleground (Senate)
+Omaha World-Herald,https://omaha.com,local,NE,US,en,Unrated,false,metered,1,
+Flatwater Free Press,https://flatwaterfreepress.org,state,NE,US,en,Unrated,false,none,3,
+Nevada Current,https://nevadacurrent.com,state,NV,US,en,Unrated,false,none,1,States Newsroom; battleground (Gov)
+The Nevada Independent,https://thenevadaindependent.com,state,NV,US,en,Unrated,false,none,1,
+Las Vegas Review-Journal,https://www.reviewjournal.com,local,NV,US,en,Unrated,false,metered,1,Politics feed
+New Hampshire Bulletin,https://newhampshirebulletin.com,state,NH,US,en,Unrated,false,none,1,States Newsroom; battleground
+NHPR,https://www.nhpr.org,state,NH,US,en,Unrated,false,none,1,Public radio
+New Hampshire Union Leader,https://www.unionleader.com,local,NH,US,en,Unrated,false,metered,2,
+New Jersey Monitor,https://newjerseymonitor.com,state,NJ,US,en,Unrated,false,none,2,States Newsroom
+NJ.com,https://www.nj.com,local,NJ,US,en,Unrated,false,metered,2,Politics feed
+NJ Spotlight News,https://www.njspotlightnews.org,state,NJ,US,en,Unrated,false,none,3,
+Source NM,https://sourcenm.com,state,NM,US,en,Unrated,false,none,2,States Newsroom
+Santa Fe New Mexican,https://www.santafenewmexican.com,local,NM,US,en,Unrated,false,metered,3,
+Albuquerque Journal,https://www.abqjournal.com,local,NM,US,en,Unrated,false,metered,3,
+New York Focus,https://nysfocus.com,state,NY,US,en,Unrated,false,none,2,
+City & State New York,https://www.cityandstateny.com,state,NY,US,en,Unrated,false,none,2,
+Times Union (Albany),https://www.timesunion.com,local,NY,US,en,Unrated,false,metered,2,
+Gothamist,https://gothamist.com,local,NY,US,en,Unrated,false,none,2,WNYC
+NC Newsline,https://ncnewsline.com,state,NC,US,en,Unrated,false,none,1,States Newsroom; battleground
+The News & Observer,https://www.newsobserver.com,local,NC,US,en,Unrated,false,metered,1,Politics feed
+The Charlotte Observer,https://www.charlotteobserver.com,local,NC,US,en,Unrated,false,metered,1,
+WUNC,https://www.wunc.org,state,NC,US,en,Unrated,false,none,1,Public radio
+North Dakota Monitor,https://northdakotamonitor.com,state,ND,US,en,Unrated,false,none,3,States Newsroom
+Bismarck Tribune,https://bismarcktribune.com,local,ND,US,en,Unrated,false,metered,3,
+Ohio Capital Journal,https://ohiocapitaljournal.com,state,OH,US,en,Unrated,false,none,1,States Newsroom; battleground (Senate special)
+Cleveland.com,https://www.cleveland.com,local,OH,US,en,Unrated,false,metered,1,Politics feed
+The Columbus Dispatch,https://www.dispatch.com,local,OH,US,en,Unrated,false,metered,1,
+Statehouse News Bureau (Ohio),https://www.statenews.org,state,OH,US,en,Unrated,false,none,2,Public radio
+Oklahoma Voice,https://oklahomavoice.com,state,OK,US,en,Unrated,false,none,3,States Newsroom
+The Oklahoman,https://www.oklahoman.com,local,OK,US,en,Unrated,false,metered,3,
+Oklahoma Watch,https://oklahomawatch.org,state,OK,US,en,Unrated,false,none,3,
+Oregon Capital Chronicle,https://oregoncapitalchronicle.com,state,OR,US,en,Unrated,false,none,2,States Newsroom
+OregonLive,https://www.oregonlive.com,local,OR,US,en,Unrated,false,metered,2,
+OPB,https://www.opb.org,state,OR,US,en,Unrated,false,none,2,Public broadcaster
+Pennsylvania Capital-Star,https://penncapital-star.com,state,PA,US,en,Unrated,false,none,1,States Newsroom; battleground (Gov)
+The Philadelphia Inquirer,https://www.inquirer.com,local,PA,US,en,Unrated,false,metered,1,Politics feed
+Spotlight PA,https://www.spotlightpa.org,state,PA,US,en,Unrated,false,none,1,
+WHYY,https://whyy.org,local,PA,US,en,Unrated,false,none,2,Public radio
+Pittsburgh Post-Gazette,https://www.post-gazette.com,local,PA,US,en,Unrated,false,metered,2,
+Rhode Island Current,https://rhodeislandcurrent.com,state,RI,US,en,Unrated,false,none,3,States Newsroom
+The Providence Journal,https://www.providencejournal.com,local,RI,US,en,Unrated,false,metered,3,
+SC Daily Gazette,https://scdailygazette.com,state,SC,US,en,Unrated,false,none,2,States Newsroom
+The Post and Courier,https://www.postandcourier.com,local,SC,US,en,Unrated,false,metered,2,
+The State (Columbia),https://www.thestate.com,local,SC,US,en,Unrated,false,metered,3,
+South Dakota Searchlight,https://southdakotasearchlight.com,state,SD,US,en,Unrated,false,none,3,States Newsroom
+South Dakota Public Broadcasting,https://www.sdpb.org,state,SD,US,en,Unrated,false,none,3,
+Tennessee Lookout,https://tennesseelookout.com,state,TN,US,en,Unrated,false,none,2,States Newsroom
+The Tennessean,https://www.tennessean.com,local,TN,US,en,Unrated,false,metered,2,
+WPLN,https://wpln.org,local,TN,US,en,Unrated,false,none,3,Public radio
+The Texas Tribune,https://www.texastribune.org,state,TX,US,en,Unrated,false,none,1,Battleground (Senate)
+Houston Chronicle,https://www.houstonchronicle.com,local,TX,US,en,Unrated,false,metered,1,Politics feed
+The Dallas Morning News,https://www.dallasnews.com,local,TX,US,en,Unrated,false,metered,1,Politics feed
+San Antonio Express-News,https://www.expressnews.com,local,TX,US,en,Unrated,false,metered,2,
+KUT,https://www.kut.org,local,TX,US,en,Unrated,false,none,2,Public radio (Austin)
+Utah News Dispatch,https://utahnewsdispatch.com,state,UT,US,en,Unrated,false,none,2,States Newsroom
+The Salt Lake Tribune,https://www.sltrib.com,local,UT,US,en,Unrated,false,metered,2,
+VTDigger,https://vtdigger.org,state,VT,US,en,Unrated,false,none,3,
+Vermont Public,https://www.vermontpublic.org,state,VT,US,en,Unrated,false,none,3,
+Virginia Mercury,https://virginiamercury.com,state,VA,US,en,Unrated,false,none,2,States Newsroom
+Richmond Times-Dispatch,https://richmond.com,local,VA,US,en,Unrated,false,metered,2,
+Cardinal News,https://cardinalnews.org,local,VA,US,en,Unrated,false,none,3,
+VPM News,https://www.vpm.org,state,VA,US,en,Unrated,false,none,3,Public radio
+Washington State Standard,https://washingtonstatestandard.com,state,WA,US,en,Unrated,false,none,2,States Newsroom
+The Seattle Times,https://www.seattletimes.com,local,WA,US,en,Unrated,false,metered,2,Politics feed
+KUOW,https://www.kuow.org,local,WA,US,en,Unrated,false,none,3,Public radio
+West Virginia Watch,https://westvirginiawatch.com,state,WV,US,en,Unrated,false,none,3,States Newsroom
+Mountain State Spotlight,https://mountainstatespotlight.org,state,WV,US,en,Unrated,false,none,3,
+West Virginia Public Broadcasting,https://wvpublic.org,state,WV,US,en,Unrated,false,none,3,
+Wisconsin Examiner,https://wisconsinexaminer.com,state,WI,US,en,Unrated,false,none,1,States Newsroom; battleground (Gov)
+Milwaukee Journal Sentinel,https://www.jsonline.com,local,WI,US,en,Unrated,false,metered,1,Politics feed
+Wisconsin Public Radio,https://www.wpr.org,state,WI,US,en,Unrated,false,none,1,
+Wisconsin Watch,https://wisconsinwatch.org,state,WI,US,en,Unrated,false,none,2,
+WyoFile,https://wyofile.com,state,WY,US,en,Unrated,false,none,3,
+Cowboy State Daily,https://cowboystatedaily.com,state,WY,US,en,Unrated,false,none,3,
+Casper Star-Tribune,https://trib.com,local,WY,US,en,Unrated,false,metered,3,

@@ -1,0 +1,25 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Scratch
+tmp/
+
+# Runtime data and logs
+data/
+logs/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Local tools and working notes
+bin/
+agent-approach-brief.md
+.DS_Store
+.abacus/
