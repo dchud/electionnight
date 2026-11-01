@@ -234,6 +234,7 @@ class BriefWriter:
         if len(data.items) < MIN_ITEMS:
             return None
         llm = self.settings.llm
+        brief_id = hash_id("brief", focus, end.isoformat())
         result = await self.llm.structured(
             "briefs",
             Brief,
@@ -244,6 +245,8 @@ class BriefWriter:
             effort="medium",
             thinking={"type": "adaptive"},
             beta_fallback=True,
+            batch_id=brief_id,
+            item_ids=list(data.references.values()),
         )
         validated = validate_structured(
             [
@@ -259,13 +262,24 @@ class BriefWriter:
             sentences_dropped=validated.sentences_dropped,
             citations_dropped=validated.citations_dropped,
         )
+        self.writer.add(
+            "nlp.brief_stats",
+            [
+                {
+                    "brief_id": brief_id,
+                    "sentences_kept": validated.sentences_kept,
+                    "sentences_dropped": validated.sentences_dropped,
+                    "citations_dropped": validated.citations_dropped,
+                }
+            ],
+        )
         if not validated.markdown:
             return None
         self.writer.add(
             "nlp.briefs",
             [
                 {
-                    "brief_id": hash_id("brief", focus, end.isoformat()),
+                    "brief_id": brief_id,
                     "window_start": start,
                     "window_end": end,
                     "focus": focus,

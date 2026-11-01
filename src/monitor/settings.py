@@ -26,6 +26,7 @@ class Paths(BaseModel):
     control: Path = Path("data/control/")
     last_commit: Path = Path("data/last_commit.json")
     status: Path = Path("data/status.json")
+    archive: Path = Path("data/archive/")
     writer_lock: Path = Path("data/writer.lock")
     logs: Path = Path("logs/")
     reports: Path = Path("reports/")
@@ -44,6 +45,7 @@ class Paths(BaseModel):
             control=root / "control",
             last_commit=root / "last_commit.json",
             status=root / "status.json",
+            archive=root / "archive",
             writer_lock=root / "writer.lock",
             logs=root / "logs",
             reports=root / "reports",
@@ -132,6 +134,21 @@ class Disk(BaseModel):
     autoprune_gb: float = 3.0
 
 
+class Archive(BaseModel):
+    enabled: bool = True
+    compression_level: int = 9
+    window_log: int = 26
+    flush_seconds: int = 30
+    min_free_gb: float = 15.0
+    upload_minutes: int = 60
+    local_keep_hours: int = 24
+    s3_bucket: str = ""
+    s3_region: str = "us-east-1"
+    s3_prefix: str = "electionnight"
+    s3_access_key_id: SecretStr | None = None
+    s3_secret_access_key: SecretStr | None = None
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
@@ -148,6 +165,7 @@ class Settings(BaseSettings):
     llm: Llm = Field(default_factory=Llm)
     web: Web = Field(default_factory=Web)
     disk: Disk = Field(default_factory=Disk)
+    archive: Archive = Field(default_factory=Archive)
 
 
 def load_settings(env_file: str | None = None) -> Settings:

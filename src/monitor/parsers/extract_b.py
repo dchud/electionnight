@@ -62,17 +62,25 @@ def clamp_tone(value: float | None) -> float | None:
     return max(-TONE_LIMIT, min(TONE_LIMIT, float(value)))
 
 
+def quote_problem(quote: str | None, text: str) -> str | None:
+    """Why an evidence quote fails, or None if it is acceptable."""
+    if not quote:
+        return "no quote"
+    if len(quote.split()) > EVIDENCE_MAX_WORDS:
+        return "too long"
+    if not appears_in(quote, text):
+        return "not verbatim"
+    return None
+
+
 def checked_tone(
     entity: EntityB, text: str
 ) -> tuple[float | None, str | None]:
     """Keep a tone only with a short verbatim evidence quote."""
     tone = clamp_tone(entity.tone)
-    quote = entity.tone_evidence
-    if tone is None or not quote:
+    if tone is None or quote_problem(entity.tone_evidence, text):
         return None, None
-    if len(quote.split()) > EVIDENCE_MAX_WORDS or not appears_in(quote, text):
-        return None, None
-    return tone, quote
+    return tone, entity.tone_evidence
 
 
 def locate(surfaces: list[str], text: str) -> tuple[str | None, int, int]:
@@ -171,6 +179,8 @@ class ExtractParser:
                     self.system,
                     user,
                     max_tokens=max_tokens,
+                    batch_id=item.item_id,
+                    item_ids=[item.item_id],
                 )
             except LlmUnavailable:
                 await asyncio.sleep(WAIT_SECONDS)
@@ -293,6 +303,27 @@ class ExtractParser:
                 keys.append(key)
         return sorted(set(keys))
 
+    def _reject(
+        self,
+        output: ParserOutput,
+        item: Item,
+        kind: str,
+        quote: str | None,
+        reason: str,
+    ) -> None:
+        output.add(
+            "nlp.rejected_quotes",
+            {
+                "item_id": item.item_id,
+                "kind": kind,
+                "quote": quote,
+                "reason": reason,
+                "model": self.settings.llm.model_bulk,
+                "parser": self.name,
+                "parser_version": self.version,
+            },
+        )
+
     def _emit(
         self,
         output: ParserOutput,
@@ -323,15 +354,23 @@ class ExtractParser:
         )
         for row in self._mention_rows(item, result, text, states):
             output.add("nlp.mentions", row)
+        for entity in result.entities:
+            if entity.tone is not None:
+                reason = quote_problem(entity.tone_evidence, text)
+                if reason:
+                    self._reject(
+                        output, item, "tone", entity.tone_evidence, reason
+                    )
         for row in self._place_rows(item, result.places, states):
             output.add("nlp.places", row)
         for call in result.race_calls:
             if not accept_call(call, text):
-                log.info(
-                    "race_call_rejected",
-                    item_id=item.item_id,
-                    status=call.status,
+                reason = (
+                    "not verbatim"
+                    if not appears_in(call.evidence, text)
+                    else "no explicit language"
                 )
+                self._reject(output, item, "race_call", call.evidence, reason)
                 continue
             race_key = normalize_race_key(
                 call.state, call.office, call.district

@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 import duckdb
 import httpx
 
+from monitor.archive import ArchiveWriter
 from monitor.ingest.feeds import FeedEntry, parse_feed
 from monitor.ingest.sources import Source
 from monitor.lake import BatchWriter, hash_id
@@ -101,6 +102,20 @@ def load_validators(
     return {row[0]: (row[1], row[2]) for row in rows}
 
 
+def load_sightings(
+    conn: duckdb.DuckDBPyConnection,
+) -> dict[tuple[str, str], str]:
+    """Latest title hash per item and feed."""
+    rows = conn.execute(
+        """
+        SELECT item_id, feed_url, title_hash FROM lake.raw.sightings
+        QUALIFY row_number() OVER (
+            PARTITION BY item_id, feed_url ORDER BY seen_at DESC) = 1
+        """
+    ).fetchall()
+    return {(row[0], row[1]): row[2] for row in rows}
+
+
 class Poller:
     """Polls every enabled feed on its tier and hands new items onward."""
 
@@ -113,8 +128,12 @@ class Poller:
         validators: dict[str, tuple[str | None, str | None]] | None = None,
         on_new_items: Callable[[list[dict[str, Any]]], None] | None = None,
         client: httpx.AsyncClient | None = None,
+        archive: ArchiveWriter | None = None,
+        sightings: dict[tuple[str, str], str] | None = None,
     ) -> None:
         self.settings = settings
+        self.archive = archive
+        self.sightings = sightings if sightings is not None else {}
         self.writer = writer
         self.seen = seen
         self.on_new_items = on_new_items
@@ -151,6 +170,7 @@ class Poller:
         n_entries = 0
         n_new = 0
         new_rows: list[dict[str, Any]] = []
+        details: dict[str, Any] | None = None
         try:
             async with self.domain_limits[domain]:
                 response = await self.client.get(state.url, headers=headers)
@@ -161,11 +181,46 @@ class Poller:
                 feed = await asyncio.to_thread(parse_feed, response.content)
                 n_entries = len(feed.entries)
                 now = datetime.now(UTC)
+                sighted = []
                 for entry in feed.entries:
                     row = item_row(state.source, state.url, entry, now)
-                    if row["item_id"] not in self.seen:
-                        self.seen.add(row["item_id"])
+                    item_id = row["item_id"]
+                    title_hash = hash_id(entry.title)
+                    key = (item_id, state.url)
+                    if self.sightings.get(key) != title_hash:
+                        self.sightings[key] = title_hash
+                        sighted.append(
+                            {
+                                "item_id": item_id,
+                                "source_id": state.source.source_id,
+                                "feed_url": state.url,
+                                "seen_at": now,
+                                "title_hash": title_hash,
+                            }
+                        )
+                    if item_id not in self.seen:
+                        self.seen.add(item_id)
                         new_rows.append(row)
+                self.writer.add("raw.sightings", sighted)
+                index_row = None
+                if self.archive is not None:
+                    index_row = self.archive.add(
+                        "feeds",
+                        state.url,
+                        state.source.source_id,
+                        response.content,
+                        {"http_status": status},
+                        skip_unchanged=True,
+                    )
+                    if index_row:
+                        self.writer.add("raw.archive_index", [index_row])
+                details = {
+                    "n_bytes": len(response.content),
+                    "bozo": feed.bozo,
+                    "content_type": response.headers.get("content-type"),
+                    "unchanged": self.archive is not None
+                    and index_row is None,
+                }
                 n_new = len(new_rows)
                 if n_entries == 0:
                     error = "no entries"
@@ -174,11 +229,16 @@ class Poller:
         except Exception as exc:
             error = type(exc).__name__
         self._record(state, status, error, n_new)
+        fetch_id = hash_id(state.url, started.isoformat())
+        if details is not None:
+            self.writer.add(
+                "raw.fetch_details", [{"fetch_id": fetch_id, **details}]
+            )
         self.writer.add(
             "raw.fetches",
             [
                 {
-                    "fetch_id": hash_id(state.url, started.isoformat()),
+                    "fetch_id": fetch_id,
                     "source_id": state.source.source_id,
                     "feed_url": state.url,
                     "started_at": started,

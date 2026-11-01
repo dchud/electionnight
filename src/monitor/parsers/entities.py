@@ -274,6 +274,7 @@ class EntityPass:
                 RESOLUTION_SYSTEM,
                 json.dumps(unknown, ensure_ascii=False),
                 max_tokens=3000,
+                batch_id="entity_pass",
             )
         except LlmError as error:
             log.warning("entity_pass_failed", error=type(error).__name__)

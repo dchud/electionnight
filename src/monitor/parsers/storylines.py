@@ -162,6 +162,7 @@ class StorylineEngine:
         self.background: Counter = Counter()
         self.background_docs = 0
         self.histogram = np.zeros(HISTOGRAM_BINS, dtype=np.int64)
+        self.last_decision: dict[str, Any] = {}
 
     def _pool(self, now: datetime) -> list[Storyline]:
         return [
@@ -189,14 +190,22 @@ class StorylineEngine:
         pool = self._pool(seen_at)
         best: Storyline | None = None
         similarity = 0.0
+        nearest_id = None
         if pool:
             matrix = np.stack([s.centroid for s in pool])
             scores = matrix @ vector
             position = int(np.argmax(scores))
             similarity = float(scores[position])
+            nearest_id = pool[position].storyline_id
             self._record_similarity(similarity)
             if similarity >= self.join:
                 best = pool[position]
+        self.last_decision = {
+            "decision": "joined" if best is not None else "new",
+            "nearest_id": nearest_id,
+            "nearest_similarity": similarity if nearest_id else None,
+            "threshold": self.join,
+        }
         if best is None:
             best = Storyline(
                 storyline_id=hash_id("storyline", self.salt, item_id),
@@ -484,6 +493,8 @@ class StorylineParser:
                 NAMING_SYSTEM,
                 user,
                 max_tokens=500,
+                batch_id=storyline.storyline_id,
+                item_ids=[member.item_id for member in central],
             )
         except LlmError as error:
             log.warning(
@@ -573,6 +584,16 @@ class StorylineParser:
                     "source_id": item.source_id,
                     "parser": self.name,
                     "parser_version": self.version,
+                },
+            )
+            output.add(
+                "nlp.cluster_decisions",
+                {
+                    "item_id": item.item_id,
+                    "stage": "storylines",
+                    "parser": self.name,
+                    "parser_version": self.version,
+                    **self.engine.last_decision,
                 },
             )
             self._maybe_label(storyline)

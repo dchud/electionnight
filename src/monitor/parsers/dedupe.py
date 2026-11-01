@@ -78,6 +78,11 @@ class DedupeIndex:
         self.times = np.zeros(INITIAL_CAPACITY, dtype=np.float64)
         self.days: list[str] = []
         self.groups: list[str] = []
+        self.last_nearest: tuple[str | None, float | None, int | None] = (
+            None,
+            None,
+            None,
+        )
 
     def _grow(self) -> None:
         capacity = len(self.hashes) * 2
@@ -111,6 +116,7 @@ class DedupeIndex:
         seen_at: datetime,
         day: str,
     ) -> Match | None:
+        self.last_nearest = (None, None, None)
         if self.size == 0:
             return None
         now = seen_at.timestamp()
@@ -119,11 +125,19 @@ class DedupeIndex:
         distances = np.bitwise_count(
             self.hashes[: self.size] ^ np.uint64(title_hash)
         )
+        scores = self.vectors[: self.size] @ vector
+        if in_window.any():
+            windowed = np.flatnonzero(in_window)
+            top = windowed[np.argmax(scores[windowed])]
+            self.last_nearest = (
+                self.groups[top],
+                float(scores[top]),
+                int(distances[windowed].min()),
+            )
         close = np.flatnonzero(in_window & (distances <= self.max_distance))
         if close.size:
             best = close[np.argmin(distances[close])]
             return Match(self.groups[best], "title_hash", 1.0)
-        scores = self.vectors[: self.size] @ vector
         candidates = np.flatnonzero(in_window & (scores >= self.min_cosine))
         same_day = [i for i in candidates if self.days[i] == day]
         if same_day:
@@ -217,7 +231,23 @@ class DedupeParser:
                 match.group_id if match else hash_id("dup", item.item_id)
             )
             item.is_canonical = match is None
+            nearest, cosine, distance = self.index.last_nearest
             self.index.add(title_hash, item.vec, seen_at, day, group_id)
+            output.add(
+                "nlp.cluster_decisions",
+                {
+                    "item_id": item.item_id,
+                    "stage": "dedupe",
+                    "decision": "duplicate" if match else "new",
+                    "method": match.method if match else None,
+                    "nearest_id": nearest,
+                    "nearest_similarity": cosine,
+                    "threshold": self.index.min_cosine,
+                    "simhash_distance": distance,
+                    "parser": self.name,
+                    "parser_version": self.version,
+                },
+            )
             output.add(
                 "nlp.dup_groups",
                 {

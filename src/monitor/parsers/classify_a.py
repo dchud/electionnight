@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from monitor.ingest.sources import Source
+from monitor.lake import hash_id
 from monitor.llm.budget import BudgetState
 from monitor.llm.client import (
     LlmBudgetStop,
@@ -304,7 +305,11 @@ class ClassifyParser:
         return not POLITICS_FEED_RE.search(item.url)
 
     def _emit(
-        self, output: ParserOutput, item: Item, fields: dict[str, Any]
+        self,
+        output: ParserOutput,
+        item: Item,
+        fields: dict[str, Any],
+        batch_id: str | None = None,
     ) -> None:
         item.relevant = fields["election_relevant"]
         item.relevance_conf = fields["relevance_conf"]
@@ -318,6 +323,7 @@ class ClassifyParser:
                 "item_id": item.item_id,
                 "parser": self.name,
                 "parser_version": self.version,
+                "batch_id": batch_id,
                 **fields,
             },
         )
@@ -335,6 +341,8 @@ class ClassifyParser:
         self, output: ParserOutput, batch: list[Item]
     ) -> None:
         assert self.llm is not None
+        item_ids = [item.item_id for item in batch]
+        batch_id = hash_id("classify_a", *item_ids)
         try:
             response = await self.llm.structured(
                 "classify_a",
@@ -342,6 +350,8 @@ class ClassifyParser:
                 self.system,
                 user_message(batch, self.sources),
                 max_tokens=600 * len(batch) + 500,
+                batch_id=batch_id,
+                item_ids=item_ids,
             )
         except (LlmRefused, LlmTruncated, LlmInvalid) as error:
             if len(batch) == 1:
@@ -373,6 +383,7 @@ class ClassifyParser:
                     output,
                     item,
                     normalize_llm_result(result, item, self.vocabulary),
+                    batch_id,
                 )
         if missing:
             self._keywords(output, missing)

@@ -13,6 +13,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import feedparser
 
 SUMMARY_MAX_CHARS = 2000
+RAW_ENTRY_MAX_CHARS = 8000
 
 TRACKING_PARAMS = {"fbclid", "gclid", "cmpid", "ocid", "ref", "smid"}
 TAG_RE = re.compile(r"<[^>]+>")
@@ -90,6 +91,31 @@ def _entry_date(entry: Any) -> datetime | None:
     )
 
 
+def raw_entry(entry: Any) -> dict[str, Any]:
+    """The entry as the feed sent it, up to a size cap."""
+    contents = entry.get("content") or []
+    raw: dict[str, Any] = {
+        "id": entry.get("id"),
+        "published": entry.get("published"),
+        "updated": entry.get("updated"),
+        "title": entry.get("title"),
+        "link": entry.get("link"),
+        "author": entry.get("author"),
+        "tags": [tag.get("term") for tag in entry.get("tags", [])],
+        "summary": entry.get("summary"),
+        "content": contents[0].get("value") if contents else None,
+    }
+    used = sum(len(str(value)) for value in raw.values() if value)
+    if used <= RAW_ENTRY_MAX_CHARS:
+        return raw
+    room = RAW_ENTRY_MAX_CHARS
+    for name in ("summary", "content"):
+        text = raw[name] or ""
+        raw[name] = text[: max(room // 2, 0)]
+    raw["truncated"] = True
+    return raw
+
+
 def parse_feed(content: bytes | str) -> ParsedFeed:
     """Parse feed bytes. Entries without a link or title are skipped."""
     parsed = feedparser.parse(content)
@@ -117,11 +143,7 @@ def parse_feed(content: bytes | str) -> ParsedFeed:
                 published_at=_entry_date(entry),
                 language=feed_language,
                 categories=categories[:20],
-                raw={
-                    "id": entry.get("id"),
-                    "published": entry.get("published"),
-                    "updated": entry.get("updated"),
-                },
+                raw=raw_entry(entry),
             )
         )
     return ParsedFeed(

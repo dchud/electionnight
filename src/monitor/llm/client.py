@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import time
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
@@ -127,6 +128,8 @@ class LlmClient:
         self.failing_since: float | None = None
         self.last_probe = 0.0
         self.last_error: str | None = None
+        self.seen_prompts: set[str] = set()
+        self.counter = itertools.count()
 
     @property
     def degraded(self) -> bool:
@@ -166,6 +169,7 @@ class LlmClient:
 
     def _ledger(
         self,
+        call_id: str,
         purpose: str,
         model: str,
         usage: Any,
@@ -186,14 +190,11 @@ class LlmClient:
         )
         self.budget.record(usd)
         if self.writer is not None:
-            now = utcnow()
             self.writer.add(
                 "nlp.llm_calls",
                 [
                     {
-                        "call_id": hash_id(
-                            purpose, now.isoformat(), id(usage)
-                        ),
+                        "call_id": call_id,
                         "purpose": purpose,
                         "model": model,
                         "input_tokens": input_tokens,
@@ -206,6 +207,53 @@ class LlmClient:
                     }
                 ],
             )
+
+    def _trace(
+        self,
+        call_id: str,
+        purpose: str,
+        params: dict[str, Any],
+        response: Any,
+        status: str,
+        batch_id: str | None,
+        item_ids: list[str] | None,
+    ) -> None:
+        """Keep the exact request and response, for later inspection."""
+        if self.writer is None:
+            return
+        system = params["system"][0]["text"]
+        prompt_hash = hash_id(system)
+        if prompt_hash not in self.seen_prompts:
+            self.seen_prompts.add(prompt_hash)
+            self.writer.add(
+                "nlp.llm_prompts",
+                [
+                    {
+                        "prompt_hash": prompt_hash,
+                        "purpose": purpose,
+                        "text": system,
+                    }
+                ],
+            )
+        self.writer.add(
+            "nlp.llm_traces",
+            [
+                {
+                    "call_id": call_id,
+                    "batch_id": batch_id,
+                    "purpose": purpose,
+                    "prompt_hash": prompt_hash,
+                    "model_requested": params["model"],
+                    "model_served": getattr(response, "model", None),
+                    "item_ids": item_ids or [],
+                    "request_text": params["messages"][-1]["content"],
+                    "response_text": (
+                        first_text(response) if response is not None else None
+                    ),
+                    "stop_reason": status,
+                }
+            ],
+        )
 
     async def _send(self, params: dict[str, Any], beta: bool) -> Any:
         if beta:
@@ -231,29 +279,46 @@ class LlmClient:
         return response
 
     async def _request(
-        self, purpose: str, params: dict[str, Any], beta: bool
+        self,
+        purpose: str,
+        params: dict[str, Any],
+        beta: bool,
+        batch_id: str | None,
+        item_ids: list[str] | None,
     ) -> Any:
         if not self.budget.allows(purpose):
             raise LlmBudgetStop(purpose)
         semaphore = self.semaphores.get(purpose, self.misc)
         started = time.monotonic()
         model = params["model"]
+        call_id = hash_id(purpose, utcnow().isoformat(), next(self.counter))
         async with semaphore:
             try:
                 response = await self._send_gated(purpose, params, beta)
             except anthropic.APIStatusError as error:
-                self._note_failure(f"HTTP {error.status_code}")
-                self._ledger(purpose, model, None, 0, "error")
-                raise LlmUnavailable(f"HTTP {error.status_code}") from error
+                status = f"HTTP {error.status_code}"
+                self._note_failure(status)
+                self._ledger(call_id, purpose, model, None, 0, "error")
+                self._trace(
+                    call_id, purpose, params, None, status, batch_id, item_ids
+                )
+                raise LlmUnavailable(status) from error
             except anthropic.APIConnectionError as error:
-                self._note_failure(type(error).__name__)
-                self._ledger(purpose, model, None, 0, "error")
-                raise LlmUnavailable(type(error).__name__) from error
+                status = type(error).__name__
+                self._note_failure(status)
+                self._ledger(call_id, purpose, model, None, 0, "error")
+                self._trace(
+                    call_id, purpose, params, None, status, batch_id, item_ids
+                )
+                raise LlmUnavailable(status) from error
         latency = int((time.monotonic() - started) * 1000)
         self._note_success()
         stop = response.stop_reason
         status = "ok" if stop not in {"refusal", "max_tokens"} else stop
-        self._ledger(purpose, model, response.usage, latency, status)
+        self._ledger(call_id, purpose, model, response.usage, latency, status)
+        self._trace(
+            call_id, purpose, params, response, stop, batch_id, item_ids
+        )
         if stop == "refusal":
             raise LlmRefused(purpose)
         if stop == "max_tokens":
@@ -271,6 +336,8 @@ class LlmClient:
         effort: str = "low",
         thinking: dict[str, Any] | None = None,
         beta_fallback: bool = False,
+        batch_id: str | None = None,
+        item_ids: list[str] | None = None,
     ) -> T:
         """Call the model for a validated object, retrying once if invalid."""
         params = build_message_params(
@@ -284,7 +351,9 @@ class LlmClient:
         )
         last_error: Exception | None = None
         for _attempt in range(2):
-            response = await self._request(purpose, params, beta_fallback)
+            response = await self._request(
+                purpose, params, beta_fallback, batch_id, item_ids
+            )
             try:
                 return schema.model_validate_json(first_text(response))
             except ValidationError as error:

@@ -14,19 +14,26 @@ from zoneinfo import ZoneInfo
 
 import duckdb
 
+from monitor.archive import ArchiveWriter
 from monitor.control import (
     drain_spool,
     process_async_requests,
     process_requests,
 )
 from monitor.disk import DiskGuard, DiskLevel
-from monitor.ingest.poller import Poller, load_seen, load_validators
+from monitor.ingest.poller import (
+    Poller,
+    load_seen,
+    load_sightings,
+    load_validators,
+)
 from monitor.ingest.sources import load_sources
 from monitor.lake import BatchWriter, connect, init_lake, writer_lock
 from monitor.llm.budget import load_budget
 from monitor.llm.client import LlmClient
 from monitor.logs import configure, get
 from monitor.maintenance import backup_catalog, prune, run_maintenance
+from monitor.offload import Offloader, is_configured
 from monitor.orchestrator import Database, Stage
 from monitor.parsers.base import Item, item_from_poller
 from monitor.parsers.briefs import BriefWriter
@@ -54,6 +61,9 @@ NIGHTLY_REBUILD_HOUR_ET = 4
 ENTITY_PASS_SECONDS = 300
 BRIEF_CHECK_SECONDS = 60
 LADDER_SECONDS = 15
+HEALTH_SECONDS = 60
+# While traffic is light, wait a few seconds so a batch can fill.
+CLASSIFY_LINGER_SECONDS = 5.0
 # Lag at which the pipeline sheds background work, and at which it resumes.
 LAG_HIGH_SECONDS = 120.0
 LAG_LOW_SECONDS = 60.0
@@ -95,6 +105,8 @@ class Pipeline:
         self.entity_pass: EntityPass | None = None
         self.briefs: BriefWriter | None = None
         self.shedding = False
+        self.archive = ArchiveWriter(settings)
+        self.offloader = Offloader(settings)
         self.rollups = RollupEngine(settings, self.writer)
         self.ref_state: dict[str, Any] = {}
         self.started_at = datetime.now(UTC)
@@ -153,14 +165,38 @@ class Pipeline:
             log.info("committed", **counts)
 
     async def maintenance_job(self) -> None:
+        started = time.monotonic()
         result = await self.db.run(run_maintenance, self.conn)
         self.last_maintenance = datetime.now(UTC)
         log.info("maintenance_done", **result)
+        self.writer.add(
+            "nlp.maintenance_runs",
+            [
+                {
+                    "recorded_at": self.last_maintenance,
+                    "kind": "maintenance",
+                    "duration_ms": int((time.monotonic() - started) * 1000),
+                    **result,
+                }
+            ],
+        )
 
     async def backup_job(self) -> None:
+        started = time.monotonic()
         path = await self.db.run(backup_catalog, self.settings)
         self.last_backup = datetime.now(UTC)
         log.info("backup_done", path=str(path))
+        self.writer.add(
+            "nlp.maintenance_runs",
+            [
+                {
+                    "recorded_at": self.last_backup,
+                    "kind": "backup",
+                    "duration_ms": int((time.monotonic() - started) * 1000),
+                    "backup_bytes": path.stat().st_size,
+                }
+            ],
+        )
 
     async def disk_job(self) -> None:
         level = self.guard.level()
@@ -250,6 +286,43 @@ class Pipeline:
         if self.embed is not None:
             self.embed.throttle = 0.5 if self.shedding else 1.0
 
+    async def health_job(self) -> None:
+        """Keep a history of what the status file overwrites."""
+        status = self.status()
+        lags = [
+            stage["oldest_live_age"]
+            for stage in status["stages"]
+            if stage["parser"] in CORE_STAGES
+        ]
+        llm = status["llm"]
+        self.writer.add(
+            "nlp.health",
+            [
+                {
+                    "recorded_at": status["updated_at"],
+                    "feeds_healthy": status["feeds"].get("healthy"),
+                    "feeds_total": status["feeds"].get("total"),
+                    "shedding": status["shedding"],
+                    "free_gb": status["disk"]["free_gb"],
+                    "llm_state": (
+                        "degraded"
+                        if llm.get("degraded")
+                        else llm.get("budget", {}).get("state", "off")
+                    ),
+                    "spent_total": llm.get("budget", {}).get("spent_total"),
+                    "lag_seconds": max(lags, default=0.0),
+                    "stages": {"stages": status["stages"]},
+                }
+            ],
+        )
+
+    async def offload_job(self) -> None:
+        if not is_configured(self.settings):
+            return
+        result = await asyncio.to_thread(self.offloader.run)
+        if result.uploaded or result.deleted_local or result.failed:
+            log.info("offload", result=str(result))
+
     async def status_job(self) -> None:
         path = self.settings.paths.status
         temporary = path.with_suffix(".tmp")
@@ -269,6 +342,7 @@ class Pipeline:
             "feed_details": self.poller.details() if self.poller else [],
             "stages": [stage.status() for stage in self.stages],
             "shedding": self.shedding,
+            "archive": self.archive.status(),
             "llm": self.llm.status() if self.llm else {"disabled": True},
             "disk": {
                 "level": self.guard.level().name,
@@ -313,6 +387,13 @@ class Pipeline:
                 first_after=120,
             ),
             self.every(LADDER_SECONDS, "ladder", self.ladder_job),
+            self.every(HEALTH_SECONDS, "health", self.health_job),
+            self.every(
+                self.settings.archive.upload_minutes * 60,
+                "offload",
+                self.offload_job,
+                first_after=300,
+            ),
         ]
 
     def build_stages(self) -> list[Stage]:
@@ -337,7 +418,7 @@ class Pipeline:
         lang = stage(LangParser(), linger_seconds=0.2, backfill_batch=2000)
         classify = stage(
             ClassifyParser(settings, self.llm, sources),
-            linger_seconds=1.0,
+            linger_seconds=CLASSIFY_LINGER_SECONDS,
             backfill_batch=240,
         )
         embed = stage(self.embed, linger_seconds=0.5, backfill_batch=640)
@@ -362,7 +443,9 @@ class Pipeline:
         if self.llm is not None:
             resolver = EntityResolver(settings)
             fetch = stage(
-                FetchTextParser(settings, sources, self.guard),
+                FetchTextParser(
+                    settings, sources, self.guard, archive=self.archive
+                ),
                 accept=relevant,
                 linger_seconds=0.0,
                 backfill_batch=48,
@@ -410,6 +493,8 @@ class Pipeline:
             load_seen(self.conn),
             load_validators(self.conn),
             on_new_items=self.on_new_items,
+            archive=self.archive,
+            sightings=load_sightings(self.conn),
         )
 
     async def run(self) -> None:
@@ -419,6 +504,7 @@ class Pipeline:
                 self.writer,
                 load_budget(self.conn, self.settings),
             )
+        self.archive.start()
         self.stages = self.build_stages()
         self.first_stage = self.stages[0] if self.stages else None
         if self.entity_pass is not None:
@@ -447,6 +533,7 @@ class Pipeline:
         if self.storylines is not None:
             self.storylines.flush_snapshots()
         await self.db.run(self.writer.flush)
+        await asyncio.to_thread(self.archive.stop)
         self.conn.close()
         log.info("pipeline_stopped")
 

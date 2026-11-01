@@ -42,6 +42,15 @@ TABLES: dict[str, str] = {
         canonical_url TEXT, guid TEXT, title TEXT, summary TEXT, author TEXT,
         published_at TIMESTAMPTZ, first_seen_at TIMESTAMPTZ, language TEXT,
         feed_categories TEXT[], raw_entry JSON""",
+    "raw.sightings": """
+        item_id TEXT, source_id TEXT, feed_url TEXT, seen_at TIMESTAMPTZ,
+        title_hash TEXT""",
+    "raw.fetch_details": """
+        fetch_id TEXT, n_bytes BIGINT, bozo BOOLEAN, content_type TEXT,
+        unchanged BOOLEAN""",
+    "raw.archive_index": """
+        kind TEXT, key TEXT, source_id TEXT, fetched_at TIMESTAMPTZ,
+        sha256 TEXT, n_bytes BIGINT, archive_file TEXT""",
     "raw.article_text": """
         item_id TEXT, fetched_at TIMESTAMPTZ, http_status INT, text TEXT,
         n_chars INT, extractor TEXT, paywalled BOOLEAN, canonical_url TEXT""",
@@ -98,6 +107,30 @@ TABLES: dict[str, str] = {
         call_id TEXT, purpose TEXT, model TEXT, input_tokens INT,
         cache_read_tokens INT, cache_write_tokens INT, output_tokens INT,
         usd_est DOUBLE, latency_ms INT, status TEXT""",
+    "nlp.llm_prompts": """
+        prompt_hash TEXT, purpose TEXT, text TEXT""",
+    "nlp.llm_traces": """
+        call_id TEXT, batch_id TEXT, purpose TEXT, prompt_hash TEXT,
+        model_requested TEXT, model_served TEXT, item_ids TEXT[],
+        request_text TEXT, response_text TEXT, stop_reason TEXT""",
+    "nlp.cluster_decisions": f"""
+        item_id TEXT, stage TEXT, decision TEXT, nearest_id TEXT,
+        nearest_similarity FLOAT, threshold FLOAT, simhash_distance INT,
+        {PARSER_COLS} method TEXT""",
+    "nlp.rejected_quotes": f"""
+        item_id TEXT, kind TEXT, quote TEXT, reason TEXT, {PARSER_COLS}
+        model TEXT""",
+    "nlp.brief_stats": """
+        brief_id TEXT, sentences_kept INT, sentences_dropped INT,
+        citations_dropped INT""",
+    "nlp.health": """
+        recorded_at TIMESTAMPTZ, feeds_healthy INT, feeds_total INT,
+        shedding BOOLEAN, free_gb DOUBLE, llm_state TEXT, spent_total DOUBLE,
+        lag_seconds DOUBLE, stages JSON""",
+    "nlp.maintenance_runs": """
+        recorded_at TIMESTAMPTZ, kind TEXT, tables_merged INT,
+        files_removed INT,
+        duration_ms INT, backup_bytes BIGINT""",
     "ref.sources": """
         source_id TEXT, name TEXT, homepage TEXT, feed_urls TEXT, scope TEXT,
         home_state TEXT, country TEXT, language TEXT, lean_label TEXT,
@@ -155,7 +188,12 @@ TABLES: dict[str, str] = {
 
 # Large rows go straight to Parquet. Keeping them out of the catalog keeps the
 # catalog and its backups small.
-NO_INLINE = {("nlp", "embeddings"), ("raw", "article_text")}
+NO_INLINE = {
+    ("nlp", "embeddings"),
+    ("nlp", "llm_prompts"),
+    ("nlp", "llm_traces"),
+    ("raw", "article_text"),
+}
 
 
 def hash_id(*parts: object) -> str:
