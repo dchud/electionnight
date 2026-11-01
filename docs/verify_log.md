@@ -58,12 +58,18 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
   not appear as one spike. An item published during a collection gap and first
   seen within 15 minutes after it sits there too. `gold.*` bins use
   `first_seen_at` unchanged.
-- **Laptop sleep.** The system runs under `caffeinate`. The owner closes the lid
-  to travel to class, which sleeps the machine anyway. `time.monotonic` here is `mach_absolute_time()`, which
-  stops during sleep, so timers resume instead of firing late, and the pipeline
-  detects sleep from the difference between it and the wall clock. Network loss
-  is confirmed by HTTPS requests to three hosts, because a Wi-Fi login page
-  cannot pass a certificate check.
+- **Laptop sleep.** The system runs under `caffeinate`. The owner closes the
+  lid to travel to class, which sleeps the machine anyway. `time.monotonic`
+  here is `mach_absolute_time()`, which stops during sleep, so timers resume
+  instead of firing late, and the pipeline detects sleep from the difference
+  between it and the wall clock. Network loss is confirmed by HTTPS requests to
+  three hosts, because a Wi-Fi login page cannot pass a certificate check.
+- **News sitemaps.** The spec collects from feeds only. After a gap, collection
+  also reads Google News sitemaps, listed in `config/news_sitemaps.csv` by
+  `scripts/find_news_sitemaps.py`. A sitemap is listed only if the outlet's
+  robots.txt names it and allows this crawler. Tested 2026-11-01: 128 of 269
+  enabled outlets qualify. The owner chose catch-up only, so outlets with no
+  feed stay out.
 - **Stream colors.** No palette of 10 hues avoiding party blue and red passes
   the colorblind checks. The first 6 are validated; the rest rely on direct
   labels and hover.

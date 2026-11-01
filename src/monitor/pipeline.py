@@ -29,7 +29,7 @@ from monitor.ingest.poller import (
     load_sightings,
     load_validators,
 )
-from monitor.ingest.sources import load_sources
+from monitor.ingest.sources import load_news_sitemaps, load_sources
 from monitor.lake import BatchWriter, connect, init_lake, writer_lock
 from monitor.llm.budget import load_budget
 from monitor.llm.client import LlmClient
@@ -103,6 +103,7 @@ class Pipeline:
         self.stage_filter = set(stages) if stages else None
         self.conn: duckdb.DuckDBPyConnection = connect(settings)
         self.db = Database(self.conn)
+        self.catch_up_task: asyncio.Task[None] | None = None
         self.gate = NetworkGate(
             settings,
             probe=https_probe(settings),
@@ -374,6 +375,7 @@ class Pipeline:
             "stages": [stage.status() for stage in self.stages],
             "shedding": self.shedding,
             "network": self.gate.status(),
+            "catch_up": self.poller.last_catch_up if self.poller else None,
             "archive": self.archive.status(),
             "llm": self.llm.status() if self.llm else {"disabled": True},
             "disk": {
@@ -532,6 +534,7 @@ class Pipeline:
             archive=self.archive,
             sightings=load_sightings(self.conn),
             gate=self.gate,
+            news_sitemaps=load_news_sitemaps(self.settings),
         )
 
     async def _network_restored(self, gap: dict[str, Any]) -> None:
@@ -542,6 +545,13 @@ class Pipeline:
         if seconds >= self.settings.poll.min_gap_seconds:
             self.writer.add("raw.collection_gaps", [gap])
             await self.db.run(self.writer.flush)
+        if (
+            self.poller is not None
+            and seconds >= self.settings.poll.catch_up_min_gap_seconds
+        ):
+            self.catch_up_task = asyncio.create_task(
+                self.poller.catch_up(gap["gap_start"])
+            )
 
     async def run(self) -> None:
         if not self.no_llm and self.settings.anthropic_api_key is not None:
@@ -574,6 +584,8 @@ class Pipeline:
             loop.add_signal_handler(signum, stop.set)
         await stop.wait()
         log.info("pipeline_stopping")
+        if self.catch_up_task is not None:
+            tasks.append(self.catch_up_task)
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

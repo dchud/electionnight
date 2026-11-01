@@ -116,6 +116,15 @@ def load_sources(settings: Settings) -> list[Source]:
         return [source_from_row(row) for row in csv.DictReader(handle)]
 
 
+def load_news_sitemaps(settings: Settings) -> dict[str, str]:
+    """News sitemap per outlet, for catching up after a collection gap."""
+    path = settings.paths.config / "news_sitemaps.csv"
+    if not path.exists():
+        return {}
+    with path.open(newline="", encoding="utf-8") as handle:
+        return {row["source_id"]: row["url"] for row in csv.DictReader(handle)}
+
+
 def write_sources(settings: Settings, sources: list[Source]) -> None:
     path = sources_path(settings)
     path.parent.mkdir(parents=True, exist_ok=True)

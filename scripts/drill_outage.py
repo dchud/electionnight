@@ -32,7 +32,8 @@ from monitor.web.readmodel import ReadModel
 ROOT = Path("tmp/drill-outage")
 REPORT = Path("reports/outage_drill.md")
 PORT = 8765
-ITEMS_KEPT = 40
+ITEMS_KEPT = 10
+OVERRUN = 25
 
 
 class Feeds:
@@ -54,6 +55,23 @@ class Feeds:
                     (f"{label}-{self.counter}", at or datetime.now(UTC))
                 )
 
+    def sitemap(self, feed: int) -> bytes:
+        with self.lock:
+            stories = list(self.stories[feed])
+        entries = "".join(
+            f"<url><loc>https://example.com/{name}</loc><news:news>"
+            f"<news:publication_date>{at.isoformat()}"
+            f"</news:publication_date><news:title>{name} midterm election"
+            "</news:title></news:news></url>"
+            for name, at in stories
+        )
+        return (
+            '<?xml version="1.0"?><urlset '
+            'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+            'xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">'
+            f"{entries}</urlset>"
+        ).encode()
+
     def body(self, feed: int) -> bytes:
         with self.lock:
             stories = self.stories[feed][-ITEMS_KEPT:]
@@ -72,7 +90,9 @@ class Feeds:
 def serve(feeds: Feeds) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
-            body = feeds.body(int(self.path.rsplit("/", 1)[1]))
+            feed = int(self.path.rsplit("/", 1)[1])
+            sitemap = self.path.startswith("/sitemap/")
+            body = feeds.sitemap(feed) if sitemap else feeds.body(feed)
             self.send_response(200)
             self.send_header("Content-Type", "application/rss+xml")
             self.send_header("Content-Length", str(len(body)))
@@ -99,6 +119,7 @@ class Drill:
         self.settings.poll.probe_seconds = 1.0
         self.settings.poll.resume_stagger_seconds = 5.0
         self.settings.poll.min_gap_seconds = 1.0
+        self.settings.poll.catch_up_min_gap_seconds = 1.0
         init_lake(self.settings)
         self.conn = connect(self.settings)
         self.writer = BatchWriter(self.conn, self.settings)
@@ -120,8 +141,17 @@ class Drill:
             for n in range(n_feeds)
         ]
         self.poller = Poller(
-            self.settings, self.writer, sources, set(), gate=self.gate
+            self.settings,
+            self.writer,
+            sources,
+            set(),
+            gate=self.gate,
+            news_sitemaps={
+                f"s{n}": f"http://127.0.0.1:{PORT}/sitemap/{n}"
+                for n in range(n_feeds)
+            },
         )
+        self.catch_ups: list[asyncio.Task[None]] = []
 
     async def probe(self) -> bool:
         return self.up
@@ -131,6 +161,9 @@ class Drill:
         if seconds >= self.settings.poll.min_gap_seconds:
             self.writer.add("raw.collection_gaps", [gap])
             self.writer.flush()
+            self.catch_ups.append(
+                asyncio.create_task(self.poller.catch_up(gap["gap_start"]))
+            )
 
     def check(self, what: str, seen: Any, ok: bool) -> None:
         self.rows.append((what, str(seen), ok))
@@ -146,8 +179,10 @@ class Drill:
         ).fetchall()
         return [row[0] for row in rows]
 
-    async def wait_for_all(self, label: str, limit: float) -> float:
-        want = self.feeds.n_feeds
+    async def wait_for_all(
+        self, label: str, limit: float, want: int | None = None
+    ) -> float:
+        want = want or self.feeds.n_feeds
         started = time.monotonic()
         while time.monotonic() - started < limit:
             if self.seen(label) >= want:
@@ -181,7 +216,8 @@ class Drill:
             self.gate.offline_reason,
             not self.gate.is_online,
         )
-        self.feeds.publish("during", down_at + timedelta(seconds=1))
+        for _ in range(OVERRUN):
+            self.feeds.publish("during", down_at + timedelta(seconds=1))
         await asyncio.sleep(self.outage / 2)
         failed = sum(1 for f in self.poller.feeds if f.failures)
         self.check(
@@ -202,11 +238,22 @@ class Drill:
         # The network returns.
         server = serve(self.feeds)
         self.up = True
-        took = await self.wait_for_all("during", 30)
+        took = await self.wait_for_all("during", 60, n * OVERRUN)
         self.check(
-            f"every feed catches up after {self.outage:.0f} s offline",
-            f"{took:.0f} s, {self.seen('during')} of {n} stories",
-            self.seen("during") == n,
+            f"every feed catches up after {self.outage:.0f} s offline, with "
+            f"{OVERRUN} stories published against a feed window of "
+            f"{ITEMS_KEPT}",
+            f"{took:.0f} s, {self.seen('during')} of {n * OVERRUN} stories",
+            self.seen("during") == n * OVERRUN,
+        )
+        recovered = self.conn.execute(
+            "SELECT count(*) FROM lake.raw.items "
+            "WHERE feed_url LIKE '%/sitemap/%'"
+        ).fetchone()[0]
+        self.check(
+            "stories past the feed window come from sitemaps",
+            recovered,
+            recovered >= n * (OVERRUN - ITEMS_KEPT),
         )
         gaps = self.conn.execute(
             "SELECT reason FROM lake.raw.collection_gaps"
@@ -224,7 +271,7 @@ class Drill:
         self.check(
             "catch-up stories move to their published time",
             f"{len(moved)} moved",
-            len(moved) == n and placed,
+            len(moved) == n * OVERRUN and placed,
         )
 
         # A short hiccup, then simulated sleep.

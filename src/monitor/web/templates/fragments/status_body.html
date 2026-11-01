@@ -70,7 +70,8 @@
           {% endfor %}
         </tbody>
       </table>
-      <p class="m-0 mt-2 text-[var(--text-3)]">Stories published during a gap are read on return and placed at their published time. Stories that left a feed during a gap are not recovered.</p>
+      <p class="m-0 mt-2 text-[var(--text-3)]">Stories published during a gap are read on return and placed at their published time. After a gap of 5 minutes or more, outlets with a news sitemap are read once to recover stories that left a feed. Other stories that left a feed are not recovered.</p>
+      {% if catch_up %}<p class="m-0 mt-1">Last catch-up: <strong class="num">{{ catch_up.new_items }}</strong> stories recovered from <strong class="num">{{ catch_up.outlets }}</strong> outlets.</p>{% endif %}
     </div>
   </article>
   {% endif %}

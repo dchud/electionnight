@@ -101,7 +101,8 @@ FACTS_SELECT = """
                    SELECT 1 FROM lake.raw.collection_gaps g
                    WHERE i.first_seen_at BETWEEN g.gap_end
                          AND g.gap_end + INTERVAL 15 MINUTE
-                     AND i.published_at BETWEEN g.gap_start AND g.gap_end
+                     AND i.published_at
+                         BETWEEN g.gap_start - INTERVAL 20 MINUTE AND g.gap_end
                ) THEN i.published_at
                ELSE i.first_seen_at
            END AS first_seen_at,
