@@ -219,11 +219,12 @@ class Stage:
             self._fail(requeued, "retry requested")
         self._forward([item for item in batch if item not in requeued], output)
         self.finished += len(batch)
+        # Backfill items are old on purpose, so only live items measure lag.
         now = time.time()
         stamps = [
             item.first_seen_at.timestamp()
             for item in batch
-            if item.first_seen_at
+            if item.first_seen_at and not item.backfill
         ]
         if stamps:
             self.lag_seconds = now - max(stamps)
@@ -259,7 +260,10 @@ class Stage:
             return
         self.tracked.update(owed)
         rows = await self.db.fetch(HYDRATE_SQL, {"ids": owed})
-        self.backlog.extend(item_from_row(row) for row in rows)
+        for row in rows:
+            item = item_from_row(row)
+            item.backfill = True
+            self.backlog.append(item)
 
     def tasks(self) -> list[asyncio.Task[None]]:
         tasks = [

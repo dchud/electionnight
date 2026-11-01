@@ -210,3 +210,17 @@ async def test_lang_parser_detects_and_updates_item():
     output = await parser.run(items)
     assert [row["language"] for row in output.rows["nlp.lang"]] == ["en", "es"]
     assert items[1].language == "es"
+
+
+async def test_backfill_items_do_not_count_as_lag(settings):
+    conn = connect(settings)
+    parser = Recording()
+    stage, _ = stage_for(parser, conn, settings)
+    old = datetime(2026, 11, 1, tzinfo=UTC)
+    stage.backlog.append(Item("old", first_seen_at=old, backfill=True))
+    await run_until(stage, lambda: stage.finished == 1)
+    assert stage.lag_seconds == 0.0
+    stage.enqueue(Item("new", first_seen_at=datetime.now(UTC)))
+    await run_until(stage, lambda: stage.finished == 2)
+    assert stage.lag_seconds < 60
+    conn.close()

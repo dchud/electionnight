@@ -30,6 +30,7 @@ class Item:
     vec: Any = None
     is_canonical: bool = True
     text: str | None = None
+    backfill: bool = False
 
     @property
     def english_title(self) -> str:
