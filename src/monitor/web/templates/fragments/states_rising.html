@@ -1,6 +1,6 @@
 {% for row in rows %}
 <div class="rising-row" data-evidence="{{ row.query }}" title="Share of coverage in the last 15 minutes against the 2 hours before; {{ row.observed }} stories in 15 minutes">
-  <span class="chip">{{ row.usps }}</span>
+  <span class="chip" title="{{ row.usps|state_name }}">{{ row.usps }}</span>
   <span><span class="rising-bar block" style="width:{{ '%.0f' % row.width }}%"></span></span>
   <span class="num">{{ '%.2f' % row.change }}</span>
 </div>

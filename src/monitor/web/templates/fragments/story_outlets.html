@@ -5,7 +5,7 @@
   {% for row in outlets %}
   <tr>
     <td>{{ row.outlet }}</td>
-    <td><a class="text-link" href="/sources?{{ qs }}#{{ row.source_id }}" title="{{ row.lean }}">{% if row.glyph %}<span class="glyph">{{ row.glyph }}</span>{% else %}<span class="lean-neutral">{{ row.lean }}</span>{% endif %}</a></td>
+    <td><a class="text-link" href="/sources?{{ qs }}#{{ row.source_id }}" title="{{ row.lean|lean_title }}">{% if row.glyph %}<span class="glyph">{{ row.glyph }}</span>{% else %}<span class="lean-neutral">{{ row.lean }}</span>{% endif %}</a></td>
     <td class="num">{{ row.first_report|et_datetime }}</td>
     <td class="num"><span class="count-link" data-evidence="kind=storyline&key={{ page_key }}&also=source:{{ row.source_id|urlencode }}&copies=all" role="button" tabindex="0">{{ row.n }}</span></td>
   </tr>
