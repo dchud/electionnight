@@ -205,7 +205,8 @@ def test_cleanup_removes_replaced_files_and_keeps_time_travel(settings):
     )
     for version, expected in versions:
         rows = conn.execute(
-            f"SELECT count(*) FROM lake.nlp.embeddings AT (VERSION => {version})"
+            "SELECT count(*) FROM lake.nlp.embeddings "
+            f"AT (VERSION => {version})"
         ).fetchall()
         assert rows[0][0] == expected
     conn.close()

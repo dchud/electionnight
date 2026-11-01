@@ -1,4 +1,4 @@
-"""Stage B: deep extraction from full text, or the summary when there is none."""
+"""Stage B: deep extraction from full text, or the summary if none exists."""
 
 from __future__ import annotations
 
