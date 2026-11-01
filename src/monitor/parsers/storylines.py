@@ -146,10 +146,14 @@ def ctfidf_keywords(
 
 
 class StorylineEngine:
-    """Holds live storylines. Has no lake or API dependencies, for testing."""
+    """Holds live storylines. Has no lake or API dependencies, for testing.
 
-    def __init__(self, settings: Settings) -> None:
+    `salt` keeps storyline ids from one clustering version apart from another.
+    """
+
+    def __init__(self, settings: Settings, salt: str = "") -> None:
         nlp = settings.nlp
+        self.salt = salt
         self.join = nlp.storyline_join
         self.merge_threshold = nlp.storyline_merge
         self.min_items = nlp.storyline_promote_items
@@ -195,7 +199,7 @@ class StorylineEngine:
                 best = pool[position]
         if best is None:
             best = Storyline(
-                storyline_id=hash_id("storyline", item_id),
+                storyline_id=hash_id("storyline", self.salt, item_id),
                 centroid=vector.copy(),
                 first_seen_at=seen_at,
                 last_item_at=seen_at,
@@ -331,7 +335,7 @@ def storyline_row(s: Storyline, parser: str, version: str) -> dict[str, Any]:
 
 class StorylineParser:
     name = "storylines"
-    version = "1"
+    version = "2"
     batch_size = 32
     max_concurrency = 1
 
@@ -346,7 +350,7 @@ class StorylineParser:
         self.db = db
         self.writer = writer
         self.llm = llm
-        self.engine = StorylineEngine(settings)
+        self.engine = StorylineEngine(settings, salt=self.version)
         self.loaded = False
         self.pending_labels: set[str] = set()
         self.label_tasks: set[asyncio.Task[None]] = set()
@@ -368,10 +372,12 @@ class StorylineParser:
                    states, primary_level, status, merged_into, labeled_at_items
             FROM lake.nlp.storylines
             WHERE last_item_at >= now() - INTERVAL 24 HOURS
+              AND parser_version = $version
             QUALIFY row_number() OVER (
                 PARTITION BY storyline_id ORDER BY version DESC, created_at DESC
             ) = 1
-            """
+            """,
+            {"version": self.version},
         )
         for row in rows:
             storyline = Storyline(
@@ -403,9 +409,11 @@ class StorylineParser:
             JOIN lake.raw.items i USING (item_id)
             LEFT JOIN lake.nlp.classify_a c USING (item_id)
             WHERE i.first_seen_at >= now() - INTERVAL 24 HOURS
+              AND a.parser_version = $version
             QUALIFY row_number() OVER (
                 PARTITION BY a.item_id ORDER BY a.created_at DESC) = 1
-            """
+            """,
+            {"version": self.version},
         )
         for sid, item_id, title, similarity, seen_at, source_id in members:
             known = self.engine.storylines.get(sid)

@@ -80,8 +80,8 @@ class Nlp(BaseModel):
     embed_model: str = "intfloat/multilingual-e5-small"
     embed_batch_size: int = 32
     embed_duty_cycle: float = 0.4
-    storyline_join: float = 0.82
-    storyline_merge: float = 0.88
+    storyline_join: float = 0.92
+    storyline_merge: float = 0.95
     storyline_promote_items: int = 3
     storyline_promote_sources: int = 2
     dedupe_cosine: float = 0.95

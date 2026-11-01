@@ -28,9 +28,13 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
   `intfloat/multilingual-e5-small`. The model's Hugging Face repository has
   `onnx/model.onnx`, registered with `TextEmbedding.add_custom_model`. Measured
   286 items per second on the CPU, with no torch install.
-- **Similarity thresholds.** With this model an unrelated English pair scored
-  0.80 and a same-story English and Spanish pair scored 0.93. See
-  `reports/similarity_histogram.md` for the live distribution.
+- **Storyline thresholds.** Baseline pairwise similarity over relevant items
+  has p50 0.794, p90 0.825, p99 0.860, and p99.9 0.899, so the spec's 0.82 join
+  collapses almost everything into one cluster: 99% of items at 0.84, 94% at
+  0.86, and a 150-item cluster of unrelated stories at 0.90. At 0.92 the
+  largest cluster has 9 items and sampled clusters each cover one story. Join
+  is 0.92 and merge is 0.95, raised from 0.82 and 0.88 because merge has to
+  exceed join. `scripts/tune_storylines.py` repeats the sweep.
 - **Fetching.** The spec lists HTTP/2. Concurrent fetching with HTTP/2 raised
   h2 connection-state `ProtocolError`s, so fetching uses HTTP/1.1.
 - **Catalog journal.** An open read on the catalog made a writer's commit fail
