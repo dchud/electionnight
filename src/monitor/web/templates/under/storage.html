@@ -1,0 +1,138 @@
+{% extends "under/base.html" %}
+{% import "under/_macros.html" as u %}
+{% block title %}Storage{% endblock %}
+{% block content %}
+<h1>Storage: how the lake holds the data</h1>
+<p class="u-lede">DuckLake keeps table definitions, file lists, and small inserts in a SQLite catalog, and larger data in Parquet files. Each commit is a numbered snapshot. Row counts on this page count rows, not records: <a class="text-link" href="/under/inventory">Inventory</a> shows the difference.</p>
+<div class="u-stats">
+  <div class="u-stat"><span class="u-stat-label">Rows inlined in the catalog</span><span class="u-stat-value">{{ totals.inlined|u_int }}</span><span class="u-stat-note">waiting for the next flush</span></div>
+  <div class="u-stat"><span class="u-stat-label">Rows in Parquet</span><span class="u-stat-value">{{ totals.parquet|u_int }}</span><span class="u-stat-note">in {{ totals.files|u_int }} files</span></div>
+  <div class="u-stat"><span class="u-stat-label">Parquet on disk</span><span class="u-stat-value">{{ totals.bytes|u_bytes }}</span><span class="u-stat-note">live files only</span></div>
+  <div class="u-stat"><span class="u-stat-label">Replaced, awaiting cleanup</span><span class="u-stat-value">{{ scheduled.first.n_files|u_int }}</span><span class="u-stat-note">{{ '%.3f' % (disk.awaiting_cleanup or 0) }} GB on disk</span></div>
+</div>
+
+<section class="u-section" id="tables">
+  <div class="u-section-head"><h2 class="u-section-title">Where each table's rows live</h2><span class="panel-note">catalog only; no data file is opened</span></div>
+  <div class="u-section-body">
+    {% call u.caveat("Inlined rows, and why some tables have none") %}
+    <p>An insert of up to {% for row in options.rows if row.key == 'data_inlining_row_limit' and row.scope is none %}{{ row.value }}{% endfor %} rows goes into the catalog itself, not a new file, so a commit every 30 s does not create hundreds of tiny Parquet files. Maintenance flushes those rows to Parquet. {{ no_inline|join(', ') }} set the limit to 0, because their rows are large and would bloat the catalog and its backups.</p>
+    {% endcall %}
+    <div class="u-scroll">
+    <table class="table u-table">
+      <thead><tr><th>Table</th><th class="num">Rows</th><th class="num">Inlined</th><th class="num">In Parquet</th><th class="num">Files</th><th class="num">Size</th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+      <tr><td><a class="text-link" href="?table={{ row.schema_name }}.{{ row.table_name }}#columns">{{ row.schema_name }}.{{ row.table_name }}</a></td><td class="num">{{ row.total_rows|u_int }}</td><td class="num">{{ row.inlined_rows|u_int }}</td><td class="num">{{ row.parquet_rows|u_int }}</td><td class="num">{{ row.parquet_files }}</td><td class="num">{{ row.parquet_bytes|u_bytes }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <details class="u-details" data-key="storage-options"><summary>Lake options in the catalog</summary>
+      <table class="table u-table"><thead><tr><th>Option</th><th>Value</th><th>Scope</th></tr></thead><tbody>{% for row in options.rows %}<tr><td>{{ row.key }}</td><td>{{ row.value }}</td><td>{{ row.scope or 'lake' }}{% if row.scope_id is not none %} {{ row.scope_id }}{% endif %}</td></tr>{% endfor %}</tbody></table>
+    </details>
+    {{ u.show_query([tables_query, options.query], "storage-tables") }}
+  </div>
+</section>
+
+<section class="u-section" id="columns">
+  <div class="u-section-head"><h2 class="u-section-title">Column compression in {{ table }}</h2>
+    <form class="u-form" method="get" action="#columns"><label>Table <select class="field" name="table" onchange="this.form.submit()">{% for name in tables %}<option value="{{ name }}" {{ 'selected' if name == table else '' }}>{{ name }}</option>{% endfor %}</select></label></form>
+  </div>
+  <div class="u-section-body">
+    {% if columns.empty %}
+    <p class="empty">{{ columns.note }}</p>
+    {% else %}
+    <p class="u-note">Largest file, of {{ columns.n_files }}: <code>{{ columns.file_name }}</code>. {{ columns.total_uncompressed|u_bytes }} of column data compressed to {{ columns.total_compressed|u_bytes }}. These sizes come from the file's footer, read in a child process. The two <code>_ducklake_internal_*</code> columns are how a merged file keeps each row's snapshot.</p>
+    {{ u.ran_note(columns.ran) }}
+    <div class="u-scroll">
+    <table class="table u-table">
+      <thead><tr><th>Column</th><th>Type</th><th>Codec</th><th class="u-hide-projector">Encoding</th><th class="num">Compressed</th><th class="num">Uncompressed</th><th class="num">Ratio</th><th>Share of the file</th></tr></thead>
+      <tbody>
+      {% for row in columns.rows %}
+      <tr><td>{{ row.column_path }}</td><td>{{ row.physical_type }}</td><td>{{ row.compression }}</td><td class="u-hide-projector">{{ row.encodings }}</td><td class="num">{{ row.compressed|u_bytes }}</td><td class="num">{{ row.uncompressed|u_bytes }}</td><td class="num">{{ '%.1f' % row.ratio if row.ratio else '—' }}</td><td><span class="bar-track"><span class="bar-fill" style="width:{{ '%.0f' % row.width }}%"></span></span></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {{ u.show_query(columns.ran.query, "storage-columns") }}
+    {% endif %}
+    {{ u.show_query(files.query, "storage-files") }}
+  </div>
+</section>
+
+<section class="u-section" id="snapshots">
+  <div class="u-section-head"><h2 class="u-section-title">Snapshots: one per commit</h2><span class="panel-note">newest first</span></div>
+  <div class="u-section-body">
+    <div class="u-pair">
+      <div class="u-scroll">
+      <table class="table u-table">
+        <thead><tr><th>Snapshot</th><th>Committed</th><th>Changes</th></tr></thead>
+        <tbody>
+        {% for row in snapshot_rows %}
+        <tr><td class="num">{{ row.snapshot_id }}</td><td>{{ row.snapshot_time|u_et }}</td><td>{% for part in row.parts %}<span class="u-tag" title="{{ part.tables }}">{{ part.kind }}: {{ part.n }}</span> {% endfor %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <div class="u-scroll">
+      <table class="table u-table">
+        <thead><tr><th>Kind of change</th><th class="num">Tables changed</th><th class="num">Snapshots</th></tr></thead>
+        <tbody>{% for row in kinds.rows %}<tr><td>{{ row.kind }}</td><td class="num">{{ row.table_changes|u_int }}</td><td class="num">{{ row.snapshots|u_int }}</td></tr>{% endfor %}</tbody>
+      </table>
+      </div>
+    </div>
+    <p class="u-note"><code>inlined_insert</code> wrote rows into the catalog. <code>tables_inserted_into</code>, which the catalog stores as <code>inserted_into_table</code>, wrote a Parquet file. <code>flushed_inlined</code>, stored as <code>inline_flush</code>, moved inlined rows to Parquet. <code>merge_adjacent</code> replaced small files with one larger file and changed no row.</p>
+    {{ u.show_query([snapshots.query, kinds.query], "storage-snapshots") }}
+  </div>
+</section>
+
+<section class="u-section" id="maintenance">
+  <div class="u-section-head"><h2 class="u-section-title">What a merge and a cleanup do</h2></div>
+  <div class="u-section-body">
+    <ul class="u-list">
+      <li><strong>Flush</strong> moves inlined rows from the catalog into Parquet. <strong>Merge</strong> rewrites small adjacent files as one file. Neither changes what any query returns, at any snapshot.</li>
+      <li>A merged file keeps each row's snapshot range, in <code>_ducklake_internal_snapshot_id</code>. So <code>AT (VERSION =&gt; n)</code> stays exact after the replaced files are gone. This was checked on a scratch lake.</li>
+      <li><strong>Cleanup</strong> deletes replaced files from disk once they are 2 hours old, which leaves any query still reading them time to finish. Right now {{ scheduled.first.n_files|u_int }} are scheduled{% if scheduled.first.oldest %}, the oldest since {{ scheduled.first.oldest|u_et }}{% endif %}. They hold {{ '%.3f' % (disk.awaiting_cleanup or 0) }} GB, against {{ '%.3f' % (disk.lake_live or 0) }} GB of live data.</li>
+    </ul>
+    {{ u.ran_note(maintenance) }}
+    <div class="u-scroll">
+    <table class="table u-table">
+      <thead><tr><th>Recorded</th><th>Kind</th><th class="num">Tables merged</th><th class="num">Files removed</th><th class="num">Duration</th><th class="num">Backup size</th></tr></thead>
+      <tbody>{% for row in maintenance.rows %}<tr><td>{{ row.recorded_at|u_et }}</td><td>{{ row.kind }}</td><td class="num">{{ row.tables_merged if row.tables_merged is not none else '—' }}</td><td class="num">{{ row.files_removed if row.files_removed is not none else '—' }}</td><td class="num">{{ row.duration_ms }} ms</td><td class="num">{{ row.backup_bytes|u_bytes if row.backup_bytes else '—' }}</td></tr>{% else %}<tr><td colspan="6">No maintenance recorded.</td></tr>{% endfor %}</tbody>
+    </table>
+    </div>
+    {{ u.show_query([scheduled.query, maintenance.query], "storage-maintenance") }}
+  </div>
+</section>
+
+<section class="u-section" id="time-travel">
+  <div class="u-section-head"><h2 class="u-section-title">Time travel: one table at two snapshots</h2></div>
+  <div class="u-section-body">
+    <form class="u-form" method="get" action="#time-travel">
+      <label>Table <select class="field" name="table">{% for name in tables %}<option value="{{ name }}" {{ 'selected' if name == travel.table else '' }}>{{ name }}</option>{% endfor %}</select></label>
+      <label>Snapshot A <input class="field" type="number" name="a" value="{{ travel.a }}" min="{{ travel.first }}" max="{{ travel.last }}"></label>
+      <label>Snapshot B <input class="field" type="number" name="b" value="{{ travel.b }}" min="{{ travel.first }}" max="{{ travel.last }}"></label>
+      <button class="button" type="submit">Compare</button>
+    </form>
+    {{ u.error_note(travel.error) }}
+    <div class="u-scroll">
+    <table class="table u-table">
+      <thead><tr><th>{{ travel.table }}</th><th class="num">Rows</th><th class="num">Distinct keys</th><th class="num">Files and inlined blocks</th><th>Newest row</th><th class="num">Newest row's snapshot</th></tr></thead>
+      <tbody>
+      <tr><td>At snapshot {{ travel.a }}</td><td class="num">{{ travel.older.n_rows|u_int }}</td><td class="num">{{ travel.older.n_keys|u_int }}</td><td class="num">{{ travel.older.n_files|u_int }}</td><td>{{ travel.older.newest_row|u_et }}</td><td class="num">{{ travel.older.newest_snapshot|u_int }}</td></tr>
+      <tr><td>At snapshot {{ travel.b }}</td><td class="num">{{ travel.newer.n_rows|u_int }}</td><td class="num">{{ travel.newer.n_keys|u_int }}</td><td class="num">{{ travel.newer.n_files|u_int }}</td><td>{{ travel.newer.newest_row|u_et }}</td><td class="num">{{ travel.newer.newest_snapshot|u_int }}</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="u-note">{{ travel.difference|u_int }} rows were added between them. Snapshots run from {{ travel.first }} to {{ travel.last }}. A table created after snapshot A reports an error for it. This scan runs in a child process and is kept for 10 minutes.</p>
+    <h3 class="u-chart-title">Newest rows added after snapshot A, and where they sit</h3>
+    <div class="u-scroll">
+    <table class="table u-table">
+      <thead><tr>{% for key in (travel.added.first.keys() if travel.added.rows else []) %}<th>{{ key }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for row in travel.added.rows %}<tr>{% for key, value in row.items() %}<td class="u-break">{{ value }}</td>{% endfor %}</tr>{% else %}<tr><td>No rows were added between these snapshots.</td></tr>{% endfor %}</tbody>
+    </table>
+    </div>
+    {{ u.show_query(travel.queries, "storage-travel") }}
+  </div>
+</section>
+{% endblock %}

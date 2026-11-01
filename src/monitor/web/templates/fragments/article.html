@@ -14,6 +14,7 @@
 <div class="article-actions">
   {% if item.url %}<a class="text-link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">Open original</a>{% endif %}
   <a class="text-link" href="/article/{{ item.item_id }}?{{ qs }}">Full page</a>
+  <a class="text-link" href="/under/trace/{{ item.item_id }}">Trace</a>
 </div>
 {% if item.has_extract %}
 <h3 class="section-title">{% if item.extract_basis == 'full' %}Extract{% else %}Feed summary{% endif %}</h3>

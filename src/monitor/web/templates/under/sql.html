@@ -1,0 +1,49 @@
+{% extends "under/base.html" %}
+{% import "under/_macros.html" as u %}
+{% block title %}SQL{% endblock %}
+{% block content %}
+<h1>SQL: a bounded, read-only query box</h1>
+{% if not available %}
+<p class="banner-warn u-error">The console needs the macOS sandbox, which is not available here, so it will not run a query.</p>
+{% endif %}
+<section class="u-section" id="console">
+  <div class="u-section-head"><h2 class="u-section-title">One SELECT or EXPLAIN against the lake</h2><span class="panel-note">at most 1,000 rows and 10 seconds</span></div>
+  <div class="u-section-body">
+    <form method="post" action="/under/sql" class="search-form">
+      <textarea class="u-textarea" name="sql" aria-label="SQL" spellcheck="false">{{ sql }}</textarea>
+      <div class="u-form"><button class="button" type="submit">Run</button><span class="u-note">Tables are <code>lake.raw.items</code>, <code>lake.nlp.classify_a</code>, and so on. See <a class="text-link" href="/under/data-model">Data model</a>. A <code>count(*)</code> here counts rows, not records: tables are append-only.</span></div>
+    </form>
+    {% if result %}
+      {% if result.rejected %}
+      <p class="banner-warn u-error">Rejected before it ran: {{ result.rejected }}</p>
+      {% elif result.error %}
+      <p class="banner-warn u-error">{{ result.error }}</p>
+      {% elif result.columns %}
+      <p class="u-note">{{ result.rows|length }} rows{% if result.truncated %}, cut off at the row or size limit{% endif %}, {{ result.ms }} ms in the query, {{ '%.2f' % result.seconds }} s in all. Values are stored values, escaped.</p>
+      <div class="u-scroll"><table class="table u-table">
+        <thead><tr>{% for name in result.columns %}<th>{{ name }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in result.rows %}<tr>{% for cell in row %}<td class="u-break">{{ cell if cell is not none else 'NULL' }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="{{ result.columns|length }}">No rows.</td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% elif result.status == 'ok' %}
+      <p class="u-note">The statement ran and returned no columns.</p>
+      {% endif %}
+    {% endif %}
+  </div>
+</section>
+<section class="u-section" id="why-bounded">
+  <div class="u-section-head"><h2 class="u-section-title">How this is kept from touching anything</h2></div>
+  <div class="u-section-body">
+    {% call u.caveat("A read-only attach is not enough") %}
+    <p>On a scratch lake, with the lake attached read-only and DuckDB's configuration locked, <code>SELECT * FROM ducklake_cleanup_old_files(...)</code> deleted scheduled Parquet files before its catalog write failed. <code>ATTACH</code> of the catalog file for writing, <code>COPY</code> into the lake directory, and <code>DETACH</code> also succeeded. So the console does not rely on those settings alone.</p>
+    {% endcall %}
+    <ul class="u-list">
+      <li>Each query gets its own child process, one at a time, at low priority, stopped at 10 seconds. It holds no API keys and reads no settings file.</li>
+      <li>The statement is parsed first. It must be one SELECT or a plain EXPLAIN of one, and it may call only the table functions on a short list. Everything else is rejected before it runs.</li>
+      <li>The child runs inside a macOS sandbox that denies all network access and every file write, except the catalog's <code>-shm</code> and <code>-wal</code> files, which a SQLite reader needs. So a statement that got past the parser check still could not delete or change a Parquet file or the catalog file.</li>
+      <li>DuckDB limits it to 2 threads and 1 GB, with no spill to disk and file reads confined to the lake directory.</li>
+      <li>The route answers loopback requests only, and every query is logged.</li>
+    </ul>
+    <p class="u-note">A test on a scratch lake runs each mutation attempt and checks that the catalog and the data files did not change. No mutation is ever tried on the real lake.</p>
+  </div>
+</section>
+{% endblock %}

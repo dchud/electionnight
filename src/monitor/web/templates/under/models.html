@@ -1,0 +1,103 @@
+{% extends "under/base.html" %}
+{% import "under/_macros.html" as u %}
+{% block title %}Models{% endblock %}
+{% block content %}
+<h1>Models: what produced each value</h1>
+<p class="u-lede">Each extracted column comes from one parser, and each row records the parser and its version. Some rows also record a method or a model. Counts are rows, not distinct items.</p>
+{% for message in errors %}{{ u.error_note(message) }}{% endfor %}
+
+<section class="u-section" id="map">
+  <div class="u-section-head"><h2 class="u-section-title">Column to producer</h2><span class="panel-note">scanned in a child process, kept for 2 minutes</span></div>
+  <div class="u-section-body">
+    {% call u.caveat("Stored values that do not mean what they appear to mean") %}
+    <ul>
+      <li><code>dup_groups.method</code> of <code>url</code> on older rows means no match was found. No URL was compared. There are {{ placeholder.dup_url|u_int }} such rows, the last at {{ placeholder.dup_url_last|u_et }}. Newer rows say <code>none</code> ({{ placeholder.dup_none|u_int }} so far).</li>
+      <li><code>storyline_assign.similarity</code> of 1.0 is a placeholder for an item that started a storyline. {{ placeholder.similarity_one|u_int }} of {{ placeholder.assign_rows|u_int }} rows hold it. <code>nlp.cluster_decisions</code> has the true nearest similarity, for the {{ placeholder.storyline_decisions|u_int }} storyline decisions since capture started.</li>
+      <li><code>nlp.classify_a</code> has no model column. {{ settings.llm.model_bulk }} is the configured model, and <code>nlp.llm_traces</code> records what was served, for calls since capture started.</li>
+    </ul>
+    {% endcall %}
+    <div class="u-scroll">
+    <table class="table u-table">
+      <thead><tr><th>Table</th><th>Columns</th><th>Parser</th><th class="num">Version</th><th>Method</th><th>Model</th><th class="num">Rows</th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.table }}</td>
+        <td>{{ row.columns }}</td>
+        <td>{{ row.parser or '—' }}</td>
+        <td class="num">{{ row.parser_version or '—' }}</td>
+        <td>{{ row.method or ('no rows' if row.n == 0 else '—') }}{% if row.table == 'nlp.dup_groups' and row.method == 'url' %} <span class="u-tag u-tag-warn">means no match</span>{% endif %}</td>
+        <td>{% if row.model %}{{ row.model }}{% elif row.method == 'keywords' %}no model{% elif row.table == 'nlp.classify_a' %}not stored; {{ settings.llm.model_bulk }} is configured{% else %}{{ row.model_note or '—' }}{% endif %}</td>
+        <td class="num">{{ row.n|u_int }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <details class="u-details" data-key="models-tools"><summary>What each table's values come from</summary>
+      <ul class="u-list">{% for p in producers %}<li><code>{{ p.table }}</code>: {{ p.tool }}</li>{% endfor %}</ul>
+    </details>
+    {{ u.show_query(queries + [placeholder_query], "models-map") }}
+  </div>
+</section>
+
+<section class="u-section" id="agreement">
+  <div class="u-section-head"><h2 class="u-section-title">Keyword path against the LLM, on the same items</h2><span class="panel-note">computed here for free; kept for 10 minutes</span></div>
+  <div class="u-section-body">
+    {% if agreement.error %}
+    {{ u.error_note(agreement.error) }}
+    {% else %}
+    {% call u.caveat("Neither column is the truth") %}
+    <p>The keyword path is what the pipeline falls back to when the budget or the API forces it. This reruns it over a stable sample of {{ agreement.all.n|u_int }} items the model classified, and compares. Agreement is not accuracy: no error rate was measured against hand-labeled items. Precision and recall below treat the LLM as the reference, which it is not. Most sampled items are first-fetch backlog.</p>
+    {% endcall %}
+    <div class="u-stats">
+      <div class="u-stat"><span class="u-stat-label">Agree on relevance</span><span class="u-stat-value">{{ agreement.all.agree|u_pct }}</span><span class="u-stat-note">Cohen's kappa {{ '%.2f' % agreement.all.kappa if agreement.all.kappa is not none else '—' }}, which corrects for chance</span></div>
+      <div class="u-stat"><span class="u-stat-label">LLM relevant, keywords agree</span><span class="u-stat-value">{{ agreement.all.recall|u_pct }}</span><span class="u-stat-note">recall against the LLM</span></div>
+      <div class="u-stat"><span class="u-stat-label">Keywords relevant, LLM agrees</span><span class="u-stat-value">{{ agreement.all.precision|u_pct }}</span><span class="u-stat-note">precision against the LLM</span></div>
+      <div class="u-stat"><span class="u-stat-label">Same state set, both relevant</span><span class="u-stat-value">{{ agreement.state_exact|u_pct }}</span><span class="u-stat-note">{{ agreement.n_both|u_int }} items</span></div>
+    </div>
+    <div class="u-pair">
+      <div class="u-scroll">
+      <table class="table u-table">
+        <thead><tr><th>Sample</th><th class="num">Items</th><th class="num">Both relevant</th><th class="num">LLM only</th><th class="num">Keywords only</th><th class="num">Neither</th><th class="num">Agree</th><th class="num">Kappa</th></tr></thead>
+        <tbody>
+        {% for label, t in [('All', agreement.all), ('English', agreement.english), ('Not English', agreement.other)] %}
+        <tr><td>{{ label }}</td><td class="num">{{ t.n|u_int }}</td><td class="num">{{ t.both|u_int }}</td><td class="num">{{ t.llm_only|u_int }}</td><td class="num">{{ t.kw_only|u_int }}</td><td class="num">{{ t.neither|u_int }}</td><td class="num">{{ t.agree|u_pct }}</td><td class="num">{{ '%.2f' % t.kappa if t.kappa is not none else '—' }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <ul class="u-list">
+        <li>Mean state overlap (Jaccard) where both call it relevant: {{ agreement.state_jaccard|u_pct }}.</li>
+        <li>Mean topic overlap: {{ agreement.topic_jaccard|u_pct }}.</li>
+        <li>Same primary level: {{ agreement.level_same|u_pct }}.</li>
+        <li>LLM relevant, keywords not: {% for id in agreement.missed %}<a class="text-link" href="/under/trace/{{ id }}">{{ id[:6] }}</a>{{ ', ' if not loop.last }}{% endfor %}.</li>
+        <li>Keywords relevant, LLM not: {% for id in agreement.extra %}<a class="text-link" href="/under/trace/{{ id }}">{{ id[:6] }}</a>{{ ', ' if not loop.last }}{% endfor %}.</li>
+      </ul>
+    </div>
+    {% endif %}
+    {{ u.show_query(agreement.query, "models-agreement") }}
+  </div>
+</section>
+
+<section class="u-section" id="prompts">
+  <div class="u-section-head"><h2 class="u-section-title">Prompts in use</h2></div>
+  <div class="u-section-body">
+    {{ u.ran_note(prompts) }}
+    <p class="u-note">Prompts are recorded since capture started. Calls before that have no prompt on record. The prompt is the same text for every item in a purpose, which is why prompt caching saves money. Feed text goes in the user message as data, and each prompt says to ignore instructions inside it.</p>
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Purpose</th><th>Hash</th><th class="num">Characters</th><th class="num">Rows written</th><th class="num">Traces</th><th>Last used</th></tr></thead>
+      <tbody>{% for row in prompts.rows %}<tr><td>{{ row.purpose }}</td><td>{{ row.prompt_hash }}</td><td class="num">{{ row.text|length|u_int }}</td><td class="num">{{ row.rows_written }}</td><td class="num">{{ (row.traces or 0)|u_int }}</td><td>{{ row.last_used|u_et }}</td></tr>{% else %}<tr><td colspan="6">No prompts recorded.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% for row in prompts.rows %}
+    <details class="u-details" data-key="prompt-{{ row.prompt_hash }}"><summary>{{ row.purpose }}: {{ row.prompt_hash }}</summary><pre class="u-pre">{{ row.text }}</pre></details>
+    {% endfor %}
+    <h3 class="u-chart-title">Which model answered</h3>
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Purpose</th><th>Requested</th><th>Served</th><th class="num">Calls</th><th>First trace</th></tr></thead>
+      <tbody>{% for row in served.rows %}<tr><td>{{ row.purpose }}</td><td>{{ row.model_requested }}</td><td>{{ row.model_served or 'none: the call failed' }}</td><td class="num">{{ row.calls|u_int }}</td><td>{{ row.first_trace|u_et }}</td></tr>{% else %}<tr><td colspan="5">No traces recorded.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {{ u.show_query([prompts.query, served.query], "models-prompts") }}
+  </div>
+</section>
+{% endblock %}

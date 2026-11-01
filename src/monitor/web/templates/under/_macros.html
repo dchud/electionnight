@@ -1,0 +1,32 @@
+{# A disclosure of the SQL a panel ran. `queries` is one query or a list. #}
+{% macro show_query(queries, key) %}
+{% set items = [queries] if queries.sql is defined else queries %}
+<details class="u-query" data-key="{{ key }}">
+  <summary>Show query</summary>
+  {% for q in items %}
+  <div class="u-query-block">
+    <p class="u-query-meta">Ran on: {{ q.where }}{% if q.ms is not none %}; {{ q.ms }} ms{% endif %}{% if q.rows is not none %}; {{ q.rows }} rows{% endif %}.</p>
+    {% if q.note %}<p class="u-query-meta">{{ q.note }}</p>{% endif %}
+    {% if q.params_text %}<p class="u-query-meta">Parameters: <code>{{ q.params_text }}</code></p>{% endif %}
+    <pre class="u-sql">{{ q.sql }}</pre>
+  </div>
+  {% endfor %}
+</details>
+{% endmacro %}
+
+{% macro caveat(title) %}
+<aside class="u-caveat">
+  <strong class="u-caveat-title">{{ title }}</strong>
+  <div>{{ caller() }}</div>
+</aside>
+{% endmacro %}
+
+{% macro error_note(message) %}
+{% if message %}<p class="banner-warn u-error">{{ message }}</p>{% endif %}
+{% endmacro %}
+
+{% macro ran_note(ran) %}
+{% if ran.error %}<p class="banner-warn u-error">{{ ran.error }}</p>{% endif %}
+{% if ran.age_seconds %}<p class="u-note">These figures were scanned {{ ran.age_seconds|u_secs }} ago. A scan is kept for up to 2 minutes, so it can trail the snapshot shown above.</p>{% endif %}
+{% if ran.truncated %}<p class="u-note">The result was cut off at the row limit.</p>{% endif %}
+{% endmacro %}

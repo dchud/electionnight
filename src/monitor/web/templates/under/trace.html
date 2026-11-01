@@ -1,0 +1,201 @@
+{% extends "under/base.html" %}
+{% import "under/_macros.html" as u %}
+{% block title %}Trace{% endblock %}
+{% block content %}
+<h1>Trace: {{ item.headline }}</h1>
+<p class="u-lede">
+  <code>{{ item.item_id }}</code> from {{ item.outlet }}.
+  First seen {{ item.seen_raw_at|u_et }}.
+  {% if item.published_at %}Published {{ item.published_at|u_et }}.{% endif %}
+  {% if item.url %}<a class="text-link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">Original</a>.{% endif %}
+  <a class="text-link" href="/article/{{ item.item_id }}">Article page</a>.
+</p>
+{% for message in errors %}{{ u.error_note(message) }}{% endfor %}
+{% if before_capture %}
+{% call u.caveat("This item is older than capture") %}
+<p>It was first seen before capture started at {{ capture_time|u_et }}. Its raw feed entry is thin. A stage that ran before capture left no trace, archived payload, or decision, which is expected. A stage that ran later, such as a backfilled extraction, does have them. Trace a newer item to see every stage recorded.</p>
+{% endcall %}
+{% endif %}
+
+<section class="u-section" id="stages">
+  <div class="u-section-head"><h2 class="u-section-title">Every stage, and when it finished</h2><span class="panel-note">times are after first seen</span></div>
+  <div class="u-section-body">
+    {% call u.caveat("What these times mean") %}
+    <p>Buffered is <code>created_at</code>: when a stage handed its row to the writer. Committed is the snapshot's time: when a reader could first see it. The writer commits every 30 s. A long wait marked backfill means the item waited for a later catch-up pass, which is common for first-fetch backlog.</p>
+    {% endcall %}
+    <div class="u-scroll">
+    <table class="table u-table">
+      <thead><tr><th>Stage</th><th>Table</th><th class="num">Rows</th><th>Status</th><th class="num">Buffered</th><th class="num">Committed</th><th class="num">Snapshot</th><th>Where the row is</th></tr></thead>
+      <tbody>
+      {% for s in stages %}
+      <tr>
+        <td>{{ s.name }}</td>
+        <td>{{ s.table }}</td>
+        <td class="num">{{ s.n }}</td>
+        <td>{{ s.status or 'no row' }}{% if s.run_error %}: {{ s.run_error }}{% endif %}{% if s.version %} <span class="u-names">v{{ s.version }}</span>{% endif %}</td>
+        <td class="num">{{ s.latency|u_secs }}{% if s.backfill %} <span class="u-tag">backfill</span>{% endif %}</td>
+        <td class="num">{{ s.commit_latency|u_secs }}</td>
+        <td class="num">{{ s.snapshot if s.snapshot is not none else '—' }}</td>
+        <td>{% if s.file.kind %}{{ s.file.kind }} <span class="u-names">{{ s.file.name }}</span>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <details class="u-details" data-key="trace-rows"><summary>Each stage's stored rows</summary>
+      {% for s in stages if s.n %}
+      <h3 class="u-chart-title">{{ s.name }}: {{ s.table }}</h3>
+      <pre class="u-pre">{{ s.json }}</pre>
+      {% endfor %}
+    </details>
+    {{ u.show_query(stage_queries, "trace-stages") }}
+  </div>
+</section>
+
+<section class="u-section" id="feed-entry">
+  <div class="u-section-head"><h2 class="u-section-title">The raw feed entry</h2></div>
+  <div class="u-section-body">
+    <p class="u-note">Feed: <code>{{ raw_row.feed_url }}</code>. <code>source_id</code> <code>{{ raw_row.source_id }}</code> is the first feed to serve this item, which favors the fastest poller.</p>
+    {% if not rich_entry %}
+    <p class="banner-warn u-error">This entry holds only a few fields, because rich raw entries started when capture did. The title and summary are still in their own columns on the row.</p>
+    {% endif %}
+    <pre class="u-pre">{{ entry or 'No raw entry is stored.' }}</pre>
+    <h3 class="u-chart-title">Sightings: {{ sightings.rows|length }}</h3>
+    {% if sightings.rows %}
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Outlet</th><th>Feed</th><th>Seen</th><th>Title hash</th></tr></thead>
+      <tbody>{% for row in sightings.rows %}<tr><td>{{ row.source_id }}</td><td class="u-break">{{ row.feed_url }}</td><td>{{ row.seen_at|u_et }}</td><td>{{ row.title_hash }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <p class="u-note">A sighting is a feed serving this item, or serving it under a changed title.</p>
+    {% else %}
+    <p class="u-note">No sighting is recorded. Sightings started when capture did.</p>
+    {% endif %}
+    <details class="u-details" hx-get="/under/trace/{{ item.item_id }}/archive/feeds" hx-trigger="toggle once" hx-target="find .u-slot" data-key="trace-archive-feeds">
+      <summary>Original feed bytes, from the archive{% if not feed_archive %}: none recorded{% endif %}</summary>
+      <div class="u-slot"><p class="u-note">Reading the archive file from its start.</p></div>
+    </details>
+    {{ u.show_query(feed_queries, "trace-feed") }}
+  </div>
+</section>
+
+<section class="u-section" id="llm">
+  <div class="u-section-head"><h2 class="u-section-title">The prompt and response: {{ calls|length }} {{ 'call' if calls|length == 1 else 'calls' }}</h2></div>
+  <div class="u-section-body">
+    {% if calls %}
+    <p class="u-note">Article text in a request is cut to an excerpt here. The model received all of it, and <code>nlp.llm_traces</code> keeps the exact request.</p>
+    <p class="u-note">Costs are <code>usd_est</code>, computed from configured prices, not an invoice. SDK retries are not counted. An extraction request carries article text as the model received it, up to 6,000 tokens.</p>
+    {% for call in calls %}
+    <div class="u-call">
+      <h3 class="u-chart-title">{{ call.purpose }}: requested {{ call.model_requested }}, served {{ call.model_served or 'none' }}, stopped by {{ call.stop_reason or '—' }}</h3>
+      <p class="u-note">Call <code>{{ call.call_id }}</code>{% if call.ledger %}: {{ call.ledger.input_tokens|u_int }} input, {{ call.ledger.cache_read_tokens|u_int }} cache read, {{ call.ledger.cache_write_tokens|u_int }} cache write, {{ call.ledger.output_tokens|u_int }} output tokens; {{ call.ledger.latency_ms|u_int }} ms; about ${{ '%.5f' % (call.ledger.usd_est or 0) }}{% endif %}. {{ call.file.kind }} <span class="u-names">{{ call.file.name }}</span>.</p>
+      {% if call.parts %}
+      <p class="u-note">A batch of {{ call.parts.n }} items. This item is <code>item_ref</code> {{ call.parts.index }}.</p>
+      <div class="u-pair">
+        <div><h3 class="u-chart-title">This item in the request</h3><pre class="u-pre">{{ call.parts.request or 'Could not locate it in the request.' }}</pre></div>
+        <div><h3 class="u-chart-title">This item in the response</h3><pre class="u-pre">{{ call.parts.response or 'Could not locate it in the response.' }}</pre></div>
+      </div>
+      {% endif %}
+      <details class="u-details" data-key="prompt-{{ loop.index }}"><summary>System prompt {{ call.prompt_hash }}</summary><pre class="u-pre">{{ call.prompt.text or 'The prompt row is not on record.' }}</pre></details>
+      <details class="u-details" data-key="request-{{ loop.index }}"><summary>Full request</summary><pre class="u-pre">{{ call.request }}</pre></details>
+      <details class="u-details" data-key="response-{{ loop.index }}"><summary>Full response</summary><pre class="u-pre">{{ call.response or 'No response text: the call failed.' }}</pre></details>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="empty">{% if before_capture %}This item is older than capture, so no request or response was recorded.{% elif not item.relevant and not item.method %}No model call touched this item.{% else %}No trace names this item. Traces started when capture did, and items classified by keywords make no call.{% endif %}</p>
+    {% endif %}
+    {{ u.show_query(llm_queries, "trace-llm") }}
+  </div>
+</section>
+
+<section class="u-section" id="resolution">
+  <div class="u-section-head"><h2 class="u-section-title">Entity and place resolution</h2></div>
+  <div class="u-section-body">
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Surface</th><th>Type</th><th>Resolved to</th><th>By</th><th class="num">Tone</th><th>Quote</th></tr></thead>
+      <tbody>
+      {% for row in mentions.rows %}
+      <tr><td>{{ row.surface }}</td><td>{{ row.ent_type }}</td><td>{% if row.entity_id %}<a class="text-link" href="/entity/{{ row.entity_id }}">{{ row.entity.canonical_name or row.entity_id }}</a>{% else %}not resolved{% endif %}</td><td>{{ row.resolved_by or '—' }}</td><td class="num">{{ '%+.1f' % row.tone if row.tone is not none else '—' }}</td><td>{{ row.tone_evidence or '' }}</td></tr>
+      {% else %}
+      <tr><td colspan="6">No entity row. Extraction runs on relevant items only.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Place</th><th>Type</th><th>State</th><th>County</th><th>By</th><th class="num">Score</th></tr></thead>
+      <tbody>
+      {% for row in places %}
+      <tr><td>{{ row.surface }}</td><td>{{ row.place_type }}</td><td>{{ row.state_usps or '—' }}</td><td>{{ row.county_fips or '—' }}</td><td>{{ row.method }}</td><td class="num">{{ '%.2f' % row.match_score if row.match_score is not none else '—' }}</td></tr>
+      {% else %}
+      <tr><td colspan="6">No place row.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% if rejected %}
+    <h3 class="u-chart-title">Quotes thrown out by the citation check</h3>
+    <ul class="u-list">{% for row in rejected %}<li>{{ row.quote }} <span class="u-tag u-tag-warn">{{ row.reason }}</span></li>{% endfor %}</ul>
+    {% endif %}
+    {{ u.show_query(resolution_queries, "trace-resolution") }}
+  </div>
+</section>
+
+<section class="u-section" id="decisions">
+  <div class="u-section-head"><h2 class="u-section-title">Dedupe and clustering decisions</h2></div>
+  <div class="u-section-body">
+    <ul class="u-list">
+      {% for row in dup_rows %}
+      <li>Dedupe: group <code>{{ row.dup_group_id }}</code>, canonical {{ 'yes' if row.is_canonical else 'no' }}, stored method <code>{{ row.method }}</code>, similarity {{ row.similarity if row.similarity is not none else '—' }}. {{ row.reading }}</li>
+      {% else %}<li>No dedupe row.</li>{% endfor %}
+      {% for row in story_rows %}
+      <li>Storyline: <code>{{ row.storyline_id }}</code>, stored similarity {{ '%.3f' % row.similarity if row.similarity is not none else '—' }}.{% if row.placeholder %} <span class="u-tag u-tag-warn">placeholder</span> 1.0 means this item started the storyline, not that it matched anything at 1.0.{% endif %}</li>
+      {% else %}<li>No storyline row. Storylines take relevant, canonical items only.</li>{% endfor %}
+      {% if storyline %}<li>Current storyline: <a class="text-link" href="/story/{{ storyline.storyline_id }}">{{ storyline.label or 'Unlabeled' }}</a>, status {{ storyline.status }}, {{ storyline.n_items }} items, {{ storyline.n_sources }} outlets.</li>{% endif %}
+    </ul>
+    <h3 class="u-chart-title">Recorded decisions</h3>
+    {% if decisions %}
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Stage</th><th>Decision</th><th>Method</th><th>Nearest</th><th class="num">Nearest similarity</th><th class="num">Threshold</th><th class="num">SimHash distance</th></tr></thead>
+      <tbody>{% for row in decisions %}<tr><td>{{ row.stage }}</td><td>{{ row.decision }}</td><td>{{ row.method or '—' }}</td><td class="u-break">{{ row.nearest_id or '—' }}</td><td class="num">{{ '%.3f' % row.nearest_similarity if row.nearest_similarity is not none else '—' }}</td><td class="num">{{ '%.2f' % row.threshold if row.threshold is not none else '—' }}</td><td class="num">{{ row.simhash_distance if row.simhash_distance is not none else '—' }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}
+    <p class="u-note">No decision is recorded for this item. <code>nlp.cluster_decisions</code> started when capture did.</p>
+    {% endif %}
+    {% if group|length > 1 %}
+    <h3 class="u-chart-title">Items in this duplicate group</h3>
+    <ul class="u-list">{% for row in group %}<li><a class="text-link" href="/under/trace/{{ row.item_id }}">{{ row.title }}</a> <span class="u-names">{{ row.source_id }}, {{ row.seen_raw_at|u_et }}{% if row.canonical %}, canonical{% endif %}</span></li>{% endfor %}</ul>
+    {% endif %}
+    {{ u.show_query(decision_queries, "trace-decisions") }}
+  </div>
+</section>
+
+<section class="u-section" id="panels">
+  <div class="u-section-head"><h2 class="u-section-title">Which panels count it</h2>
+    <span class="control-group">{% for key, value in WINDOWS.items() %}<a href="?window={{ key }}#panels" aria-current="{{ 'true' if window == key else 'false' }}">{{ value[0] }}</a>{% endfor %}</span>
+  </div>
+  <div class="u-section-body">
+    {% call u.caveat("Panels read the fact table, not gold.*") %}
+    <p>Each row below runs the panel's own filter on this item, with the default controls and the window above. Dashboard panels query an in-memory fact table. <code>gold.*</code> is computed and not read by these panels.</p>
+    <p>{% if moved_on_axis %}This item was published over 2 hours before it was first seen, so the dashboard places it at {{ item.first_seen_at|u_et }}, while <code>gold.*</code> bins place it at {{ item.seen_raw_at|u_et }}.{% else %}The dashboard and <code>gold.*</code> both place this item at {{ item.seen_raw_at|u_et }}.{% endif %}</p>
+    {% endcall %}
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Panel</th><th>Counts it</th><th>The rule</th></tr></thead>
+      <tbody>
+      {% for row in panels %}
+      <tr><td>{{ row.panel }}</td><td>{% if row.counts %}<span class="u-tag u-tag-ok">yes</span>{% else %}<span class="u-tag">no</span>{% endif %}</td><td>{{ row.rule }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <p class="u-note">Briefs citing this item: {{ briefs.rows|length }}. Topic and entity panels also cap how many rows they draw, so counting here does not mean a visible mark.</p>
+    {{ u.show_query(panels|map(attribute='query')|list + [briefs.query], "trace-panels") }}
+  </div>
+</section>
+
+<section class="u-section" id="page-bytes">
+  <div class="u-section-head"><h2 class="u-section-title">The fetched page</h2></div>
+  <div class="u-section-body">
+    <details class="u-details" hx-get="/under/trace/{{ item.item_id }}/archive/pages" hx-trigger="toggle once" hx-target="find .u-slot" data-key="trace-archive-pages">
+      <summary>Original page bytes, from the archive{% if not page_archive %}: none recorded{% endif %}</summary>
+      <div class="u-slot"><p class="u-note">Reading the archive file from its start.</p></div>
+    </details>
+  </div>
+</section>
+{% endblock %}

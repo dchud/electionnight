@@ -153,7 +153,8 @@ in a state matches all stories classified as that state's House coverage.
 rests on the feed's title and summary. A metered outlet may return a partial
 page, which is flagged as paywalled when it is short. Tone from a summary rests
 on less text than tone from an article. The dashboard shows extracts and links
-to the original, and never the full text.
+to the original, and never the full text. The SQL console can read stored text,
+clipped to 4,000 characters per cell, and only from this laptop.
 
 **Polling latency.** Each outlet is polled every 60, 180, or 600 seconds by
 tier, so `first_seen_at` trails publication by up to one polling interval. Rank

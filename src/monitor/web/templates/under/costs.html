@@ -1,0 +1,67 @@
+{% extends "under/base.html" %}
+{% import "under/_macros.html" as u %}
+{% block title %}Costs{% endblock %}
+{% block content %}
+<h1>Costs: what the API calls cost</h1>
+{% call u.caveat("These are estimates") %}
+<p>Every dollar figure is <code>usd_est</code>, computed from token counts and configured prices. It is not an invoice. SDK retries are not counted, because the SDK retries inside one call and the ledger sees one result. A call that ends in an HTTP or connection error is in the ledger with zero tokens. A response that fails validation is retried as a new call, and both are in the ledger.</p>
+{% endcall %}
+<div class="u-stats">
+  <div class="u-stat"><span class="u-stat-label">Estimated spend</span><span class="u-stat-value">${{ '%.2f' % total_usd }}</span><span class="u-stat-note">{{ calls|u_int }} calls; {{ not_ok }} not ok</span></div>
+  <div class="u-stat"><span class="u-stat-label">The same calls with no cache</span><span class="u-stat-value">${{ '%.2f' % uncached_total }}</span><span class="u-stat-note">same tokens at the full input price</span></div>
+  <div class="u-stat"><span class="u-stat-label">Saved by prompt caching</span><span class="u-stat-value">${{ '%.2f' % saved_total }}</span><span class="u-stat-note">{{ saved_share|u_pct(0) }} of the uncached cost</span></div>
+  <div class="u-stat"><span class="u-stat-label">Budget state</span><span class="u-stat-value">{{ budget.state or '—' }}</span><span class="u-stat-note">${{ '%.2f' % (budget.spent_today or 0) }} of ${{ '%.2f' % (budget.daily_cap or 0) }} today; ${{ '%.2f' % (budget.spent_total or 0) }} of ${{ '%.2f' % (budget.hard_cap or 0) }} in total{% if degraded %}; degraded{% endif %}</span></div>
+</div>
+
+<section class="u-section" id="ledger">
+  <div class="u-section-head"><h2 class="u-section-title">Spend by purpose and model</h2></div>
+  <div class="u-section-body">
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Purpose</th><th>Model</th><th class="num">Calls</th><th class="num">Estimated</th><th class="num">With no cache</th><th class="num">Saved</th><th class="num">Mean latency</th><th class="num">Not ok</th></tr></thead>
+      <tbody>{% for row in rows %}<tr><td>{{ row.purpose }}</td><td>{{ row.model }}</td><td class="num">{{ row.calls|u_int }}</td><td class="num">${{ '%.4f' % row.usd }}</td><td class="num">${{ '%.4f' % row.uncached }}</td><td class="num">{{ row.saved_share|u_pct(0) }}</td><td class="num">{{ (row.latency_ms or 0)|round|int|u_int }} ms</td><td class="num">{{ row.not_ok }}</td></tr>{% else %}<tr><td colspan="8">No calls in the ledger.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <p class="u-note">Prices per million tokens, as configured: {% for model, price in prices.items() %}{{ model }} ${{ price[0] }} input, ${{ price[1] }} output{{ '; ' if not loop.last else '.' }}{% endfor %} A cache read costs {{ read_multiplier }} times the input price, and a cache write {{ write_multiplier }} times. The saving compares each row with the same tokens billed at the full input price.</p>
+    {{ u.show_query(queries.ledger, "costs-ledger") }}
+  </div>
+</section>
+
+<section class="u-section" id="tokens">
+  <div class="u-section-head"><h2 class="u-section-title">Tokens by kind</h2></div>
+  <div class="u-section-body">
+    {% for row in token_rows %}
+    <div class="u-bars-row"><span>{{ row.kind }}</span><span class="bar-track"><span class="bar-fill" style="width:{{ '%.1f' % row.width }}%"></span></span><span class="num">{{ row.n|u_int }}</span></div>
+    {% endfor %}
+    <p class="u-note">Most input is the cached system prompt, read again on every call. That is what caching saves.</p>
+  </div>
+</section>
+
+<section class="u-section" id="per-item">
+  <div class="u-section-head"><h2 class="u-section-title">Cost per item for each stage</h2></div>
+  <div class="u-section-body">
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Stage</th><th class="num">Estimated spend</th><th class="num">Produced</th><th>Per</th><th class="num">Cost each</th></tr></thead>
+      <tbody>{% for row in stage_rows %}<tr><td>{{ row.label }}</td><td class="num">${{ '%.4f' % row.usd }}</td><td class="num">{{ row.n|u_int }}</td><td>{{ row.unit }}</td><td class="num">{% if row.per is not none %}${{ '%.6f' % row.per }}{% else %}—{% endif %}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <p class="u-note">Language detection, embeddings, dedupe, and the storyline assignment run locally and cost no API money. The divisor is what exists now, so a stage with work in flight looks slightly more expensive per item than it is.</p>
+    {{ u.show_query(queries["items"], "costs-items") }}
+  </div>
+</section>
+
+<section class="u-section" id="over-time">
+  <div class="u-section-head"><h2 class="u-section-title">Spend over time</h2></div>
+  <div class="u-section-body">
+    <div class="u-pair">
+      <div>
+        <h3 class="u-chart-title">By Eastern calendar day</h3>
+        {% for row in by_day %}<div class="u-bars-row"><span>{{ row.day }}</span><span class="bar-track"><span class="bar-fill" style="width:{{ '%.1f' % row.width }}%"></span></span><span class="num">${{ '%.2f' % row.usd }}</span></div>{% else %}<p class="empty">No spend.</p>{% endfor %}
+      </div>
+      <div>
+        <h3 class="u-chart-title">By hour, newest first</h3>
+        <div class="u-scroll">{% for row in by_hour %}<div class="u-bars-row"><span>{{ row.hour|u_et }}</span><span class="bar-track"><span class="bar-fill" style="width:{{ '%.1f' % row.width }}%"></span></span><span class="num">${{ '%.2f' % row.usd }}</span></div>{% else %}<p class="empty">No spend.</p>{% endfor %}</div>
+      </div>
+    </div>
+    <p class="u-note">The first hours paid to classify first-fetch backlog. They do not predict the rate during live coverage.</p>
+    {{ u.show_query([queries.by_day, queries.by_hour], "costs-time") }}
+  </div>
+</section>
+{% endblock %}
