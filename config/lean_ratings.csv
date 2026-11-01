@@ -1,0 +1,165 @@
+source_id,name,lean_label,lean_source,lean_source_url,lean_retrieved_on,adfontes_bias,adfontes_reliability,adfontes_url,confirmed,notes
+upi,UPI,C,AllSides,https://www.allsides.com/news-source/united-press-international-media-bias,2026-11-01,-1.11,45.32,https://adfontesmedia.com/upi-bias-and-reliability/,false,AllSides confidence low/initial; online coverage only; Ad Fontes page is UPI
+bloomberg,Bloomberg,C,AllSides,https://www.allsides.com/news-source/bloomberg-media-bias,2026-11-01,-2.81,40.90,https://adfontesmedia.com/bloomberg-news-bias-and-reliability/,false,"AllSides sources conflict: a blog post reports a move to Center; the news-source page text seen in search says Lean Left, high confidence, June 2026. Check the page directly."
+the-new-york-times,The New York Times,LL,AllSides,https://www.allsides.com/news-source/new-york-times-news-media-bias,2026-11-01,-7.80,40.87,https://adfontesmedia.com/new-york-times-bias-and-reliability/,false,AllSides rates the opinion section separately: Left; news value used
+the-wall-street-journal,The Wall Street Journal,C,AllSides,https://www.allsides.com/news-source/wall-street-journal-media-bias,2026-11-01,4.31,42.89,https://adfontesmedia.com/wall-street-journal-bias-and-reliability/,false,AllSides rates the opinion section separately: Lean Right; news value used
+fox-news,Fox News,R,AllSides,https://www.allsides.com/news-source/fox-news-media-bias,2026-11-01,11.43,33.83,https://adfontesmedia.com/fox-news-bias-and-reliability/,false,AllSides rating covers online content only; medium confidence; Ad Fontes values are for the Fox News website
+nbc-news,NBC News,LL,AllSides,https://www.allsides.com/news-source/nbc-news-media-bias,2026-11-01,-4.84,42.86,https://adfontesmedia.com/nbc-bias-and-reliability/,false,AllSides rating covers NBCNews.com only; medium confidence; Ad Fontes values are for the NBC News website
+cbs-news,CBS News,LL,AllSides,https://www.allsides.com/news-source/cbs-news-online-media-bias,2026-11-01,-2.56,41.93,https://adfontesmedia.com/cbs-bias-and-reliability/,false,AllSides page is CBS News (Online); high confidence; Ad Fontes values are for the CBS News website
+abc-news,ABC News,LL,AllSides,https://www.allsides.com/news-source/abc-news-media-bias,2026-11-01,-2.43,43.34,https://adfontesmedia.com/abc-news-bias-and-reliability/,false,AllSides page is ABC News (Online); high confidence; Ad Fontes values are for the ABC News website
+npr,NPR,LL,AllSides,https://www.allsides.com/news-source/npr-media-bias,2026-11-01,-4.36,42.69,https://adfontesmedia.com/npr-bias-and-reliability/,false,AllSides rates NPR online written news only; opinion rated separately; medium confidence; Ad Fontes values are for the NPR website
+pbs-news,PBS News,LL,AllSides,https://www.allsides.com/news-source/pbs-newshour-media-bias,2026-11-01,-9.97,42.00,https://adfontesmedia.com/pbs-newshour-bias-and-reliability/,false,AllSides and Ad Fontes pages are titled PBS NewsHour; matched to PBS News by assumption; AllSides medium confidence
+ms-now-formerly-msnbc,MS NOW (formerly MSNBC),L,AllSides,https://www.allsides.com/news-source/ms-now-media-bias,2026-11-01,-13.74,34.33,https://adfontesmedia.com/msnbc-bias-and-reliability/,false,AllSides page is titled MSNBC (rebranded MS NOW Nov 2025); online content only; medium confidence
+cnbc,CNBC,LL,AllSides,https://www.allsides.com/news-source/cnbc-media-bias,2026-11-01,-1.92,43.73,https://adfontesmedia.com/cnbc/,false,AllSides moved CNBC from Center to Lean Left in 2025; medium confidence; Ad Fontes values are for the CNBC website
+politico,Politico,LL,AllSides,https://www.allsides.com/news-source/politico-media-bias,2026-11-01,-5.49,41.42,https://adfontesmedia.com/politico-bias-and-reliability/,false,AllSides medium confidence; Ad Fontes values are for Politico
+the-hill,The Hill,C,AllSides,https://www.allsides.com/news-source/hill-media-bias,2026-11-01,-1.65,41.57,https://adfontesmedia.com/hill-bias-and-reliability/,false,AllSides Center (-0.95) near Lean Left border; 2026 reviews split between Lean Left and Center
+axios,Axios,LL,AllSides,https://www.allsides.com/news-source/axios-media-bias,2026-11-01,-3.34,42.52,https://adfontesmedia.com/axios-bias-and-reliability/,false,AllSides medium confidence
+punchbowl-news,Punchbowl News,Unrated,,,2026-11-01,,,,false,AllSides rating page not found in two searches
+roll-call,Roll Call,C,AllSides,https://www.allsides.com/news-source/roll-call-media-bias,2026-11-01,-3.31,46.27,https://adfontesmedia.com/roll-call-bias-and-reliability/,false,AllSides confidence low/initial
+notus,NOTUS,Unrated,,,2026-11-01,,,,false,AllSides rating page not found in two searches
+semafor,Semafor,LL,AllSides,https://www.allsides.com/news-source/semafor-media-bias,2026-11-01,-5.30,39.76,https://adfontesmedia.com/semafor-bias-and-reliability/,false,AllSides medium confidence
+newsweek,Newsweek,C,AllSides,https://www.allsides.com/news-source/newsweek-media-bias,2026-11-01,-1.78,36.27,https://adfontesmedia.com/newsweek-bias-and-reliability/,false,AllSides Center (-0.45; March 2026 review -0.63); Dec 2025 blind survey returned Lean Left (-1.53)
+time,Time,LL,AllSides,https://www.allsides.com/news-source/time-magazine-news-media-bias,2026-11-01,-7.37,41.10,https://adfontesmedia.com/time-bias-and-reliability/,false,"AllSides rates TIME online content only; high confidence; AllSides has two TIME pages (this one and /news-source/time-magazine-media-bias), one showed Not Rated in an older cache; canonical page not confirmed"
+the-atlantic,The Atlantic,L,AllSides,https://www.allsides.com/news-source/atlantic-media-bias,2026-11-01,-9.37,37.79,https://adfontesmedia.com/the-atlantic-bias-and-reliability/,false,AllSides confidence low/initial
+vox,Vox,L,AllSides,https://www.allsides.com/news-source/vox-media-bias,2026-11-01,-10.06,39.38,https://adfontesmedia.com/vox-bias-and-reliability/,false,AllSides medium confidence; May 2026 blind survey returned Lean Left (-1.97) but panel kept Left
+the-19th,The 19th,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+christian-science-monitor,Christian Science Monitor,C,AllSides,https://www.allsides.com/news-source/christian-science-monitor-media-bias,2026-11-01,-2.52,44.23,https://adfontesmedia.com/christian-science-monitor-bias-and-reliability/,false,AllSides high confidence
+business-insider,Business Insider,LL,AllSides,https://www.allsides.com/news-source/business-insider-media-bias,2026-11-01,-3.87,40.69,https://adfontesmedia.com/insider-bias-and-reliability/,false,Two AllSides pages found (this one titled Insider Media Bias; other is /news-source/insider-media-bias); could not tell which is canonical; AllSides medium confidence
+national-review,National Review,LR,AllSides,https://www.allsides.com/news-source/national-review-news-media-bias,2026-11-01,12.62,31.39,https://adfontesmedia.com/national-review-bias-and-reliability/,false,AllSides rates the opinion section separately: Right; news value used (Oct 2024 blind survey returned Right 5.27 but panel kept Lean Right)
+the-dispatch,The Dispatch,LR,AllSides,https://www.allsides.com/news-source/dispatch-media-bias,2026-11-01,5.50,41.08,https://adfontesmedia.com/the-dispatch-bias-reliability/,false,AllSides medium confidence
+washington-examiner,Washington Examiner,LR,AllSides,https://www.allsides.com/news-source/washington-examiner-media-bias,2026-11-01,11.15,34.19,https://adfontesmedia.com/washington-examiner-bias-and-reliability/,false,AllSides high confidence; previously rated Right
+the-free-press,The Free Press,LR,AllSides,https://www.allsides.com/news-source/free-press-media-bias-0,2026-11-01,6.98,28.67,https://adfontesmedia.com/free-press-bias-and-reliability-copy/,false,AllSides low/initial confidence; slug inferred from page title The Free Press Media Bias; a separate AllSides page /free-press-media-bias exists and is reportedly for an unrelated advocacy group rated Left; reviewers split between Center and Lean Right
+reason,Reason,C,AllSides,https://www.allsides.com/news-source/reason-media-bias,2026-11-01,4.25,35.82,https://adfontesmedia.com/reason-bias-and-reliability/,false,AllSides moved Reason from Lean Right to Center in 2024 (May 2026 survey Center); medium confidence; AllSides notes a libertarian slant
+new-york-post,New York Post,R,AllSides,https://www.allsides.com/news-source/new-york-post-news-media-bias,2026-11-01,9.57,29.99,https://adfontesmedia.com/new-york-post-bias-and-reliability/,false,AllSides moved NY Post from Lean Right to Right in June 2026 (3.13; medium confidence); AllSides rates opinion separately; news value used
+the-washington-times,The Washington Times,LR,AllSides,https://www.allsides.com/news-source/washington-times-media-bias,2026-11-01,11.60,31.31,https://adfontesmedia.com/washington-times-bias-and-reliability/,false,AllSides medium confidence; Dec 2024 blind survey returned Center but panel kept Lean Right
+washington-free-beacon,Washington Free Beacon,R,AllSides,https://www.allsides.com/news-source/washington-free-beacon,2026-11-01,14.10,24.33,https://adfontesmedia.com/washington-free-beacon-bias-and-reliability/,false,AllSides high confidence; a second AllSides page exists at /news-source/washington-free-beacon-media-bias; could not tell which is canonical
+the-bulwark,The Bulwark,L,AllSides,https://www.allsides.com/news-source/bulwark-media-bias,2026-11-01,-4.60,34.20,https://adfontesmedia.com/the-bulwark-bias-and-reliability/,false,"AllSides moved Bulwark to Left in Dec 2025 (-3.91 after May 2026 survey, which returned Lean Left); medium confidence"
+deseret-news-national-politics,Deseret News (national politics),C,AllSides,https://www.allsides.com/news-source/deseret-news-media-bias,2026-11-01,,,,false,AllSides rates Deseret News overall (not the national politics section); low/initial confidence; second AllSides page at /news-source/deseret-news
+realclearpolitics,RealClearPolitics,LR,AllSides,https://www.allsides.com/news-source/realclearpolitics-media-bias,2026-11-01,14.45,26.90,https://adfontesmedia.com/realclear-politics-bias-and-reliability/,false,AllSides rates RCP original content Lean Right (low/initial confidence); RCP homepage aggregator is rated separately: Center (/news-source/real-clear-politics-aggregator); original-content value used
+votebeat,Votebeat,C,AllSides,https://www.allsides.com/news-source/votebeat-media-bias,2026-11-01,,,,false,AllSides low/initial confidence; a separate Votebeat Arizona page also exists
+bolts,Bolts,L,AllSides,https://www.allsides.com/news-source/bolts-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+inside-elections,Inside Elections,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+ballotpedia-news,Ballotpedia News,C,AllSides,https://www.allsides.com/news-source/ballotpedia-media-bias,2026-11-01,,,,false,"AllSides rates Ballotpedia as a whole (reference source), not Ballotpedia News separately; medium confidence"
+silver-bulletin,Silver Bulletin,Unrated,,,2026-11-01,,,,false,AllSides has no Silver Bulletin page found; it rates Nate Silver as a person Lean Left (low/initial confidence) at https://www.allsides.com/news-source/nate-silver-media-bias; not applied to the outlet
+election-law-blog,Election Law Blog,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+stateline,Stateline,Unrated,,,2026-11-01,,,,false,AllSides rating page not found; search surfaced only unrelated State Line Observer (Not Rated)
+alabama-reflector,Alabama Reflector,Unrated,,,2026-11-01,,,,false,AllSides rating page not found (search returned only other Alabama outlets)
+alabama-daily-news,Alabama Daily News,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+alaska-beacon,Alaska Beacon,C,AllSides,https://www.allsides.com/news-source/alaska-beacon-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+alaska-public-media,Alaska Public Media,Unrated,,,2026-11-01,,,,false,AllSides story pages badge Alaska Public Media as Center but the outlet's own rating page URL was not found; not filled
+arizona-mirror,Arizona Mirror,C,AllSides,https://www.allsides.com/news-source/arizona-mirror-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+arkansas-advocate,Arkansas Advocate,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+calmatters,CalMatters,C,AllSides,https://www.allsides.com/news-source/calmatters-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+colorado-newsline,Colorado Newsline,C,AllSides,https://www.allsides.com/news-source/colorado-newsline-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+the-colorado-sun,The Colorado Sun,LL,AllSides,https://www.allsides.com/news-source/colorado-sun-media-bias,2026-11-01,,,,false,AllSides low/initial confidence (-2.00)
+cpr-news,CPR News,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+ct-mirror,CT Mirror,C,AllSides,https://www.allsides.com/news-source/ct-mirror-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+connecticut-public,Connecticut Public,Unrated,,,2026-11-01,,,,false,AllSides page exists (https://www.allsides.com/news-source/connecticut-public-media-bias) but lists Not Rated and may be stale
+spotlight-delaware,Spotlight Delaware,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+florida-phoenix,Florida Phoenix,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+georgia-recorder,Georgia Recorder,C,AllSides,https://www.allsides.com/news-source/georgia-recorder-media-bias,2026-11-01,,,,false,AllSides low/initial confidence; single March 2022 review
+gpb-news,GPB News,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+honolulu-civil-beat,Honolulu Civil Beat,C,AllSides,https://www.allsides.com/news-source/honolulu-civil-beat,2026-11-01,,,,false,AllSides low/initial confidence
+idaho-capital-sun,Idaho Capital Sun,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+capitol-news-illinois,Capitol News Illinois,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+indiana-capital-chronicle,Indiana Capital Chronicle,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+iowa-capital-dispatch,Iowa Capital Dispatch,C,AllSides,https://www.allsides.com/news-source/iowa-capital-dispatch-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+iowa-public-radio,Iowa Public Radio,C,AllSides,https://www.allsides.com/news-source/iowa-public-radio-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+kansas-reflector,Kansas Reflector,Unrated,,,2026-11-01,,,,false,"AllSides outlet page (https://www.allsides.com/news-source/kansas-reflector-media-bias) lists Not Rated, while some AllSides story pages badge it Lean Left; conflict, no label applied"
+kentucky-lantern,Kentucky Lantern,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+louisiana-illuminator,Louisiana Illuminator,LL,AllSides,https://www.allsides.com/news-source/louisiana-illuminator-media-bias,2026-11-01,,,,false,AllSides low/initial confidence; single independent review
+maine-morning-star,Maine Morning Star,Unrated,,,2026-11-01,,,,false,AllSides rating page not found (the AllSides Morning Star page is the unrelated UK paper)
+maine-public,Maine Public,LL,AllSides,https://www.allsides.com/news-source/maine-public-radio-media-bias,2026-11-01,,,,false,AllSides page is titled Maine Public Radio; matched to Maine Public by name; low/initial confidence
+maryland-matters,Maryland Matters,LL,AllSides,https://www.allsides.com/news-source/maryland-matters-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+commonwealth-beacon,CommonWealth Beacon,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+michigan-advance,Michigan Advance,C,AllSides,https://www.allsides.com/news-source/michigan-advance-media-bias,2026-11-01,,,,false,AllSides low/initial confidence; page age metadata looked old
+bridge-michigan,Bridge Michigan,C,AllSides,https://www.allsides.com/news-source/bridgemicom-media-bias,2026-11-01,,,,false,AllSides page is titled Bridgemi.com; low/initial confidence
+michigan-public,Michigan Public,C,AllSides,https://www.allsides.com/news-source/npr-michigan-radio-media-bias,2026-11-01,,,,false,AllSides page is titled NPR Michigan Radio; matched to Michigan Public by assumption (station name); low/initial confidence
+minnesota-reformer,Minnesota Reformer,L,AllSides,https://www.allsides.com/news-source/minnesota-reformer-media-bias,2026-11-01,,,,false,AllSides low/initial confidence (-4.00)
+mpr-news,MPR News,LL,AllSides,https://www.allsides.com/news-source/mpr-news-media-bias,2026-11-01,,,,false,"AllSides low/initial confidence; a separate AllSides page Minnesota Public Radio (/news-source/minnesota-public-radio-media-bias) is rated Center; conflict, owner to choose"
+mississippi-today,Mississippi Today,C,AllSides,https://www.allsides.com/news-source/mississippi-today-media-bias,2026-11-01,,,,false,"AllSides low/initial confidence; a second AllSides page Mississippi Today News (/news-source/mississippi-today-news-media-bias) is rated Lean Left (low/initial confidence); conflict, owner to choose"
+missouri-independent,Missouri Independent,LL,AllSides,https://www.allsides.com/news-source/missouri-independent-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+daily-montanan,Daily Montanan,C,AllSides,https://www.allsides.com/news-source/daily-montanan-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+montana-free-press,Montana Free Press,LL,AllSides,https://www.allsides.com/news-source/montana-free-press-media-bias-0,2026-11-01,,,,false,"AllSides low/initial confidence; a second AllSides page /news-source/montana-free-press-media-bias appeared as Not Rated; conflict, owner to confirm"
+nebraska-examiner,Nebraska Examiner,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+flatwater-free-press,Flatwater Free Press,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+nevada-current,Nevada Current,C,AllSides,https://www.allsides.com/news-source/nevada-current-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+the-nevada-independent,The Nevada Independent,C,AllSides,https://www.allsides.com/news-source/nevada-independent-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+new-hampshire-bulletin,New Hampshire Bulletin,C,AllSides,https://www.allsides.com/news-source/new-hampshire-bulletin-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+nhpr,NHPR,C,AllSides,https://www.allsides.com/news-source/new-hampshire-public-radio-media-bias,2026-11-01,,,,false,AllSides page is titled New Hampshire Public Radio; matched to NHPR by name; low/initial confidence
+new-jersey-monitor,New Jersey Monitor,LL,AllSides,https://www.allsides.com/news-source/new-jersey-monitor-media-bias,2026-11-01,,,,false,Seen in search results as Lean Left; confidence level not captured
+nj-spotlight-news,NJ Spotlight News,LL,AllSides,https://www.allsides.com/news-source/nj-spotlight-news-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+source-nm,Source NM,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+new-york-focus,New York Focus,C,AllSides,https://www.allsides.com/news-source/new-york-focus-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+city-state-new-york,City & State New York,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+nc-newsline,NC Newsline,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+wunc,WUNC,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+north-dakota-monitor,North Dakota Monitor,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+ohio-capital-journal,Ohio Capital Journal,LL,AllSides,https://www.allsides.com/news-source/ohio-capital-journal-media-bias,2026-11-01,,,,false,AllSides low/initial confidence (-2.00)
+statehouse-news-bureau-ohio,Statehouse News Bureau (Ohio),Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+oklahoma-voice,Oklahoma Voice,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+oklahoma-watch,Oklahoma Watch,C,AllSides,https://www.allsides.com/news-source/oklahoma-watch-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+oregon-capital-chronicle,Oregon Capital Chronicle,Unrated,,,2026-11-01,,,,false,AllSides outlet page (https://www.allsides.com/news-source/oregon-capital-chronicle-media-bias) lists Not Rated and may be stale; some AllSides story pages badge it Center; no label applied
+opb,OPB,C,AllSides,https://www.allsides.com/news-source/oregon-public-broadcasting-media-bias,2026-11-01,,,,false,AllSides page is titled Oregon Public Broadcasting; matched to OPB by name; low/initial confidence
+pennsylvania-capital-star,Pennsylvania Capital-Star,LR,AllSides,https://www.allsides.com/news-source/pennsylvania-capital-star-media-bias,2026-11-01,,,,false,AllSides low/initial confidence (2.00); single March 2022 review
+spotlight-pa,Spotlight PA,C,AllSides,https://www.allsides.com/news-source/spotlight-pa-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+rhode-island-current,Rhode Island Current,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+sc-daily-gazette,SC Daily Gazette,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+south-dakota-searchlight,South Dakota Searchlight,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+south-dakota-public-broadcasting,South Dakota Public Broadcasting,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+tennessee-lookout,Tennessee Lookout,LL,AllSides,https://www.allsides.com/news-source/tennessee-lookout-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+the-texas-tribune,The Texas Tribune,LL,AllSides,https://www.allsides.com/news-source/texas-tribune-media-bias,2026-11-01,,,,false,AllSides low/initial confidence (-2.00)
+utah-news-dispatch,Utah News Dispatch,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+vtdigger,VTDigger,C,AllSides,https://www.allsides.com/news-source/vt-digger-media-bias,2026-11-01,,,,false,AllSides page is titled VT Digger; low/initial confidence
+vermont-public,Vermont Public,C,AllSides,https://www.allsides.com/news-source/vermont-public-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+virginia-mercury,Virginia Mercury,C,AllSides,https://www.allsides.com/news-source/virginia-mercury-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+vpm-news,VPM News,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+washington-state-standard,Washington State Standard,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+west-virginia-watch,West Virginia Watch,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+mountain-state-spotlight,Mountain State Spotlight,Unrated,,,2026-11-01,,,,false,AllSides page exists (https://www.allsides.com/news-source/mountain-state-spotlight-media-bias) but lists Not Rated and may be stale
+wisconsin-examiner,Wisconsin Examiner,LL,AllSides,https://www.allsides.com/news-source/wisconsin-examiner-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+wisconsin-public-radio,Wisconsin Public Radio,C,AllSides,https://www.allsides.com/news-source/wisconsin-public-radio-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+wisconsin-watch,Wisconsin Watch,LL,AllSides,https://www.allsides.com/news-source/wisconsin-watch-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+wyofile,WyoFile,LR,AllSides,https://www.allsides.com/news-source/wyofile-media-bias,2026-11-01,,,,false,AllSides low/initial confidence (2.00)
+cowboy-state-daily,Cowboy State Daily,LR,AllSides,https://www.allsides.com/news-source/cowboy-state-daily-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+la-opinion,La Opinión,L,AllSides,https://www.allsides.com/news-source/la-opinion-media-bias,2026-11-01,,,,false,AllSides April 2025 independent review (-3.50); low/initial confidence; Spanish-language outlet
+al-com,AL.com,C,AllSides,https://www.allsides.com/news-source/alcom-media-bias,2026-11-01,,,,false,AllSides low/initial confidence; single independent review
+anchorage-daily-news,Anchorage Daily News,Unrated,,,2026-11-01,,,,false,AllSides story pages badge Anchorage Daily News as Center but the outlet's own rating page URL was not found in two searches; not filled
+kjzz,KJZZ,Unrated,,,2026-11-01,,,,false,AllSides page found is for KJZZ Fronteras (program) and says Not Rated; some older AllSides story sidebars showed Center; no rating page for KJZZ itself seen
+los-angeles-times,Los Angeles Times,LL,AllSides,https://www.allsides.com/news-source/los-angeles-times-media-bias,2026-11-01,,,,false,AllSides low/initial confidence (-2.00)
+kqed,KQED,C,AllSides,https://www.allsides.com/news-source/kqed-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+tampa-bay-times,Tampa Bay Times,C,AllSides,https://www.allsides.com/news-source/tampa-bay-times-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+honolulu-star-advertiser,Honolulu Star-Advertiser,C,AllSides,https://www.allsides.com/news-source/honolulu-star-advertiser-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+chicago-sun-times,Chicago Sun-Times,LL,AllSides,https://www.allsides.com/news-source/chicago-sun-times,2026-11-01,,,,false,AllSides medium confidence (-2.00)
+wbez,WBEZ,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+kcur,KCUR,Unrated,,,2026-11-01,,,,false,AllSides rating page not found (search returned only other Kansas City outlets)
+the-advocate-baton-rouge,The Advocate (Baton Rouge),C,AllSides,https://www.allsides.com/news-source/advocate-media-bias-1,2026-11-01,,,,false,"AllSides low/initial confidence; AllSides has several similar pages (advocate-media-bias-2, httpswwwtheadvocatecom-media-bias for theadvocate.com; advocate-media-bias-0 is a different Advocate rated Lean Left); canonical page not confirmed"
+the-times-picayune-nola-com,The Times-Picayune | NOLA.com,C,AllSides,https://www.allsides.com/news-source/times-picayune,2026-11-01,,,,false,AllSides page is The Times-Picayune; no separate NOLA.com page seen; low/initial confidence
+portland-press-herald,Portland Press Herald,C,AllSides,https://www.allsides.com/news-source/portland-press-herald-media-bias,2026-11-01,,,,false,AllSides medium confidence
+bangor-daily-news,Bangor Daily News,LL,AllSides,https://www.allsides.com/news-source/bangor-daily-news-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+the-baltimore-banner,The Baltimore Banner,C,AllSides,https://www.allsides.com/news-source/baltimore-banner-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+the-boston-globe,The Boston Globe,L,AllSides,https://www.allsides.com/news-source/boston-globe-media-bias,2026-11-01,,,,false,AllSides moved Globe from Lean Left to Left in a 2021 review (-4.00); low/initial confidence
+wbur,WBUR,C,AllSides,https://www.allsides.com/news-source/wbur-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+star-tribune,Star Tribune,LL,AllSides,https://www.allsides.com/news-source/star-tribune-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+st-louis-post-dispatch,St. Louis Post-Dispatch,C,AllSides,https://www.allsides.com/news-source/st-louis-post-dispatch-media-bias,2026-11-01,,,,false,AllSides low/initial confidence (Sept 2021 review)
+st-louis-public-radio,St. Louis Public Radio,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+omaha-world-herald,Omaha World-Herald,C,AllSides,https://www.allsides.com/news-source/omaha-world-herald-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+las-vegas-review-journal,Las Vegas Review-Journal,Unrated,,,2026-11-01,,,,false,AllSides page exists (https://www.allsides.com/news-source/las-vegas-review-journal-media-bias) but lists Not Rated and may be stale; some story pages show Center for individual articles; no outlet rating applied
+new-hampshire-union-leader,New Hampshire Union Leader,C,AllSides,https://www.allsides.com/news-source/union-leader,2026-11-01,,,,false,AllSides low/initial confidence
+nj-com,NJ.com,LL,AllSides,https://www.allsides.com/news-source/njcom-media-bias,2026-11-01,,,,false,AllSides low/initial confidence (-2.00)
+santa-fe-new-mexican,Santa Fe New Mexican,C,AllSides,https://www.allsides.com/news-source/santa-fe-new-mexican-media-bias,2026-11-01,,,,false,AllSides low/initial confidence; page appears to date from 2024
+gothamist,Gothamist,C,AllSides,https://www.allsides.com/news-source/gothamist-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+bismarck-tribune,Bismarck Tribune,Unrated,,,2026-11-01,,,,false,AllSides story pages badge Bismarck Tribune as Center but the outlet's own rating page URL was not found; not filled
+cleveland-com,Cleveland.com,Unrated,,,2026-11-01,,,,false,"AllSides rating page for cleveland.com not found; only a Cleveland Plain Dealer page (Center, low/initial confidence) at https://www.allsides.com/news-source/cleveland-plain-dealer-media-bias, not applied because it is a differently named outlet"
+oregonlive,OregonLive,C,AllSides,https://www.allsides.com/news-source/oregonian-media-bias,2026-11-01,,,,false,AllSides page is titled The Oregonian (result text says it publishes at oregonlive.com; AllSides story titles use The Oregonian/OregonLive); matched by assumption; low/initial confidence
+the-philadelphia-inquirer,The Philadelphia Inquirer,LL,AllSides,https://www.allsides.com/news-source/philadelphia-inquirer-media-bias,2026-11-01,,,,false,AllSides low/initial confidence (-2.00); a second AllSides page exists at /news-source/phillycom
+whyy,WHYY,Unrated,,,2026-11-01,,,,false,AllSides story pages badge WHYY as Center but the outlet's own rating page URL was not found; not filled
+pittsburgh-post-gazette,Pittsburgh Post-Gazette,C,AllSides,https://www.allsides.com/news-source/pittsburgh-post-gazette-media-bias,2026-11-01,,,,false,AllSides low/initial confidence; moved from Lean Right to Center after Jan 2022 review
+the-post-and-courier,The Post and Courier,LR,AllSides,https://www.allsides.com/news-source/post-and-courier-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+wpln,WPLN,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+kut,KUT,Unrated,,,2026-11-01,,,,false,AllSides rating page not found
+the-salt-lake-tribune,The Salt Lake Tribune,LL,AllSides,https://www.allsides.com/news-source/salt-lake-tribune-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+richmond-times-dispatch,Richmond Times-Dispatch,LR,AllSides,https://www.allsides.com/news-source/richmond-times-dispatch-media-bias,2026-11-01,,,,false,AllSides low/initial confidence (2.00); a second AllSides page exists at /news-source/richmond-times-dispatch
+cardinal-news,Cardinal News,C,AllSides,https://www.allsides.com/news-source/cardinal-news-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+the-seattle-times,The Seattle Times,C,AllSides,https://www.allsides.com/news-source/seattle-times-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
+kuow,KUOW,C,AllSides,https://www.allsides.com/news-source/kuow-media-bias,2026-11-01,,,,false,AllSides low/initial confidence
