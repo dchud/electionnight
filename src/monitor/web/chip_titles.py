@@ -31,7 +31,8 @@ LEAN_NAMES = {
 # comes first, so the first name wins.
 USPS_NAMES: dict[str, str] = {}
 for _name, _usps in STATE_NAMES.items():
-    USPS_NAMES.setdefault(_usps, _name.title().replace(" Of ", " of "))
+    _title = _name.title().replace(" Of ", " of ").replace("Us ", "U.S. ")
+    USPS_NAMES.setdefault(_usps, _title)
 
 
 def state_name(usps: Any) -> str:
