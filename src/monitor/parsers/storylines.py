@@ -257,12 +257,18 @@ class StorylineEngine:
             key=lambda s: s.first_seen_at,
         )
         merged: list[tuple[str, str]] = []
-        for index, older in enumerate(active):
+        if not active:
+            return merged
+        centroids = np.stack([s.centroid for s in active])
+        for index, older in enumerate(active[:-1]):
             if older.status != "active":
                 continue
-            for newer in active[index + 1 :]:
+            scores = centroids[index + 1 :] @ older.centroid
+            for offset in np.flatnonzero(scores >= self.merge_threshold):
+                newer = active[index + 1 + int(offset)]
                 if newer.status != "active":
                     continue
+                # An earlier absorb in this loop moved the older centroid.
                 if float(older.centroid @ newer.centroid) >= (
                     self.merge_threshold
                 ):

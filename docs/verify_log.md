@@ -70,6 +70,21 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
   robots.txt names it and allows this crawler. Tested 2026-11-01: 128 of 269
   enabled outlets qualify. The owner chose catch-up only, so outlets with no
   feed stay out.
+- **Tone intervals.** The spec gives a mean shrunk toward 0 with 5
+  pseudo-observations and a 95% interval from the standard error. Simulated
+  coverage of that interval, with a true mean of -1.0 and a standard deviation
+  of 0.5: 32% at n=6, 44% at n=14, 65% at n=30, 83% at n=100. With a true mean
+  of 1.5 and n=8 it is 0%. The dashboard draws the unshrunk mean with a 95%
+  t-interval, which covers 95% at those counts. The hide and low-n rules stay.
+- **Replay.** Spec section 9.5 takes storyline assignment as of the replay
+  time. The read model keeps one row per item, holding its latest assignment,
+  classification, and tone, and a storyline's latest label. Replay filters on
+  true first-seen time. The attention baseline, the active storyline count, and
+  the status that admits a storyline to Rising are as of the replay time. The
+  rest is current, and the replay header says so. Feed health is not shown for
+  a past moment.
+- **Rising Storylines.** The spec ranks cards by velocity score. The panel
+  lists only storylines that meet the rising rule, and says so when none do.
 - **Stream colors.** No palette of 10 hues avoiding party blue and red passes
   the colorblind checks. The first 6 are validated; the rest rely on direct
   labels and hover.

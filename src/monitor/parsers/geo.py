@@ -12,13 +12,14 @@ from typing import Any
 from rapidfuzz import fuzz
 
 from monitor.parsers.classify_a import STATE_NAMES, USPS
+from monitor.ref.races import MAX_DISTRICT, parse_district
 
 COUNTY_SUFFIX = re.compile(
     r"\s+(county|parish|borough|census area|municipality)$", re.I
 )
 CITY_PREFIX = re.compile(r"^(city of|town of|village of)\s+", re.I)
 FUZZY_SCORE = 88
-AT_LARGE = {"at-large", "at large", "al", "00", "0"}
+AT_LARGE_TOKEN = "AL"
 
 
 def normalize_place(name: str) -> str:
@@ -28,16 +29,17 @@ def normalize_place(name: str) -> str:
 
 
 def normalize_cd(state: str | None, district: Any) -> str | None:
-    """A congressional district as `XX-NN`, or None."""
-    if not state or district is None:
+    """A congressional district as `XX-NN`, or None.
+
+    A state written in the district text wins over the state given.
+    """
+    named, token = parse_district(district)
+    code = named or state
+    if not code or token is None:
         return None
-    text = str(district).strip().lower()
-    if text in AT_LARGE:
-        return f"{state}-00"
-    match = re.search(r"(\d{1,2})", text)
-    if not match:
-        return None
-    return f"{state}-{int(match.group(1)):02d}"
+    if token == AT_LARGE_TOKEN:
+        return f"{code}-00"
+    return f"{code}-{token}" if int(token) <= MAX_DISTRICT else None
 
 
 def state_code(name: str | None) -> str | None:
@@ -114,9 +116,9 @@ class Gazetteer:
         states: list[str],
         home_state: str | None,
     ) -> tuple[GeoEntry | None, float]:
-        """Disambiguate: a state in the item, the outlet's state, then size.
+        """Disambiguate by a state in the item, then the outlet's state.
 
-        The gazetteer carries no population, so land area stands in for it.
+        Several candidates with no state to choose among give no match.
         """
         if not candidates:
             return None, 0.0
@@ -130,7 +132,7 @@ class Gazetteer:
             matching = [c for c in candidates if c.state == home_state]
             if matching:
                 return max(matching, key=lambda c: c.aland), 0.85
-        return max(candidates, key=lambda c: c.aland), 0.5
+        return None, 0.0
 
     def _fuzzy(
         self, name: str, state: str, kind: str
@@ -163,8 +165,10 @@ class Gazetteer:
             code = state_code(name) or given
             return GeoMatch(state_usps=code, match_score=1.0) if code else None
         if place_type == "cd":
+            named, _ = parse_district(name)
             code = normalize_cd(
-                given
+                named
+                or given
                 or (
                     home_state
                     if not item_states

@@ -8,12 +8,34 @@ using `__` to reach nested groups, for example `LLM__DAILY_USD_CAP=40`.
 from __future__ import annotations
 
 import os
+import shutil
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Self
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import (
+    BaseModel,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# These locate one lake and its writer, so they move together. A command that
+# moved only the catalog would still see the live writer lock, and would send
+# its request to the live pipeline.
+LAKE_PATHS = (
+    "catalog",
+    "data",
+    "backups",
+    "control",
+    "last_commit",
+    "status",
+    "archive",
+    "writer_lock",
+)
 
 
 class Paths(BaseModel):
@@ -74,6 +96,15 @@ class Poll(BaseModel):
     min_gap_seconds: float = 60.0
     catch_up_min_gap_seconds: float = 300.0
     catch_up_concurrency: int = 8
+    download_deadline_seconds: float = 60.0
+    allow_loopback: bool = False
+
+    @field_validator("user_agent")
+    @classmethod
+    def agent_has_no_address(cls, value: str) -> str:
+        if "@" in value:
+            raise ValueError("the user agent must carry no email address")
+        return value
 
 
 class Commit(BaseModel):
@@ -105,6 +136,7 @@ class Nlp(BaseModel):
     entity_fuzzy_score: int = 92
     fetch_domain_interval_seconds: float = 3.0
     fetch_timeout_seconds: float = 10.0
+    fetch_deadline_seconds: float = 30.0
     tour_seconds: int = 30
 
 
@@ -134,6 +166,8 @@ class Llm(BaseModel):
 class Web(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
+    allowed_hosts: list[str] = ["127.0.0.1", "localhost", "::1"]
+    lan_concurrency: int = 256
     fragment_throttle_seconds: int = 10
     slow_query_ms: int = 500
     slow_throttle_seconds: int = 20
@@ -172,6 +206,7 @@ class Settings(BaseSettings):
 
     anthropic_api_key: SecretStr | None = None
     fec_api_key: SecretStr | None = None
+    scratch_dir: Path | None = None
     paths: Paths = Field(default_factory=Paths)
     poll: Poll = Field(default_factory=Poll)
     commit: Commit = Field(default_factory=Commit)
@@ -181,6 +216,33 @@ class Settings(BaseSettings):
     web: Web = Field(default_factory=Web)
     disk: Disk = Field(default_factory=Disk)
     archive: Archive = Field(default_factory=Archive)
+
+    @field_validator("scratch_dir", mode="before")
+    @classmethod
+    def _blank_means_no_scratch_dir(cls, value: Any) -> Any:
+        return value or None
+
+    @model_validator(mode="after")
+    def _place_paths(self) -> Self:
+        """Move every path under `scratch_dir`, and refuse a partial move."""
+        if self.scratch_dir is not None:
+            self.paths = Paths.under(
+                self.scratch_dir, config=self.scratch_dir / "config"
+            )
+            return self
+        defaults = Paths()
+        moved = [
+            f"PATHS__{name.upper()}"
+            for name in LAKE_PATHS
+            if getattr(self.paths, name) != getattr(defaults, name)
+        ]
+        if moved and len(moved) < len(LAKE_PATHS):
+            raise ValueError(
+                f"{', '.join(moved)} would move part of the lake and leave "
+                "the rest live. Set SCRATCH_DIR to place every path under "
+                "one directory."
+            )
+        return self
 
 
 def load_settings(env_file: str | None = None) -> Settings:
@@ -192,6 +254,13 @@ def load_settings(env_file: str | None = None) -> Settings:
     path = env_file or os.environ.get("MONITOR_ENV_FILE", ".env")
     load_dotenv(path, override=False)
     settings = Settings()
+    live_config = Paths().config
+    if (
+        settings.scratch_dir is not None
+        and live_config.exists()
+        and not settings.paths.config.exists()
+    ):
+        shutil.copytree(live_config, settings.paths.config)
     models = str(settings.paths.models.resolve())
     os.environ.setdefault("HF_HOME", models)
     os.environ.setdefault("FASTEMBED_CACHE_PATH", models)

@@ -24,7 +24,13 @@ from monitor.web.panels import PollClose, load_poll_closes
 log = get(__name__)
 
 MAX_ITEMS = 40
+# So that one outlet cannot fill a brief's input.
+MAX_ITEMS_PER_SOURCE = 3
 MAX_STORYLINES = 8
+# `max_tokens` caps adaptive thinking and the answer together. A long answer
+# outlasts the client's usual timeout.
+BRIEF_MAX_TOKENS = 16000
+BRIEF_TIMEOUT_SECONDS = 300.0
 MIN_ITEMS = 5
 QUIET_WINDOW = timedelta(hours=2)
 EXTRA_BRIEF_DELAY = timedelta(minutes=10)
@@ -51,6 +57,7 @@ class BriefSchedule:
     settings: Settings
     closes: list[PollClose]
     last_at: datetime | None = None
+    last_attempt_at: datetime | None = None
     extras_done: set[datetime] = field(default_factory=set)
 
     def _major(self) -> list[datetime]:
@@ -72,9 +79,13 @@ class BriefSchedule:
         minutes = (
             llm.brief_minutes if now >= live_from else llm.brief_idle_minutes
         )
-        if self.last_at is None:
+        latest = max(
+            (t for t in (self.last_at, self.last_attempt_at) if t),
+            default=None,
+        )
+        if latest is None:
             return True
-        return now - self.last_at >= timedelta(minutes=minutes)
+        return now - latest >= timedelta(minutes=minutes)
 
 
 @dataclass
@@ -132,6 +143,11 @@ ITEMS_SQL = """
       AND c.election_relevant AND coalesce(d.is_canonical, TRUE)
       AND NOT coalesce(c.is_opinion, FALSE)
       AND {focus}
+    QUALIFY row_number() OVER (
+        PARTITION BY i.source_id
+        ORDER BY coalesce(c.is_results_report, FALSE) DESC,
+                 c.relevance_conf DESC, i.first_seen_at DESC
+    ) <= $per_source
     ORDER BY coalesce(c.is_results_report, FALSE) DESC, c.relevance_conf DESC,
              i.first_seen_at DESC
     LIMIT $limit
@@ -195,7 +211,13 @@ class BriefWriter:
         clause, extra = focus_clause(focus)
         rows = await self.db.fetch(
             ITEMS_SQL.replace("{focus}", clause),
-            {"start": start, "end": end, "limit": MAX_ITEMS, **extra},
+            {
+                "start": start,
+                "end": end,
+                "limit": MAX_ITEMS,
+                "per_source": MAX_ITEMS_PER_SOURCE,
+                **extra,
+            },
         )
         items = []
         references = {}
@@ -240,7 +262,8 @@ class BriefWriter:
             Brief,
             SYSTEM,
             user_prompt(start, end, focus, data.items, data.storylines),
-            max_tokens=4000,
+            max_tokens=BRIEF_MAX_TOKENS,
+            request_timeout=BRIEF_TIMEOUT_SECONDS,
             model=llm.model_brief,
             effort="medium",
             thinking={"type": "adaptive"},
@@ -292,10 +315,15 @@ class BriefWriter:
         return validated
 
     async def maybe_write(self, now: datetime | None = None) -> bool:
-        """Write a brief if one is due."""
+        """Write a brief if one is due.
+
+        A failed attempt waits for the next interval, and the next brief's
+        window still starts where the last written one ended.
+        """
         moment = now or datetime.now(UTC)
         if not self.schedule.due(moment):
             return False
+        self.schedule.last_attempt_at = moment
         try:
             written = await self.write(now=moment)
         except LlmError as error:

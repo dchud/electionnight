@@ -30,9 +30,10 @@ def write_rows(conn, settings, batches=6):
 
 
 def count(conn):
-    return conn.execute("SELECT count(*) FROM lake.raw.fetches").fetchall()[0][
-        0
-    ]
+    """Rows found by reading them. `count(*)` needs no data file to answer."""
+    return len(
+        conn.execute("SELECT fetch_id FROM lake.raw.fetches").fetchall()
+    )
 
 
 def test_maintenance_moves_inlined_rows_to_parquet(settings):
@@ -90,7 +91,9 @@ def test_prune_backups_keeps_newest(settings):
 def test_backup_restores_to_a_queryable_catalog(settings, tmp_path):
     conn = connect(settings)
     write_rows(conn, settings)
+    run_maintenance(conn)
     conn.close()
+    assert list(settings.paths.data.rglob("*.parquet"))
     backup = backup_catalog(settings, NOW)
 
     restored_paths = Paths.under(tmp_path / "restored")
@@ -205,10 +208,10 @@ def test_cleanup_removes_replaced_files_and_keeps_time_travel(settings):
     )
     for version, expected in versions:
         rows = conn.execute(
-            "SELECT count(*) FROM lake.nlp.embeddings "
+            "SELECT item_id FROM lake.nlp.embeddings "
             f"AT (VERSION => {version})"
         ).fetchall()
-        assert rows[0][0] == expected
+        assert len(rows) == expected
     conn.close()
 
 

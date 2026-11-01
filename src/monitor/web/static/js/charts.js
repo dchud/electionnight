@@ -122,6 +122,7 @@
   }
 
   function clickQuery(kind, datum, base) {
+    if (kind === "evidence") return datum.evidence || null;
     if (kind === "bin" && datum.bin_start) return base + binQuery(datum);
     if (kind === "level_bin" && datum.bin_start && datum.level) {
       return `${base}&also=primary:${datum.level}${binQuery(datum)}`;
@@ -136,21 +137,11 @@
         `/story/${datum.storyline_id}?${Monitor.params().toString()}`;
       return null;
     }
-    if (kind === "topic" && datum.topic) {
-      const start = new Date(datum.bin_start).toISOString();
-      return `kind=topic&key=${encodeURIComponent(datum.topic)}&bin_start=${encodeURIComponent(start)}&bin_minutes=15`;
-    }
-    if (kind === "entity" && datum.entity_id) {
-      return `kind=entity&key=${datum.entity_id}`;
-    }
     if (kind === "matrix" && datum.storyline_id) {
       if (!datum.share) return null;
       const bucket = datum.bucket === "Non-US" ? "NA" : datum.bucket;
       // Coverage counts every outlet's copy, so its evidence does too.
       return `kind=storyline&key=${datum.storyline_id}&bucket=${bucket}&copies=all`;
-    }
-    if (kind === "language" && datum.language) {
-      return `kind=language&key=${datum.language}`;
     }
     return null;
   }
@@ -166,8 +157,14 @@
     spec = withSeriesColors(spec, data.table);
     spec.config = { ...(spec.config || {}), ...themeConfig() };
     delete spec.config.signals;
-    if (chart.view) chart.view.finalize();
-    const result = await window.vegaEmbed(chart.el, spec, {
+    /* The new chart draws out of sight, so the old one stays until it is
+       ready. */
+    const stage = document.createElement("div");
+    stage.className = chart.stage
+      ? "chart-stage chart-stage-next"
+      : "chart-stage";
+    chart.el.appendChild(stage);
+    const result = await window.vegaEmbed(stage, spec, {
       actions: false,
       renderer: "svg",
       tooltip: { theme: themeName() === "dark" ? "dark" : "light" },
@@ -190,6 +187,23 @@
     }
     attachCrosshair(chart);
     await pushData(chart, data);
+    if (chart.stage) {
+      chart.stage.remove();
+      stage.classList.remove("chart-stage-next");
+    } else {
+      stage.classList.add("panel-arrive");
+    }
+    if (chart.shown) chart.shown.finalize();
+    chart.stage = stage;
+    chart.shown = result.view;
+  }
+
+  function sameLabels(chart, rows) {
+    const labels = new Set(rows.map((row) => row.label));
+    return (
+      labels.size === chart.labels.size &&
+      [...labels].every((label) => chart.labels.has(label))
+    );
   }
 
   async function pushData(chart, data) {
@@ -208,41 +222,62 @@
     await view.resize().runAsync();
   }
 
-  async function refresh(chart) {
-    if (chart.busy) return;
-    chart.busy = true;
-    try {
-      const data = await fetchData(chart);
-      const needsEmbed =
-        !chart.view ||
-        (data.table &&
-          data.table.some((row) => row.label && !chart.labels.has(row.label)) &&
-          chart.name === "stream");
-      if (needsEmbed) {
-        await embed(chart, data);
-      } else {
-        await pushData(chart, data);
-      }
-      showEmpty(chart, data);
-    } catch (error) {
-      console.warn("chart refresh failed", chart.name, error);
-    } finally {
-      chart.busy = false;
+  async function refreshOnce(chart) {
+    const qs = document.body.dataset.qs;
+    const data = await fetchData(chart);
+    /* The filters changed during the request, so this answer is stale. */
+    if (qs !== document.body.dataset.qs) {
+      chart.again = true;
+      return;
     }
+    const needsEmbed =
+      !chart.view ||
+      (chart.name === "stream" && !sameLabels(chart, data.table || []));
+    if (needsEmbed) {
+      await embed(chart, data);
+    } else {
+      await pushData(chart, data);
+    }
+    showEmpty(chart, data);
+  }
+
+  /* A refresh asked for during another runs after it. */
+  function refresh(chart) {
+    if (chart.running) {
+      chart.again = true;
+      return chart.running;
+    }
+    chart.running = (async () => {
+      do {
+        chart.again = false;
+        try {
+          await refreshOnce(chart);
+        } catch (error) {
+          console.warn("chart refresh failed", chart.name, error);
+        }
+      } while (chart.again);
+      chart.running = null;
+    })();
+    return chart.running;
   }
 
   function showEmpty(chart, data) {
     const empty = !(data.table && data.table.length);
     chart.el.style.visibility = empty ? "hidden" : "visible";
-    let note = chart.el.parentElement.querySelector(":scope > .empty");
+    const holder = chart.el.parentElement;
+    let note = holder.querySelector(":scope > .empty");
     if (empty && !note) {
+      /* The note fills its panel, and only its panel. */
+      if (getComputedStyle(holder).position === "static") {
+        holder.style.position = "relative";
+      }
       note = document.createElement("div");
       note.className = "empty";
       note.style.position = "absolute";
       note.style.inset = "0";
       note.textContent =
         chart.el.dataset.empty || "No data for these filters yet.";
-      chart.el.parentElement.appendChild(note);
+      holder.appendChild(note);
     } else if (!empty && note) {
       note.remove();
     }
@@ -312,6 +347,10 @@
         refresh(chart);
       });
     }
+    Monitor.charts = charts;
+    Monitor.switchers.push(() =>
+      charts.forEach((chart) => Monitor.dimWhile(chart.el, refresh(chart)))
+    );
     let last = 0;
     Monitor.bus.addEventListener("refresh", () => {
       const now = Date.now();

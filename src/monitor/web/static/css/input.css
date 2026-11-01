@@ -158,6 +158,13 @@ main { padding: .6rem 1rem 2rem; display: flex; flex-direction: column; gap: .6r
 .panel-body { flex: 1; min-height: 0; overflow-y: auto; padding: .4rem .7rem; }
 .panel-chart { flex: 1; min-height: 0; padding: .3rem .5rem; position: relative; }
 .chart { width: 100%; height: 100%; }
+.chart, [data-chart] { position: relative; }
+.chart-stage { width: 100%; height: 100%; }
+[data-chart] .chart-stage-next { position: absolute; inset: 0; visibility: hidden; }
+[hx-get], .chart, [data-chart], #us-map { transition: opacity .2s ease-out; }
+.panel-dim { opacity: .55; }
+.panel-arrive { animation: panel-arrive .2s ease-out; }
+@keyframes panel-arrive { from { opacity: 0; } }
 .empty { color: var(--text-3); font-size: .85rem; padding: 1rem .25rem; }
 :root[data-projector="1"] .band-who, :root[data-projector="1"] .band-coverage { scroll-snap-align: start; }
 
@@ -172,7 +179,6 @@ main { padding: .6rem 1rem 2rem; display: flex; flex-direction: column; gap: .6r
 .wire-meta { grid-column: 2; display: flex; flex-wrap: wrap; gap: .2rem .4rem; align-items: center; font-size: .72rem; color: var(--text-2); }
 .fresh { animation: fade-in .3s ease-out; }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .fresh { animation: none; } }
 .glyph { font-size: .62rem; letter-spacing: -.02em; color: var(--text-2); white-space: nowrap; }
 .badge {
   display: inline-block; padding: 0 .28rem; border-radius: 3px;
@@ -218,8 +224,9 @@ main { padding: .6rem 1rem 2rem; display: flex; flex-direction: column; gap: .6r
 /* Map */
 .map-wrap { display: grid; grid-template-columns: 1fr 11rem; gap: .5rem; height: 100%; min-height: 0; }
 #us-map { height: 100%; }
-.map-svg { width: 100%; height: 100%; display: block; }
-.map-state { stroke: var(--surface-1); stroke-width: .6; cursor: pointer; transition: fill .3s; }
+.map-svg { width: 100%; height: 100%; display: block; opacity: 0; transition: opacity .25s ease-out; }
+.map-svg.map-painted { opacity: 1; }
+.map-state { fill: var(--surface-2); stroke: var(--surface-1); stroke-width: .6; cursor: pointer; transition: fill .3s, opacity .3s; }
 .map-outline { fill: none; stroke: var(--text-1); stroke-width: calc(1.6px * var(--stroke-scale)); pointer-events: none; }
 .map-dim { opacity: .28; }
 .map-legend { font-size: .7rem; color: var(--text-2); display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .35rem; margin-bottom: .5rem; }
@@ -389,7 +396,7 @@ pre.raw { font-size: .72rem; overflow: auto; background: var(--surface-2); paddi
 .mini-map-wrap { display: flex; flex-direction: column; gap: .3rem; overflow-y: auto; }
 .mini-map { flex: 1; min-height: 11rem; }
 .county-map { height: 100%; }
-.map-county { stroke: var(--line); stroke-width: 1px; vector-effect: non-scaling-stroke; cursor: pointer; transition: fill .3s; }
+.map-county { fill: var(--surface-2); stroke: var(--line); stroke-width: 1px; vector-effect: non-scaling-stroke; cursor: pointer; transition: fill .3s; }
 .map-note { position: absolute; left: .5rem; bottom: .2rem; padding: 0; }
 
 /* Under the hood */
@@ -514,3 +521,14 @@ pre.raw { font-size: .72rem; overflow: auto; background: var(--surface-2); paddi
   .bar-row { grid-template-columns: minmax(0, 7rem) minmax(2rem, 1fr) 3rem minmax(0, 6rem); }
   .quote-columns { gap: .6rem; }
 }
+
+/* Last, so it overrides every transition above. */
+@media (prefers-reduced-motion: reduce) {
+  .fresh, .panel-arrive { animation: none; }
+  [hx-get], .chart, [data-chart], #us-map, .map-svg, .map-state, .map-county { transition: none; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+}
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .15s; }

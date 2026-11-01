@@ -74,6 +74,11 @@ LAG_LOW_SECONDS = 60.0
 CORE_STAGES = {"lang", "classify_a", "embed", "dedupe", "storylines"}
 
 
+def _log_catch_up_failure(task: asyncio.Task[None]) -> None:
+    if not task.cancelled() and task.exception() is not None:
+        log.error("catch_up_failed", error=repr(task.exception())[:300])
+
+
 def running_commit() -> str:
     """The checked-out commit, marked if the working tree has changes."""
     try:
@@ -104,6 +109,8 @@ class Pipeline:
         self.conn: duckdb.DuckDBPyConnection = connect(settings)
         self.db = Database(self.conn)
         self.catch_up_task: asyncio.Task[None] | None = None
+        self.stop = asyncio.Event()
+        self.exit_code = 0
         self.gate = NetworkGate(
             settings,
             probe=https_probe(settings),
@@ -272,8 +279,9 @@ class Pipeline:
             log.info("rollups_rebuilt", rows=sum(counts.values()))
 
     async def storyline_pass_job(self) -> None:
+        """Runs on the event loop, because workers change the same objects."""
         if self.storylines is not None:
-            await asyncio.to_thread(self.storylines.periodic)
+            self.storylines.periodic()
 
     async def ref_sync_job(self) -> None:
         counts = await self.db.run(
@@ -375,6 +383,10 @@ class Pipeline:
             "stages": [stage.status() for stage in self.stages],
             "shedding": self.shedding,
             "network": self.gate.status(),
+            "writer": {
+                "held_rows": self.writer.held_rows(),
+                "rejected_rows": self.writer.rejected_rows,
+            },
             "catch_up": self.poller.last_catch_up if self.poller else None,
             "archive": self.archive.status(),
             "llm": self.llm.status() if self.llm else {"disabled": True},
@@ -450,11 +462,14 @@ class Pipeline:
             parser, self.db, self.writer, **options
         )
         lang = stage(LangParser(), linger_seconds=0.2, backfill_batch=2000)
+        classify_parser = ClassifyParser(settings, self.llm, sources)
         classify = stage(
-            ClassifyParser(settings, self.llm, sources),
+            classify_parser,
             linger_seconds=CLASSIFY_LINGER_SECONDS,
             backfill_batch=240,
         )
+        # Behind live items, and not counted as lag.
+        classify_parser.requeue = classify.backlog.append
         embed = stage(self.embed, linger_seconds=0.5, backfill_batch=640)
         dedupe = stage(
             DedupeParser(settings, self.db),
@@ -538,13 +553,23 @@ class Pipeline:
         )
 
     async def _network_restored(self, gap: dict[str, Any]) -> None:
-        """Commit the gap before any item from after it can be read."""
         if self.llm is not None:
             self.llm.clear_failures()
+        await self._record_gap(gap)
+
+    async def _record_gap(self, gap: dict[str, Any]) -> None:
+        """Commit a gap before any item from after it can be read.
+
+        The row stays in the writer's buffer if the commit fails, and a long
+        gap still starts catch-up.
+        """
         seconds = (gap["gap_end"] - gap["gap_start"]).total_seconds()
         if seconds >= self.settings.poll.min_gap_seconds:
             self.writer.add("raw.collection_gaps", [gap])
-            await self.db.run(self.writer.flush)
+            try:
+                await self.db.run(self.writer.flush)
+            except Exception:
+                log.exception("gap_flush_failed", reason=gap["reason"])
         if (
             self.poller is not None
             and seconds >= self.settings.poll.catch_up_min_gap_seconds
@@ -552,8 +577,38 @@ class Pipeline:
             self.catch_up_task = asyncio.create_task(
                 self.poller.catch_up(gap["gap_start"])
             )
+            self.catch_up_task.add_done_callback(_log_catch_up_failure)
 
-    async def run(self) -> None:
+    async def note_downtime(self) -> None:
+        """Treat the time since the last fetch like a network gap."""
+        rows = await self.db.fetch(
+            "SELECT max(started_at) FROM lake.raw.fetches"
+        )
+        last = rows[0][0]
+        if last is not None:
+            await self._record_gap(
+                {
+                    "gap_start": last,
+                    "gap_end": datetime.now(UTC),
+                    "reason": "pipeline",
+                }
+            )
+
+    def _task_ended(self, task: asyncio.Task[Any]) -> None:
+        """Only shutdown ends a task, so stop and exit nonzero if one ends.
+
+        Loops catch `Exception` and carry on, so this sees only what gets past
+        them, such as a stray `CancelledError`.
+        """
+        if self.stop.is_set():
+            return
+        error = "cancelled" if task.cancelled() else repr(task.exception())
+        log.error("task_died", task=repr(task)[:200], error=error[:300])
+        self.exit_code = 1
+        self.stop.set()
+
+    async def run(self) -> int:
+        """Run until stopped. Returns the process exit code."""
         if not self.no_llm and self.settings.anthropic_api_key is not None:
             self.llm = LlmClient(
                 self.settings,
@@ -574,15 +629,20 @@ class Pipeline:
             stages=[stage.parser.name for stage in self.stages],
             llm=self.llm is not None,
         )
+        try:
+            await self.note_downtime()
+        except Exception:
+            log.exception("downtime_check_failed")
         tasks = [asyncio.ensure_future(j) for j in self.periodic_jobs()]
         tasks.append(asyncio.ensure_future(self.poller.run()))
         for stage in self.stages:
             tasks.extend(stage.tasks())
-        stop = asyncio.Event()
+        for task in tasks:
+            task.add_done_callback(self._task_ended)
         loop = asyncio.get_running_loop()
         for signum in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(signum, stop.set)
-        await stop.wait()
+            loop.add_signal_handler(signum, self.stop.set)
+        await self.stop.wait()
         log.info("pipeline_stopping")
         if self.catch_up_task is not None:
             tasks.append(self.catch_up_task)
@@ -594,7 +654,8 @@ class Pipeline:
         await self.db.run(self.writer.flush)
         await asyncio.to_thread(self.archive.stop)
         self.conn.close()
-        log.info("pipeline_stopped")
+        log.info("pipeline_stopped", exit_code=self.exit_code)
+        return self.exit_code
 
 
 def run_pipeline(
@@ -605,4 +666,6 @@ def run_pipeline(
     configure("pipeline", settings.paths.logs)
     init_lake(settings)
     with writer_lock(settings):
-        asyncio.run(Pipeline(settings, no_llm, stages).run())
+        code = asyncio.run(Pipeline(settings, no_llm, stages).run())
+    if code:
+        raise SystemExit(code)

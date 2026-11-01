@@ -5,7 +5,7 @@
     <article class="panel span-4" id="panel-wire">
       <div class="panel-head"><h2 class="panel-title">Live Wire</h2><span class="panel-note">newest relevant stories</span></div>
       <div class="panel-body" id="wire-panel">
-        <div id="wire-live" sse-swap="wire" hx-swap="afterbegin"></div>
+        <div id="wire-live" sse-swap="wire,wire-ready" hx-swap="afterbegin"></div>
         <div id="wire" hx-get="/frag/wire?{{ qs }}" hx-trigger="load, replay-tick from:body, wire-resume from:body"></div>
       </div>
     </article>
@@ -60,30 +60,30 @@
     </article>
     <article class="panel span-4 span-wide" id="panel-heat">
       <div class="panel-head"><h2 class="panel-title">Topic Heat</h2><span class="panel-note">last 3 h</span></div>
-      <div class="panel-chart"><div class="chart" data-chart="topic_heat" data-click="topic"></div></div>
+      <div class="panel-chart"><div class="chart" data-chart="topic_heat" data-click="evidence"></div></div>
     </article>
   </section>
 
   <section class="band band-who" id="band-4" aria-label="Who">
     <article class="panel span-6 span-wide" id="panel-bump">
       <div class="panel-head"><h2 class="panel-title">Entity Rank</h2><span class="panel-note">rank by mentions over time</span></div>
-      <div class="panel-chart"><div class="chart" data-chart="bump" data-time-axis="1" data-click="entity"></div></div>
+      <div class="panel-chart"><div class="chart" data-chart="bump" data-time-axis="1" data-click="evidence"></div></div>
     </article>
     <article class="panel span-6 span-wide" id="panel-tone">
       <div class="panel-head"><h2 class="panel-title">Tone by Outlet Lean</h2><span class="panel-note">hollow = n under 15; opinion excluded</span></div>
-      <div class="panel-chart"><div class="chart" data-chart="tone_by_lean" data-click="entity"></div></div>
+      <div class="panel-chart"><div class="chart" data-chart="tone_by_lean" data-click="evidence"></div></div>
     </article>
   </section>
 
   <section class="band band-coverage" id="band-5" aria-label="Coverage">
     <article class="panel span-7 span-wide" id="panel-matrix">
-      <div class="panel-head"><h2 class="panel-title">Coverage by Lean</h2><span class="panel-note">share of each bucket's election coverage</span></div>
+      <div class="panel-head"><h2 class="panel-title">Coverage by Lean</h2><span class="panel-note">share of each bucket's election coverage; blank = no stories in that bucket</span></div>
       <div class="panel-chart"><div class="chart" data-chart="coverage_matrix" data-click="matrix"></div></div>
     </article>
     <article class="panel span-5 span-wide" id="panel-global">
       <div class="panel-head"><h2 class="panel-title">Global Press</h2><span class="panel-note">non-English share</span></div>
       <div class="grid grid-cols-2 gap-2 flex-1 min-h-0 p-2">
-        <div class="min-h-0 overflow-y-auto"><div data-chart="global_press" data-click="language"></div></div>
+        <div class="min-h-0 overflow-y-auto"><div data-chart="global_press" data-click="evidence"></div></div>
         <div class="min-h-0 overflow-y-auto" hx-get="/frag/translated?{{ qs }}" hx-trigger="load, sse:snapshot throttle:{{ throttle }}s, replay-tick from:body"></div>
       </div>
     </article>

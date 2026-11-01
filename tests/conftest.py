@@ -7,6 +7,10 @@ import pytest
 
 # Tests must never read real keys or settings from the repository's `.env`.
 os.environ["MONITOR_ENV_FILE"] = os.devnull
+# `TestClient` sends this host name.
+os.environ["WEB__ALLOWED_HOSTS"] = (
+    '["127.0.0.1", "localhost", "::1", "testserver"]'
+)
 
 from monitor.lake import ensure_dirs, init_lake  # noqa: E402
 from monitor.settings import Paths, Settings  # noqa: E402

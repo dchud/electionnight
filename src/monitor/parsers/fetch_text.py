@@ -16,6 +16,12 @@ import trafilatura
 
 from monitor.archive import ArchiveWriter
 from monitor.disk import DiskGuard
+from monitor.ingest.download import (
+    BlockedAddress,
+    BodyTooLarge,
+    build_client,
+    download,
+)
 from monitor.ingest.feeds import canonicalize_url
 from monitor.ingest.network import NetworkGate
 from monitor.ingest.sources import Source
@@ -33,21 +39,33 @@ log = get(__name__)
 
 MAX_TEXT_CHARS = 20_000
 MAX_PAGE_BYTES = 5_000_000
+MAX_ROBOTS_BYTES = 1_000_000
 PAYWALL_STATUSES = {401, 402, 403}
 SHORT_TEXT_CHARS = 400
 ROBOTS_TTL_SECONDS = 6 * 3600
+# Rules not learned because of a timeout or server error are asked for again.
+ROBOTS_RETRY_SECONDS = 300
 BLOCK_AFTER_REFUSALS = 3
 BLOCK_SECONDS = 3600
+# Bounded, and stopped by `<`, so a hostile page cannot make this slow. The
+# regex engine holds the GIL, so a slow match would stop the whole pipeline.
 CANONICAL_RE = re.compile(
-    r"<link[^>]+rel=[\"']canonical[\"'][^>]*href=[\"']([^\"']+)[\"']", re.I
+    r"<link\b[^<>]{0,500}?rel=[\"']canonical[\"']"
+    r"[^<>]{0,500}?href=[\"']([^\"'<>]{1,2048})[\"']",
+    re.I,
 )
 AGENT_TOKEN_RE = re.compile(r"^[^/\s]+")
+
+
+class RobotsRefused(Exception):
+    """robots.txt disallows the page a redirect leads to."""
 
 
 @dataclass
 class RobotsEntry:
     parser: RobotFileParser
     fetched_at: float
+    ttl: float = ROBOTS_TTL_SECONDS
 
 
 def parse_robots(status: int, body: str) -> RobotFileParser:
@@ -66,12 +84,23 @@ def parse_robots(status: int, body: str) -> RobotFileParser:
     return parser
 
 
-def canonical_from_html(page: str) -> str | None:
+def canonical_from_html(page: str | bytes) -> str | None:
+    if isinstance(page, bytes):
+        page = page[:200_000].decode("latin-1")
     match = CANONICAL_RE.search(page[:200_000])
     return canonicalize_url(match.group(1)) if match else None
 
 
-def extract_text(page: str, url: str) -> str:
+def page_from(response: httpx.Response) -> str | bytes:
+    """Text when the headers name a charset, else bytes for the extractor.
+
+    The extractor reads a charset declared inside the page, which httpx does
+    not.
+    """
+    return response.text if response.charset_encoding else response.content
+
+
+def extract_text(page: str | bytes, url: str) -> str:
     text = trafilatura.extract(
         page,
         url=url,
@@ -115,11 +144,8 @@ class FetchTextParser:
         self.agent = settings.poll.user_agent
         token = AGENT_TOKEN_RE.match(self.agent)
         self.agent_token = token.group(0) if token else self.agent
-        self.client = client or httpx.AsyncClient(
-            follow_redirects=True,
-            timeout=httpx.Timeout(settings.nlp.fetch_timeout_seconds),
-            headers={"User-Agent": self.agent},
-            limits=httpx.Limits(max_connections=32),
+        self.client = client or build_client(
+            settings, settings.nlp.fetch_timeout_seconds, 32
         )
         self.locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self.last_fetch: dict[str, float] = {}
@@ -145,15 +171,23 @@ class FetchTextParser:
     async def _robots(self, url: str, domain: str) -> RobotFileParser:
         entry = self.robots.get(domain)
         now = time.monotonic()
-        if entry and now - entry.fetched_at < ROBOTS_TTL_SECONDS:
+        if entry and now - entry.fetched_at < entry.ttl:
             return entry.parser
         parts = urlsplit(url)
+        ttl = float(ROBOTS_RETRY_SECONDS)
         try:
             await self._pace(domain)
-            response = await self.client.get(
-                f"{parts.scheme}://{parts.netloc}/robots.txt"
+            response = await download(
+                self.client,
+                f"{parts.scheme}://{parts.netloc}/robots.txt",
+                MAX_ROBOTS_BYTES,
+                self.settings.nlp.fetch_deadline_seconds,
             )
             parser = parse_robots(response.status_code, response.text)
+            if response.status_code < 500:
+                ttl = float(ROBOTS_TTL_SECONDS)
+        except BlockedAddress:
+            raise
         except httpx.TransportError as error:
             # With no network, nothing is learned about this site's rules.
             if not await self.gate.reachable():
@@ -167,7 +201,7 @@ class FetchTextParser:
                 "robots_failed", domain=domain, error=type(error).__name__
             )
             parser = parse_robots(599, "")
-        self.robots[domain] = RobotsEntry(parser, now)
+        self.robots[domain] = RobotsEntry(parser, now, ttl)
         return parser
 
     def _note_refusal(self, domain: str, status: int) -> None:
@@ -181,9 +215,16 @@ class FetchTextParser:
         else:
             self.refusals[domain] = 0
 
+    async def _check_hop(self, request: httpx.Request) -> None:
+        """Apply robots.txt for the host a redirect actually reaches."""
+        url = str(request.url)
+        robots = await self._robots(url, request.url.host)
+        if not robots.can_fetch(self.agent_token, url):
+            raise RobotsRefused(url)
+
     async def _fetch(
         self, item: Item, domain: str
-    ) -> tuple[int | None, str | None, str, bytes | None]:
+    ) -> tuple[int | None, str | bytes | None, str, bytes | None]:
         """Returns (status, page, skip reason, original bytes)."""
         async with self.locks[domain]:
             if time.monotonic() < self.blocked_until.get(domain, 0):
@@ -192,11 +233,21 @@ class FetchTextParser:
             if not robots.can_fetch(self.agent_token, item.url):
                 return None, None, "robots.txt disallows", None
             await self._pace(domain)
-            response = await self.client.get(item.url)
+            try:
+                response = await download(
+                    self.client,
+                    item.url,
+                    MAX_PAGE_BYTES,
+                    self.settings.nlp.fetch_deadline_seconds,
+                    check_hop=self._check_hop,
+                )
+            except BodyTooLarge as error:
+                self._note_refusal(domain, error.status_code)
+                return error.status_code, None, "page too large", None
+            except RobotsRefused:
+                return None, None, "robots.txt disallows", None
             self._note_refusal(domain, response.status_code)
-        if len(response.content) > MAX_PAGE_BYTES:
-            return response.status_code, None, "page too large", None
-        return response.status_code, response.text, "", response.content
+        return response.status_code, page_from(response), "", response.content
 
     async def run(self, batch: list[Item]) -> ParserOutput:
         output = ParserOutput()
@@ -235,6 +286,7 @@ class FetchTextParser:
             text = await asyncio.to_thread(extract_text, page, item.url)
             canonical = canonical_from_html(page)
         item.text = text or None
+        item.paywalled = is_paywalled(status or 0, text, source)
         if self.archive is not None and body and status == 200:
             index_row = self.archive.add(
                 "pages",
@@ -252,7 +304,7 @@ class FetchTextParser:
             "text": text,
             "n_chars": len(text),
             "extractor": "trafilatura",
-            "paywalled": is_paywalled(status or 0, text, source),
+            "paywalled": item.paywalled,
             "canonical_url": canonical,
         }
         output.add("raw.article_text", row)

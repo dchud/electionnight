@@ -1,10 +1,11 @@
 from pathlib import Path
 
-from pydantic import BaseModel
+import pytest
+from pydantic import BaseModel, ValidationError
 from typer.testing import CliRunner
 
 from monitor.cli import app
-from monitor.settings import Settings
+from monitor.settings import Poll, Settings
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -54,6 +55,7 @@ def test_cli_lists_every_command():
         "disk",
         "prune",
         "backup",
+        "restore",
         "replay-check",
         "cost",
     ):
@@ -65,3 +67,16 @@ def test_user_agents_carry_no_email_address():
 
     for agent in (Settings().poll.user_agent, USER_AGENT):
         assert "@" not in agent
+
+
+def test_a_user_agent_with_an_address_is_rejected():
+    with pytest.raises(ValidationError):
+        Poll(user_agent="Monitor/1.0 (contact: someone@example.org)")
+
+
+def test_a_user_agent_with_an_address_is_rejected_from_the_environment(
+    monkeypatch,
+):
+    monkeypatch.setenv("POLL__USER_AGENT", "Monitor/1.0 (a@example.org)")
+    with pytest.raises(ValidationError):
+        Settings()

@@ -50,6 +50,9 @@ def https_probe(settings: Settings) -> Probe:
             await client.head(url)
         except httpx.HTTPError:
             return False
+        except Exception as error:
+            log.warning("probe_failed", url=url, error=repr(error)[:200])
+            return False
         return True
 
     async def probe() -> bool:
@@ -134,8 +137,12 @@ class NetworkGate:
             "gap_end": now,
             "reason": self.offline_reason,
         }
+        # A failure here must not leave collection held offline.
         if self.on_restored is not None:
-            await self.on_restored(gap)
+            try:
+                await self.on_restored(gap)
+            except Exception:
+                log.exception("gate_restore_failed", reason=gap["reason"])
         self.last_gap = gap
         self.offline_since = None
         self.offline_reason = None
@@ -183,9 +190,12 @@ class NetworkGate:
         while True:
             await asyncio.sleep(TICK_SECONDS)
             now_wall, now_mono = time.time(), time.monotonic()
-            self.note_clocks(wall, mono, now_wall, now_mono)
-            wall, mono = now_wall, now_mono
-            await self.check_restored()
+            try:
+                self.note_clocks(wall, mono, now_wall, now_mono)
+                wall, mono = now_wall, now_mono
+                await self.check_restored()
+            except Exception:
+                log.exception("gate_watch_failed")
 
     def status(self) -> dict[str, Any]:
         return {

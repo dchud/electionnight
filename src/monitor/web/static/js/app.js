@@ -4,6 +4,63 @@
 
   const root = document.documentElement;
   const body = document.body;
+  const DIM_TIMEOUT_MS = 8000;
+
+  /* The event stream closes in a hidden tab and reopens on return. Each open
+     stream holds one of the browser's six connections to this server, and
+     past that limit every request on the page waits. */
+  class PausableSource {
+    constructor(url, init) {
+      this.url = url;
+      this.init = init;
+      this.listeners = [];
+      this.native = null;
+      this.onopen = null;
+      this.onerror = null;
+      if (!document.hidden) this.open();
+    }
+    open() {
+      if (this.native) return;
+      const native = new EventSource(this.url, this.init);
+      native.onopen = (event) => this.onopen && this.onopen(event);
+      native.onerror = (event) => this.onerror && this.onerror(event);
+      this.listeners.forEach(([name, listener]) =>
+        native.addEventListener(name, listener)
+      );
+      this.native = native;
+    }
+    close() {
+      if (this.native) this.native.close();
+      this.native = null;
+    }
+    addEventListener(name, listener) {
+      this.listeners.push([name, listener]);
+      if (this.native) this.native.addEventListener(name, listener);
+    }
+    removeEventListener(name, listener) {
+      this.listeners = this.listeners.filter(
+        ([other, kept]) => other !== name || kept !== listener
+      );
+      if (this.native) this.native.removeEventListener(name, listener);
+    }
+    get readyState() {
+      return this.native ? this.native.readyState : EventSource.CONNECTING;
+    }
+  }
+  let stream = null;
+  window.htmx.createEventSource = (url) => {
+    if (stream) stream.close();
+    stream = new PausableSource(url, { withCredentials: true });
+    return stream;
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (!stream) return;
+    if (document.hidden) {
+      stream.close();
+    } else {
+      stream.open();
+    }
+  });
   const store = {
     get(key) {
       try {
@@ -32,6 +89,19 @@
       return params;
     },
     bus: new EventTarget(),
+    /* Charts and maps add a refresh here for filter switches. */
+    switchers: [],
+    /* Old content stays and dims until `work` finishes, or until the timeout
+       if a response never comes. */
+    dimWhile(element, work) {
+      element.classList.add("panel-dim");
+      const clear = () => element.classList.remove("panel-dim");
+      const timer = setTimeout(clear, DIM_TIMEOUT_MS);
+      return Promise.resolve(work).finally(() => {
+        clearTimeout(timer);
+        clear();
+      });
+    },
   });
 
   function updateClock() {
@@ -97,10 +167,6 @@
     if (article) {
       loadDrawer("/frag/article/" + article.dataset.article);
       return;
-    }
-    const claims = target.closest("[data-claims]");
-    if (claims) {
-      Monitor.openEvidence("kind=items&key=" + claims.dataset.claims);
     }
   });
 
@@ -178,7 +244,12 @@
 
   document.addEventListener("change", (event) => {
     const select = event.target.closest("[data-nav-select]");
-    if (select) window.location.search = select.value;
+    if (!select) return;
+    if (canSwitchInPlace()) {
+      switchFilters(new URL(select.value, window.location.href).href, select);
+    } else {
+      window.location.search = select.value;
+    }
   });
 
   /* Footnote popovers */
@@ -234,6 +305,25 @@
     const swapped = event.detail.target || event.target;
     paintDots(swapped);
     if (swapped.id === "drawer-body") openDrawer();
+    if (swapped.classList) swapped.classList.remove("panel-dim");
+  });
+  /* A panel's first content fades in. A refresh replaces content silently. */
+  document.addEventListener("htmx:beforeSwap", (event) => {
+    const target = event.detail.target;
+    if (target && target.matches("[hx-get]") && !target.children.length) {
+      target.classList.add("panel-arrive");
+    }
+  });
+  document.addEventListener("animationend", (event) => {
+    if (event.animationName === "panel-arrive") {
+      event.target.classList.remove("panel-arrive");
+    }
+  });
+  ["htmx:responseError", "htmx:sendError", "htmx:timeout"].forEach((kind) => {
+    document.addEventListener(kind, (event) => {
+      const target = event.detail.target;
+      if (target && target.classList) target.classList.remove("panel-dim");
+    });
   });
   /* A missing item still explains itself in the drawer. */
   document.addEventListener("htmx:beforeSwap", (event) => {
@@ -284,7 +374,45 @@
       wireLive.lastElementChild.remove();
     }
   });
+  /* Rows the page has both ways appear once. */
+  function dropRepeatedRows() {
+    const wire = document.getElementById("wire");
+    if (!wire || !wireLive) return;
+    const live = new Set(
+      [...wireLive.children].map((row) => row.dataset.article)
+    );
+    [...wire.children].forEach((row) => {
+      if (live.has(row.dataset.article)) row.remove();
+    });
+  }
+  let wireLiveStale = false;
+  document.addEventListener("htmx:afterSettle", (event) => {
+    const swapped = event.detail.target || event.target;
+    if (swapped && swapped.id === "wire" && wireLiveStale) {
+      wireLiveStale = false;
+      wireLive.replaceChildren();
+    }
+    if (swapped === wireLive || (swapped && swapped.id === "wire")) {
+      dropRepeatedRows();
+    }
+  });
+  /* The server sends this on every new stream, once it has noted what is
+     visible. Reloading the list now loses nothing from a disconnect. */
+  function reloadWire() {
+    if (Monitor.replay.active) return;
+    if (wirePaused) {
+      wireMissed = true;
+      return;
+    }
+    wireLive.replaceChildren();
+    body.dispatchEvent(new Event("wire-resume"));
+  }
   document.addEventListener("htmx:sseBeforeMessage", (event) => {
+    if (event.detail.type === "wire-ready") {
+      event.preventDefault();
+      reloadWire();
+      return;
+    }
     if (event.detail.type !== "wire") return;
     if (Monitor.replay.active) {
       event.preventDefault();
@@ -360,6 +488,8 @@
     replay.start = replay.end - REPLAY_SPAN_MS;
     replay.asOf = from || replay.start;
     root.dataset.replay = "1";
+    const replayNote = document.getElementById("replay-note");
+    if (replayNote) replayNote.hidden = false;
     const scrubber = document.getElementById("replay-scrubber");
     if (scrubber) {
       scrubber.min = String(replay.start);
@@ -503,6 +633,150 @@
       const button = document.querySelector('[data-brief="next"]:not([disabled])');
       if (button) button.click();
     }
+  });
+
+  /* Filter controls on the home page switch in place: the old content stays
+     until the new content arrives. Any failure falls back to a page load. */
+  function canSwitchInPlace() {
+    return (
+      window.location.pathname === "/" &&
+      Boolean(document.getElementById("main"))
+    );
+  }
+  function panelPath(element) {
+    const url = element.getAttribute("hx-get");
+    return new URL(url, window.location.href).pathname;
+  }
+  function swapPanels(page) {
+    const panels = new Map();
+    document.querySelectorAll("[hx-get]").forEach((element) => {
+      const path = panelPath(element);
+      if (!panels.has(path) && !element.closest("#drawer")) {
+        panels.set(path, element);
+      }
+    });
+    page.querySelectorAll("[hx-get]").forEach((model) => {
+      const old = panels.get(panelPath(model));
+      if (!old) throw new Error(`no panel for ${panelPath(model)}`);
+      if (old.getAttribute("hx-get") === model.getAttribute("hx-get")) return;
+      /* htmx reads the URL when it processes an element, so a new URL needs a
+         new element. It takes over the old content until its response. */
+      const fresh = document.importNode(model, false);
+      fresh.append(...old.childNodes);
+      /* A response still on its way to the old element lands nowhere. */
+      old.replaceWith(fresh);
+      Monitor.dimWhile(fresh, new Promise(() => {}));
+      window.htmx.process(fresh);
+    });
+  }
+  function replaceControls(page) {
+    const active = document.activeElement;
+    const focused = active && active.dataset ? active.dataset.filter : "";
+    const controls = document.querySelector("nav.controls");
+    const next = page.querySelector("nav.controls");
+    if (!controls || !next) throw new Error("no controls");
+    controls.replaceWith(document.importNode(next, true));
+    const title = page.querySelector(".app-title a");
+    if (title) {
+      document
+        .querySelector(".app-title a")
+        .setAttribute("href", title.getAttribute("href"));
+    }
+    if (focused) {
+      const control = document.querySelector(`[data-filter="${focused}"]`);
+      if (control) control.focus();
+    }
+  }
+  /* The control shows the choice at once, and `f` and `w` advance from it. */
+  function markChosen(control) {
+    if (!control) return;
+    const group = control.closest(".control-group");
+    if (!group) return;
+    group.querySelectorAll("a[aria-current]").forEach((link) => {
+      link.setAttribute("aria-current", String(link === control));
+    });
+  }
+  function applySwitch(url, page, addToHistory) {
+    if (!page.getElementById("main")) throw new Error("not the home page");
+    if (addToHistory) window.history.pushState({}, "", url);
+    shownSearch = window.location.search;
+    document.title = page.title;
+    Object.assign(body.dataset, page.body.dataset);
+    wireLiveStale = true;
+    reconnectStream(page.body.getAttribute("sse-connect"));
+    replaceControls(page);
+    swapPanels(page);
+    Monitor.switchers.forEach((refresh) => refresh());
+  }
+  let shownSearch = window.location.search;
+  let switchCount = 0;
+  let switchRequest = null;
+  async function switchFilters(url, control, addToHistory = true) {
+    switchCount += 1;
+    const mine = switchCount;
+    if (switchRequest) switchRequest.abort();
+    switchRequest = new AbortController();
+    markChosen(control);
+    try {
+      const response = await fetch(url, {
+        signal: switchRequest.signal,
+        headers: { Accept: "text/html" },
+      });
+      if (!response.ok) throw new Error(`${url}: ${response.status}`);
+      const text = await response.text();
+      if (mine !== switchCount) return;
+      const page = new DOMParser().parseFromString(text, "text/html");
+      applySwitch(url, page, addToHistory);
+    } catch (error) {
+      if (mine !== switchCount) return;
+      console.warn("filter switch fell back to a page load", error);
+      window.location.href = url;
+    }
+  }
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("a[data-filter]");
+    if (!link || !canSwitchInPlace()) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    event.preventDefault();
+    switchFilters(link.href, link);
+  });
+  window.addEventListener("popstate", () => {
+    if (canSwitchInPlace() && window.location.search !== shownSearch) {
+      switchFilters(window.location.href, null, false);
+    }
+  });
+
+  /* The server filters the stream by its URL, so a switch reopens it. */
+  let openIsExpected = false;
+  function reconnectStream(url) {
+    body.setAttribute("sse-connect", url);
+    if (!stream) return;
+    openIsExpected = true;
+    stream.url = url;
+    stream.close();
+    if (!document.hidden) stream.open();
+  }
+
+  /* Events were missed while the stream was down, so refresh every panel. */
+  let streamOpened = false;
+  document.body.addEventListener("htmx:sseOpen", () => {
+    if (!streamOpened) {
+      streamOpened = true;
+      return;
+    }
+    if (openIsExpected) {
+      openIsExpected = false;
+      return;
+    }
+    if (Monitor.replay.active) return;
+    ["snapshot", "brief", "status"].forEach((kind) => {
+      document
+        .querySelectorAll(`[hx-trigger*="sse:${kind}"]`)
+        .forEach((panel) => window.htmx.trigger(panel, `sse:${kind}`));
+    });
+    Monitor.bus.dispatchEvent(new Event("refresh"));
   });
 
   /* A snapshot refreshes charts; the hub's SSE arrives through htmx. */

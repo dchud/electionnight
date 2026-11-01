@@ -296,7 +296,7 @@ def run_dashboard(items: int) -> None:
     app = create_app(settings)
     timings: list[float] = []
     slowest: list[tuple[float, str]] = []
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://127.0.0.1") as client:
         web = app.state.web
         print(f"read model refresh took {web.model.refresh_ms} ms")
         for variant in VARIANTS:

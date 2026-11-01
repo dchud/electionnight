@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 from lingua import Language, LanguageDetectorBuilder
@@ -27,6 +28,13 @@ LANGUAGES = {
 
 # Below this confidence the feed's declared language is kept.
 TRUST_DETECTION = 0.75
+# With fewer letters than this the declared language is kept. On sampled
+# headlines the detector gave a wrong language at high confidence on text of
+# under 40 letters ("Polls close in Maine" as German, at 0.97), and none at 40
+# or more. A Chinese, Japanese, or Korean character counts as three letters.
+MIN_LETTERS_TO_OVERRIDE = 40
+WIDE_LETTER_WEIGHT = 3
+WIDE_LETTER_RE = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 
 
 def build_detector() -> Any:
@@ -37,16 +45,31 @@ def build_detector() -> Any:
     )
 
 
+def letter_count(text: str) -> int:
+    """Letters in a text, with wide characters counted as several."""
+    letters = sum(character.isalpha() for character in text)
+    wide = len(WIDE_LETTER_RE.findall(text))
+    return letters + wide * (WIDE_LETTER_WEIGHT - 1)
+
+
 def resolve_language(
-    declared: str, detected: str | None, confidence: float
+    declared: str,
+    detected: str | None,
+    confidence: float,
+    letters: int | None = None,
 ) -> tuple[str, float, str]:
-    """Pick a language. Returns (language, confidence, method)."""
+    """Pick a language. Returns (language, confidence, method).
+
+    The declared language stands unless the detector is confident and the
+    text is long enough for that confidence to mean something.
+    """
     declared = (declared or "").lower()[:2]
-    if detected is None:
+    if detected is None or confidence <= 0:
         return declared or "en", 0.0, "feed"
     if detected == declared:
         return declared, confidence, "feed+detected"
-    if confidence >= TRUST_DETECTION or not declared:
+    long_enough = letters is None or letters >= MIN_LETTERS_TO_OVERRIDE
+    if not declared or (confidence >= TRUST_DETECTION and long_enough):
         return detected, confidence, "detected"
     return declared, confidence, "feed"
 
@@ -74,7 +97,7 @@ class LangParser:
             text = f"{item.title}. {item.summary}"[:1000]
             detected, confidence = self._detect(text)
             language, score, method = resolve_language(
-                item.language, detected, confidence
+                item.language, detected, confidence, letter_count(text)
             )
             item.language = language
             output.add(

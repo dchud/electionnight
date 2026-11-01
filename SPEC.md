@@ -762,7 +762,7 @@ Steps for Claude Code at Phase 0:
 5. **Web slow:** increase fragment throttle to 20 s; projector mode reduces panels.
 
 ### 17.3 Ethics and etiquette
-- Identify the poller with a descriptive User-Agent including a contact email (owner's choice, set in `settings.toml`).
+- Identify the poller with a descriptive User-Agent that names the project and carries no email address.
 - Honor robots.txt for article fetches, use conditional GET, and rate-limit per domain.
 - Store full text for personal and classroom analysis only. Don't republish full texts. The dashboard shows extracts and always links to the original.
 
@@ -841,7 +841,7 @@ Co-mention network · first-to-report beeswarm · "Ask the data" (Sonnet text-to
 
 ## 21. Open questions for the owner (defaults in **bold**, used if no answer)
 
-1. **Q1, User-Agent contact:** the email to put in the poller's User-Agent string? (**default: none, generic UA with project name**)
+1. **Q1, User-Agent contact:** none. The owner decided the agent names the project and carries no email address.
 2. **Q2, Exposure:** localhost only, or LAN-visible so a second device can view? (**localhost**)
 3. **Q3, State-affiliated outlets:** include outlets like Xinhua, CGTN or TASS behind an "off by default" toggle, labeled state-controlled, for contrast in the Global Press panel? (**exclude**)
 4. **Q4, Additional languages** beyond the UN six (e.g. Portuguese, German, Japanese, Hindi)? (**no**)
@@ -865,7 +865,7 @@ ui_db = "data/ui.sqlite"
 tier_seconds = [60, 180, 600]
 per_domain_concurrency = 2
 jitter_pct = 15
-user_agent = "ElectionNightMonitor/1.0 (personal research; contact: <owner>)"
+user_agent = "ElectionNightMonitor/1.0 (personal research)"
 
 [commit]
 batch_seconds = 30

@@ -9,9 +9,9 @@ WITH members AS (
     WHERE {where} AND f.storyline_id = $storyline_id AND {filter}
 ),
 sizes AS (
-    SELECT dup_group_id, count(*) AS copies FROM facts
-    WHERE first_seen_at <= $as_of
-      AND dup_group_id IN (SELECT dup_group_id FROM members)
+    SELECT f.dup_group_id, count(*) AS copies FROM facts f
+    WHERE {copies_where}
+      AND f.dup_group_id IN (SELECT dup_group_id FROM members)
     GROUP BY 1
 ),
 shown AS (

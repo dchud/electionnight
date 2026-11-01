@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from importlib import resources
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -39,6 +40,15 @@ BUMP_BIN_SHORT = 15
 BUMP_BIN_LONG = 60
 BUMP_LONG_SPAN = timedelta(hours=6)
 BIN_MINUTES = 5
+HEAT_BIN_MINUTES = 15
+PRESS_BIN_MINUTES = 30
+# As many rows as the page keeps in its live list.
+WIRE_PUSH_LIMIT = 100
+KPI_RECENT_MINUTES = 15
+RISING_SHORT = timedelta(minutes=analytics.SHORT_WINDOW_MINUTES)
+RISING_SPAN = timedelta(
+    minutes=analytics.SHORT_WINDOW_MINUTES + analytics.TRAILING_WINDOW_MINUTES
+)
 
 
 def load_sql(name: str) -> str:
@@ -61,6 +71,16 @@ def lean_text(label: str | None, country: str | None = None) -> str:
     if label == "NA" or (country and country != "US"):
         return "Non-US outlet"
     return label or "Unrated"
+
+
+def evidence_query(**params: Any) -> str:
+    """URL params that open the evidence drawer for one figure."""
+    return urlencode(
+        {
+            key: value.isoformat() if isinstance(value, datetime) else value
+            for key, value in params.items()
+        }
+    )
 
 
 def safe_url(url: str | None) -> str:
@@ -167,6 +187,14 @@ def load_poll_closes(config_dir: Path) -> list[PollClose]:
     ]
 
 
+@dataclass(frozen=True)
+class AttentionBaseline:
+    """Relevant items in the baseline period, per state and in all."""
+
+    by_state: dict[str, int]
+    total: int
+
+
 class Panels:
     """Named queries, shaped for templates and charts."""
 
@@ -174,6 +202,10 @@ class Panels:
         self.settings = settings
         self.model = model
         self.poll_closes = load_poll_closes(settings.paths.config)
+        # No race has a result before polls first close.
+        self.calls_open = min(
+            (close.at for close in self.poll_closes), default=None
+        )
 
     def focus_sets(self) -> FocusSets:
         """Current members of each Focus choice."""
@@ -241,12 +273,19 @@ class Panels:
             SELECT count(*) AS n FROM facts f
             WHERE {where} AND f.first_seen_at >= $since
             """,
-            {**params, "since": now - timedelta(minutes=15)},
+            {**params, "since": now - timedelta(minutes=KPI_RECENT_MINUTES)},
         )
         active = self.model.query(
             "kpi_active",
-            "SELECT count(*) AS n FROM storylines WHERE status = 'active' "
-            "AND first_seen_at <= $as_of",
+            """
+            SELECT count(*) AS n FROM (
+                SELECT status FROM storyline_versions
+                WHERE created_at <= $as_of
+                QUALIFY row_number() OVER (
+                    PARTITION BY storyline_id
+                    ORDER BY version DESC, created_at DESC) = 1
+            ) WHERE status = 'active'
+            """,
             {"as_of": now},
         )
         status = self.model.read_status()
@@ -255,11 +294,17 @@ class Panels:
             (close for close in self.poll_closes if close.at > now), None
         )
         return {
-            "per_minute": recent[0]["n"] / 15,
+            "per_minute": recent[0]["n"] / KPI_RECENT_MINUTES,
+            "recent_minutes": KPI_RECENT_MINUTES,
             "spark": sparkline_points(series),
             "active_storylines": active[0]["n"],
-            "feeds_healthy": feeds.get("healthy", 0),
-            "feeds_total": feeds.get("total", 0),
+            # Feed health is known only for the present moment.
+            "feeds_healthy": None
+            if filters.is_replay
+            else feeds.get("healthy", 0),
+            "feeds_total": None
+            if filters.is_replay
+            else feeds.get("total", 0),
             "next_close": upcoming.label if upcoming else "All polls closed",
         }
 
@@ -283,6 +328,12 @@ class Panels:
                 f"Offline since {_clock(since)}: not collecting. "
                 "Collection resumes when the network returns"
             )
+        failed_since = self.model.refresh_failed_since
+        if failed_since is not None:
+            warnings.append(
+                f"Cannot read new data since {_clock(failed_since)}: "
+                "panels show older data"
+            )
         gaps = self.collection_gaps()
         if gaps and now - gaps[0]["gap_end"] < GAP_NOTICE:
             warnings.append(
@@ -290,6 +341,17 @@ class Panels:
                 f"–{_clock(gaps[0]['gap_end'])}; stories published then "
                 "were read on return"
             )
+        writer = status.get("writer") or {}
+        if writer.get("held_rows"):
+            warnings.append(
+                f"{writer['held_rows']} rows held back: commits are failing"
+            )
+        if writer.get("rejected_rows"):
+            warnings.append(
+                f"{writer['rejected_rows']} rows rejected: not in the lake"
+            )
+        if (status.get("archive") or {}).get("alive") is False:
+            warnings.append("Archive writer stopped: payloads are not saved")
         if llm.get("degraded"):
             warnings.append("LLM degraded: keyword classification")
         if budget.get("state") == "hard":
@@ -322,38 +384,44 @@ class Panels:
         )
         return [decorate_item(row) for row in rows]
 
-    def recent_wire_ids(self, filters: Filters) -> set[str]:
-        """Items already recent, which a new stream should not resend."""
-        return {row["item_id"] for row in self.wire_recent(filters)}
-
     def wire_recent(
-        self, filters: Filters, limit: int = 60
+        self,
+        filters: Filters,
+        after: int,
+        through: int,
+        limit: int = WIRE_PUSH_LIMIT,
     ) -> list[dict[str, Any]]:
-        """Items seen in the last 10 minutes, for the live stream.
+        """Items that became relevant in refreshes `after` < seq <= `through`.
 
-        Classification finishes out of order, so a stream cannot track a time
-        watermark: an item seen earlier may be committed after one seen later.
-        Callers track which ids they have sent.
+        Classification finishes out of order and can lag, so a stream tracks
+        when an item became visible, not when it was seen.
         """
         where, params = self._where(filters, windowed=False)
         rows = self.model.rows(
             load_sql("wire").replace(
-                "{where}", f"{where} AND f.first_seen_at > $since"
+                "{where}",
+                f"{where} AND f.visible_seq > $after "
+                "AND f.visible_seq <= $through",
             ),
-            {
-                **params,
-                "limit": limit,
-                "since": filters.now - timedelta(minutes=10),
-            },
+            {**params, "limit": limit, "after": after, "through": through},
         )
         return [decorate_item(row) for row in rows]
 
     def rising(self, filters: Filters, limit: int = 6) -> list[dict[str, Any]]:
+        """Storylines that meet the rising rule, highest velocity first."""
         where, params = self._where(filters, windowed=False)
+        every_copy, _ = self._where(filters, windowed=False, unique=False)
         rows = self.model.query(
             "rising",
-            load_sql("rising").replace("{where}", where),
-            {**params, "limit": limit},
+            load_sql("rising")
+            .replace("{where}", where)
+            .replace("{where_every_copy}", every_copy),
+            {
+                **params,
+                "limit": limit,
+                "min_score": analytics.RISING_SCORE,
+                "min_observed": analytics.RISING_MIN_OBSERVED,
+            },
         )
         if not rows:
             return []
@@ -387,8 +455,16 @@ class Panels:
                 {
                     **row,
                     "spark": sparkline_points(series),
-                    "rising": analytics.is_rising(
-                        row["observed"], row["trailing"]
+                    "observed_query": evidence_query(
+                        kind="storyline",
+                        key=row["storyline_id"],
+                        recent=analytics.SHORT_WINDOW_MINUTES,
+                    ),
+                    "outlets_query": evidence_query(
+                        kind="storyline",
+                        key=row["storyline_id"],
+                        recent=int(RISING_SPAN.total_seconds() // 60),
+                        copies="all",
                     ),
                     "is_new": row["first_seen_at"] is not None
                     and analytics.is_new(row["first_seen_at"], now),
@@ -430,12 +506,12 @@ class Panels:
                 )
                 for bucket in LEAN_BUCKETS
             ]
-            peak = max(shares) or 1
+            peak = max((s for s in shares if s is not None), default=0) or 1
             result[storyline_id] = [
                 {
                     "bucket": bucket,
                     "share": share,
-                    "intensity": share / peak,
+                    "intensity": (share or 0) / peak,
                 }
                 for bucket, share in zip(LEAN_BUCKETS, shares, strict=True)
             ]
@@ -470,17 +546,50 @@ class Panels:
 
     # Band 2
 
+    def attention_baseline(self, filters: Filters) -> AttentionBaseline:
+        """Baseline counts under the Level, Language, and Unique controls.
+
+        Focus chooses which states are shown, and never changes a state's
+        value, so it does not apply here or to the window beside it.
+        """
+        where, params = self._where(filters.with_(focus="all"), windowed=False)
+        period = "f.first_seen_at >= $start AND f.first_seen_at < $end"
+        params = {**params, "start": BASELINE_START, "end": BASELINE_END}
+        rows = self.model.query(
+            "attention_baseline",
+            f"""
+            SELECT s AS usps, count(*) AS n
+            FROM (SELECT *, unnest(states) AS s FROM facts) f
+            WHERE {where} AND {period}
+            GROUP BY 1
+            """,
+            params,
+        )
+        total = self.model.query(
+            "attention_baseline_total",
+            f"SELECT count(*) AS n FROM facts f WHERE {where} AND {period}",
+            params,
+        )[0]["n"]
+        return AttentionBaseline(
+            {row["usps"]: row["n"] for row in rows}, total
+        )
+
     def map_data(
         self, filters: Filters, metric: str = "attention"
     ) -> dict[str, Any]:
-        where, params = self._where(filters)
+        """Every state's figures. Focus only dims the states outside it."""
+        unfocused = filters.with_(focus="all")
+        where, params = self._where(unfocused)
         window_rows = self.model.query(
             "map_window",
             f"""
-            SELECT s AS usps, count(*) AS n, sum(f.tone) AS tone_sum,
-                   sum(f.tone * f.tone) AS tone_sq, count(f.tone) AS tone_n
+            SELECT s AS usps, count(*) AS n,
+                   sum(f.tone) FILTER (WHERE NOT f.is_opinion) AS tone_sum,
+                   sum(f.tone * f.tone) FILTER (WHERE NOT f.is_opinion)
+                       AS tone_sq,
+                   count(f.tone) FILTER (WHERE NOT f.is_opinion) AS tone_n
             FROM (SELECT *, unnest(states) AS s FROM facts) f
-            WHERE {where} GROUP BY 1
+            WHERE {where} GROUP BY 1 ORDER BY 1
             """,
             params,
         )
@@ -489,19 +598,7 @@ class Panels:
             f"SELECT count(*) AS n FROM facts f WHERE {where}",
             params,
         )[0]["n"]
-        baseline = self.model.query(
-            "map_baseline",
-            """
-            SELECT s AS usps, count(*) AS n
-            FROM (SELECT *, unnest(states) AS s FROM facts
-                  WHERE relevant AND canonical
-                    AND first_seen_at >= $start AND first_seen_at < $end)
-            GROUP BY 1
-            """,
-            {"start": BASELINE_START, "end": BASELINE_END},
-        )
-        baseline_total = sum(row["n"] for row in baseline)
-        baseline_by_state = {row["usps"]: row["n"] for row in baseline}
+        baseline = self.attention_baseline(filters)
         top_stories = self.model.query(
             "map_top_story",
             f"""
@@ -526,8 +623,8 @@ class Panels:
             attention = analytics.attention_index(
                 row["n"],
                 total_window,
-                baseline_by_state.get(usps, 0),
-                baseline_total,
+                baseline.by_state.get(usps, 0),
+                baseline.total,
             )
             tone = analytics.tone_aggregate(
                 row["tone_sum"] or 0, row["tone_sq"] or 0, row["tone_n"] or 0
@@ -539,6 +636,7 @@ class Panels:
                     "attention": round(attention, 3),
                     "tone": None if tone.mean is None else round(tone.mean, 3),
                     "tone_n": row["tone_n"],
+                    "tone_low_n": tone.low_n,
                     "top_storyline": top_by_state.get(usps),
                 }
             )
@@ -567,9 +665,19 @@ class Panels:
     def states_rising(
         self, filters: Filters, limit: int = 8
     ) -> list[dict[str, Any]]:
-        """Largest attention change: last 15 minutes against 2 hours."""
-        where, params = self._where(filters, windowed=False)
+        """States gaining attention, largest change first.
+
+        The change is the attention index of the last 15 minutes with the 2
+        hours before them as its baseline. Focus chooses which states are
+        listed.
+        """
+        where, params = self._where(filters.with_(focus="all"), windowed=False)
         now = filters.now
+        params = {
+            **params,
+            "short": now - RISING_SHORT,
+            "long": now - RISING_SPAN,
+        }
         rows = self.model.query(
             "states_rising",
             f"""
@@ -580,28 +688,51 @@ class Panels:
             WHERE {where} AND f.first_seen_at >= $long
             GROUP BY 1
             """,
+            params,
+        )
+        total = self.model.query(
+            "states_rising_total",
+            f"""
+            SELECT count(*) FILTER (WHERE f.first_seen_at >= $short)
+                       AS observed,
+                   count(*) FILTER (WHERE f.first_seen_at < $short)
+                       AS trailing
+            FROM facts f
+            WHERE {where} AND f.first_seen_at >= $long
+            """,
+            params,
+        )[0]
+        shown = self._focus_states(filters, self.focus_sets())
+        changes = [
             {
-                **params,
-                "short": now - timedelta(minutes=15),
-                "long": now - timedelta(minutes=135),
-            },
-        )
+                **row,
+                "change": analytics.attention_index(
+                    row["observed"],
+                    total["observed"],
+                    row["trailing"],
+                    total["trailing"],
+                ),
+            }
+            for row in rows
+            if shown is None or row["usps"] in shown
+        ]
         ranked = sorted(
-            (
-                {
-                    **row,
-                    "score": analytics.velocity_score(
-                        row["observed"], row["trailing"]
-                    ),
-                }
-                for row in rows
-            ),
-            key=lambda row: -row["score"],
-        )
-        peak = max((max(r["score"], 0) for r in ranked), default=1) or 1
+            (row for row in changes if row["change"] > 1),
+            key=lambda row: (-row["change"], row["usps"]),
+        )[:limit]
+        peak = max((row["change"] - 1 for row in ranked), default=0) or 1
         return [
-            {**row, "width": max(row["score"], 0) / peak * 100}
-            for row in ranked[:limit]
+            {
+                **row,
+                "width": (row["change"] - 1) / peak * 100,
+                "query": evidence_query(
+                    kind="state",
+                    key=row["usps"],
+                    recent=analytics.SHORT_WINDOW_MINUTES,
+                    focus="all",
+                ),
+            }
+            for row in ranked
         ]
 
     def race_calls(
@@ -616,12 +747,30 @@ class Panels:
         where, params = filters.where(
             sets, windowed=False, unique=False, relevant=False
         )
+        if self.calls_open is not None:
+            where += (
+                " AND least(f.seen_raw_at, "
+                "coalesce(f.published_at, f.seen_raw_at)) >= $calls_open"
+            )
+            params = {**params, "calls_open": self.calls_open}
         rows = self.model.query(
             "race_calls",
             load_sql("race_calls").replace("{where}", f"{where} AND {clause}"),
             {**params, **(extra or {}), "limit": limit},
         )
-        return rows
+        return [
+            {
+                **row,
+                "evidence": evidence_query(
+                    kind="items",
+                    key=",".join(row["item_ids"]),
+                    span="all",
+                    rel="any",
+                    copies="all",
+                ),
+            }
+            for row in rows
+        ]
 
     # Band 3
 
@@ -664,11 +813,24 @@ class Panels:
 
     def topic_heat(self, filters: Filters) -> list[dict[str, Any]]:
         where, params = self._where(filters, windowed=False)
-        return self.model.query(
+        rows = self.model.query(
             "topic_heat",
             load_sql("topic_heat").replace("{where}", where),
             {**params, "since": whole_bin(filters.now - TOPIC_HEAT_SPAN)},
         )
+        return [
+            {
+                **row,
+                "evidence": evidence_query(
+                    kind="topic",
+                    key=row["topic"],
+                    bin_start=row["bin_start"],
+                    bin_minutes=HEAT_BIN_MINUTES,
+                    span="all",
+                ),
+            }
+            for row in rows
+        ]
 
     # Band 4
 
@@ -677,9 +839,21 @@ class Panels:
         span = filters.now - filters.window_start
         minutes = BUMP_BIN_LONG if span > BUMP_LONG_SPAN else BUMP_BIN_SHORT
         sql = load_sql("bump").replace("{where}", where)
-        return self.model.query(
+        rows = self.model.query(
             "bump", sql.replace("{bin_minutes}", str(minutes)), params
         )
+        return [
+            {
+                **row,
+                "evidence": evidence_query(
+                    kind="entity",
+                    key=row["entity_id"],
+                    bin_start=row["bin_start"],
+                    bin_minutes=minutes,
+                ),
+            }
+            for row in rows
+        ]
 
     def tone_by_lean(self, filters: Filters) -> list[dict[str, Any]]:
         where, params = self._where(filters, unique=False)
@@ -705,6 +879,17 @@ class Panels:
                     "ci_high": aggregate.ci_high,
                     "n": aggregate.n,
                     "low_n": aggregate.low_n,
+                    "evidence": evidence_query(
+                        kind="tone",
+                        key=row["entity_id"],
+                        copies="all",
+                        opinion="exclude",
+                        **(
+                            {}
+                            if row["bucket"] == "All"
+                            else {"bucket": row["bucket"]}
+                        ),
+                    ),
                 }
             )
         return result
@@ -755,7 +940,9 @@ class Panels:
                         "storyline_id": row["storyline_id"],
                         "label": row["label"],
                         "bucket": bucket,
-                        "share": round(row["shares"][bucket], 4),
+                        "share": None
+                        if row["shares"][bucket] is None
+                        else round(row["shares"][bucket], 4),
                         "divergence": round(row["divergence"], 4),
                     }
                 )
@@ -763,11 +950,23 @@ class Panels:
 
     def global_press(self, filters: Filters) -> list[dict[str, Any]]:
         where, params = self._where(filters)
-        return self.model.query(
+        rows = self.model.query(
             "global_press",
             load_sql("global_press").replace("{where}", where),
             params,
         )
+        return [
+            {
+                **row,
+                "evidence": evidence_query(
+                    kind="language",
+                    key=row["language"],
+                    bin_start=row["bin_start"],
+                    bin_minutes=PRESS_BIN_MINUTES,
+                ),
+            }
+            for row in rows
+        ]
 
     def latest_translated(
         self, filters: Filters, limit: int = 6
@@ -799,20 +998,54 @@ class Panels:
         offset: int = 0,
         windowed: bool = True,
         relevant: bool = True,
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[list[dict[str, Any]], int, int]:
+        """A page of items, with the counts of all items and their outlets."""
         where, params = self._where(
             filters, windowed=windowed, relevant=relevant
         )
         all_params = {**params, **extra}
         count = self.model.query(
             "evidence_count",
-            f"SELECT count(*) AS n FROM facts f WHERE {where} AND {clause}",
+            f"""
+            SELECT count(*) AS n, count(DISTINCT f.source_id) AS outlets
+            FROM facts f WHERE {where} AND {clause}
+            """,
             all_params,
-        )[0]["n"]
+        )[0]
         rows = self.model.query(
             "evidence",
             load_sql("wire").replace("{where}", f"{where} AND {clause}")
             + " OFFSET $offset",
             {**all_params, "limit": limit, "offset": offset},
         )
-        return [decorate_item(row) for row in rows], count
+        return (
+            [decorate_item(row) for row in rows],
+            count["n"],
+            count["outlets"],
+        )
+
+    def evidence_mentions(
+        self,
+        filters: Filters,
+        clause: str,
+        extra: dict[str, Any],
+        entity_id: str,
+        toned: bool,
+        windowed: bool = True,
+        relevant: bool = True,
+    ) -> int:
+        """Mentions of one entity in the items an evidence list shows."""
+        where, params = self._where(
+            filters, windowed=windowed, relevant=relevant
+        )
+        with_tone = "AND m.tone IS NOT NULL" if toned else ""
+        return self.model.query(
+            "evidence_mentions",
+            f"""
+            SELECT count(*) AS n
+            FROM mentions m JOIN facts f USING (item_id)
+            WHERE {where} AND {clause}
+              AND m.entity_id = $mention_entity {with_tone}
+            """,
+            {**params, **extra, "mention_entity": entity_id},
+        )[0]["n"]

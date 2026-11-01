@@ -370,22 +370,61 @@ def test_attention_index_is_one_at_baseline_and_shrinks_small_counts():
     assert analytics.attention_index(1, 10, 0, 0) == 1.0
 
 
-def test_tone_aggregate_hides_low_n_and_shrinks():
+def test_tone_aggregate_hides_small_counts_and_flags_low_n():
     assert analytics.tone_aggregate(2.0, 2.0, 4).hidden is True
     low = analytics.tone_aggregate(5.0, 5.0, 5)
     assert low.hidden is False
     assert low.low_n is True
-    assert low.mean == pytest.approx(0.5)
+    assert low.mean == pytest.approx(1.0)
     high = analytics.tone_aggregate(15.0, 25.0, 15)
     assert high.low_n is False
-    assert high.mean == pytest.approx(0.75)
-    assert high.ci_low < high.mean < high.ci_high
+    assert high.mean == pytest.approx(1.0)
+
+
+def test_t_975_matches_published_values():
+    published = {4: 2.776, 5: 2.571, 13: 2.160, 29: 2.045, 99: 1.984}
+    for df, value in published.items():
+        assert analytics.t_975(df) == pytest.approx(value, abs=0.001)
+
+
+@pytest.mark.parametrize("n", [6, 14, 30, 100])
+@pytest.mark.parametrize(("mean", "sd"), [(-1.0, 0.5), (1.5, 0.3), (0.3, 0.8)])
+def test_tone_interval_covers_the_true_mean_95_percent_of_the_time(
+    n, mean, sd
+):
+    trials = 4000
+    samples = np.random.default_rng(n).normal(mean, sd, (trials, n))
+    covered = 0
+    for sum_, square in zip(
+        samples.sum(axis=1), (samples**2).sum(axis=1), strict=True
+    ):
+        tone = analytics.tone_aggregate(float(sum_), float(square), n)
+        covered += tone.ci_low <= mean <= tone.ci_high
+    assert 0.93 <= covered / trials <= 0.97
+
+
+def test_tone_interval_of_two_counts_with_one_mean_overlap():
+    small = analytics.tone_aggregate(-6.0, 6.45, 6)
+    large = analytics.tone_aggregate(-100.0, 108.91, 100)
+    assert small.mean == pytest.approx(large.mean)
+    assert small.ci_low <= large.ci_high and large.ci_low <= small.ci_high
+
+
+def test_tone_interval_stops_at_the_ends_of_the_scale():
+    tone = analytics.tone_aggregate(9.0, 17.0, 5)
+    assert tone.ci_high == analytics.TONE_MAX
 
 
 def test_coverage_share_and_divergence():
     assert analytics.coverage_share(5, 50) == 0.1
-    assert analytics.coverage_share(5, 0) == 0.0
+    assert analytics.coverage_share(5, 0) is None
     assert analytics.divergence([0.1, 0.4, 0.2]) == pytest.approx(0.3)
+
+
+def test_a_bucket_without_coverage_does_not_drive_divergence():
+    assert analytics.divergence([0.5, None, 0.2]) == pytest.approx(0.3)
+    assert analytics.divergence([0.5, None]) == 0.0
+    assert analytics.divergence([None, None]) == 0.0
 
 
 # Rollups
@@ -477,8 +516,10 @@ def test_rollup_rebuild_agrees_with_incremental(settings):
     writer = BatchWriter(conn, settings)
     seed_items(writer)
     engine_ = RollupEngine(settings, writer)
-    engine_.run(conn, now=NOW)
-    writer.flush()
+    # Cycles run inside a bin until the seeded bin has left the window.
+    for minutes in (0, 60, 118, 121, 123, 126, 130):
+        engine_.run(conn, now=NOW + timedelta(minutes=minutes, seconds=17))
+        writer.flush()
     assert RollupEngine(settings, writer).run(conn, rebuild=True) == {}
     conn.close()
 

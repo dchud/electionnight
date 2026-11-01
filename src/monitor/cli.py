@@ -13,6 +13,14 @@ import typer
 
 from monitor.settings import get_settings
 
+TIME_FORMATS = [
+    "%Y-%m-%d",
+    "%Y-%m-%d %H:%M",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%dT%H:%M",
+    "%Y-%m-%dT%H:%M:%S",
+]
+
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 sources_app = typer.Typer(no_args_is_help=True, help="Manage news sources.")
 ref_app = typer.Typer(no_args_is_help=True, help="Build reference data.")
@@ -194,7 +202,9 @@ def prune(
     thin: str | None = typer.Option(None, help="Keep one snapshot per span."),
     older_than: str | None = typer.Option(None, help="Used with --thin."),
     before: datetime | None = typer.Option(
-        None, help="Expire all snapshots before this time."
+        None,
+        formats=TIME_FORMATS,
+        help="Expire all snapshots before this time, read as Eastern.",
     ),
     all_but_latest: bool = typer.Option(False, "--all-but-latest"),
     backups: int | None = typer.Option(None, help="Keep newest N backups."),
@@ -230,6 +240,27 @@ def backup(
 
 
 @app.command()
+def restore(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Name the backup and change nothing."
+    ),
+) -> None:
+    """Replace the catalog with the newest backup that can serve as one."""
+    from monitor.lake import WriterBusy
+    from monitor.maintenance import RestoreError, restore_catalog
+
+    try:
+        typer.echo(restore_catalog(get_settings(), dry_run=dry_run))
+    except WriterBusy as error:
+        typer.echo(f"a process holds {error}", err=True)
+        typer.echo("stop it first: scripts/stop_pipeline.sh", err=True)
+        raise typer.Exit(1) from error
+    except RestoreError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from error
+
+
+@app.command()
 def offload(
     lake: bool = typer.Option(
         False, "--lake", help="Also upload the current Parquet files."
@@ -247,8 +278,12 @@ def offload(
 
 @app.command("replay-check")
 def replay_check(
-    from_: datetime = typer.Option(..., "--from"),
-    to: datetime = typer.Option(..., "--to"),
+    from_: datetime = typer.Option(
+        ..., "--from", formats=TIME_FORMATS, help="Start, read as Eastern."
+    ),
+    to: datetime = typer.Option(
+        ..., "--to", formats=TIME_FORMATS, help="End, read as Eastern."
+    ),
 ) -> None:
     """Report item counts by bin for a time range."""
     from monitor.rollups import replay_report

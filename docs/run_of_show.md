@@ -24,7 +24,8 @@ uv run monitor web --reload              # the dashboard, reloads on code change
 ```
 
 The dashboard is at <http://127.0.0.1:8000>. Add `--lan` to reach it from a
-second device on the same network.
+second device on the same network. Other devices can read every page but cannot
+change anything; their watchlist buttons have no effect.
 
 ## Moving to the classroom
 
@@ -63,6 +64,11 @@ If lag stays above 3 minutes, set feeds to a lower tier in `config/sources.csv`
 or disable tier 3 feeds and restart the pipeline. If that is not enough, stop
 Stage B for international sources by disabling those sources.
 
+A browser keeps 6 connections per server, and each dashboard tab showing on
+screen holds one for its event stream. A hidden tab closes its stream and
+refreshes when it returns. Keep at most 5 dashboard windows showing at once;
+beyond that, every request on every page waits.
+
 ## Changing things live
 
 Collection and the dashboard are separate processes. Restarting the dashboard
@@ -75,12 +81,24 @@ never interrupts collection.
 | A dashboard or poller setting in `.env` | Restart that process | None |
 | Sources, watchlist, or race files in `config/` | Saved files load within a minute. New feeds need a pipeline restart | None |
 | Parser code | `scripts/restart_pipeline.sh`. It takes about 10 seconds and resumes where it stopped. Feeds polled in that gap are picked up on the next poll | None |
-| A prompt or a parser's logic, reprocessing old items | Bump the parser's `version` and restart. Old items reprocess in the background behind live items | API spend per item; see `monitor cost` |
+| A prompt or a parser's logic, reprocessing old items | Bump the parser's `version` and restart. Old items reprocess in the background behind live items. A later stage runs an item only if it still owes that item at its own version | API spend per item; see `monitor cost` |
 | A new table | Add it to `TABLES` in `src/monitor/lake.py` and restart the pipeline | None |
 | Changing an existing table's columns | Avoid this during class. Add a new table instead | None |
 
-Use a scratch lake to try anything risky: set `PATHS__CATALOG` and
-`PATHS__DATA` for that one command. Only the pipeline writes to the real lake.
+Use a scratch lake to try anything risky. `SCRATCH_DIR` places every runtime
+path under one directory, including the writer lock, the control directory, and
+the backups, and gives that directory its own copy of `config/`. Set it for
+each command:
+
+```bash
+SCRATCH_DIR=tmp/scratch uv run monitor init
+SCRATCH_DIR=tmp/scratch uv run monitor prune --dry-run --all-but-latest
+```
+
+A scratch directory starts with no lake rows, model files, or reference files.
+A scratch pipeline polls real feeds. Moving the catalog or data path without
+the rest of the lake's paths is refused. Only the pipeline writes to the real
+lake.
 
 To roll back:
 
@@ -107,20 +125,32 @@ remain readable.
 | The dashboard feels slow | When uncached queries pass `WEB__SLOW_QUERY_MS` at p95, panels refresh at most every 20 seconds until p95 falls below half of it | Projector mode shows fewer panels |
 | The dashboard is down after an edit | Collection continues. A file with an error stops the dashboard until the file is saved again | Fix the file, or `git checkout` it |
 | The dashboard is down | Collection continues | `uv run monitor web --reload` |
-| The pipeline is down | Polling stops, and the strip reports it | `scripts/restart_pipeline.sh` |
+| The pipeline is down | Polling stops, and the strip reports it. On restart, time since the last fetch is recorded as a gap, and a gap of 5 minutes or more reads the news sitemaps once | `scripts/restart_pipeline.sh` |
+| The strip says rows are held back | Commits are failing. The rows stay in memory and every commit retries them | Check free disk, and look for `flush_failed` in `logs/pipeline.jsonl` |
+| The strip says rows are rejected | Rows the lake refused repeatedly are in `data/control/rejected-*.jsonl`, not in the lake. Later rows are unaffected | Look for `rows_rejected` in `logs/pipeline.jsonl`. The warning clears after the file is moved out of `data/control/` and the pipeline restarts |
+| The strip says the archive writer stopped | Original feed and page bodies are not saved. Collection continues | Check free disk, then `scripts/restart_pipeline.sh` |
 | The catalog is damaged | Queries fail | Stop the pipeline, then restore the newest backup, as described below |
 
 ### Restoring the catalog
 
+Stop the dashboard first, and start it again afterward.
+
 ```bash
-kill -TERM "$(cat data/writer.lock)"
-mv data/catalog.sqlite data/catalog.sqlite.damaged
-zstd -d "$(ls -t data/backups/catalog-*.zst | head -1)" -o data/catalog.sqlite
+scripts/stop_pipeline.sh
+uv run monitor restore
 scripts/restart_pipeline.sh
 ```
 
-Items committed after that backup, at most 15 minutes' worth, are fetched again
-only if the feeds still list them.
+`monitor restore` uses the newest backup whose catalog is intact and whose
+Parquet files all exist, and names each newer backup it skipped and why.
+Maintenance deletes replaced Parquet files after 2 hours and a prune deletes
+them at once, so an older backup can be unusable. `uv run monitor restore
+--dry-run` names the backup and changes nothing. With no usable backup, the
+command exits with an error and changes nothing.
+
+The replaced catalog and its WAL stay beside it as
+`data/catalog.sqlite.damaged-<time>`. Items committed after the backup are
+fetched again only if the feeds still list them.
 
 ## After class
 

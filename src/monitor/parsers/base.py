@@ -30,6 +30,7 @@ class Item:
     vec: Any = None
     is_canonical: bool = True
     text: str | None = None
+    paywalled: bool = False
     backfill: bool = False
 
     @property
@@ -94,7 +95,12 @@ def needs_parser_sql(name: str, version: str, where: str = "TRUE") -> str:
 
 RELEVANT_SQL = """
     i.item_id IN (
-        SELECT item_id FROM lake.nlp.classify_a
+        SELECT item_id FROM (
+            SELECT item_id, election_relevant, relevance_conf
+            FROM lake.nlp.classify_a
+            QUALIFY row_number() OVER (
+                PARTITION BY item_id ORDER BY created_at DESC) = 1
+        )
         WHERE election_relevant AND relevance_conf >= {threshold}
     )
 """

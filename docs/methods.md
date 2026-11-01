@@ -85,9 +85,17 @@ faithful, concise English translations of the headline and summary.
 **Extraction.** "Extract only what the text states. Do not infer outcomes and
 do not add outside knowledge." For each entity, tone is how the article
 portrays it, from -2 to +2: "This is about the portrayal, not whether the news
-is good for them." A tone needs a quote of at most 25 words copied verbatim
-from the text. A tone whose quote does not appear in the text is discarded.
-Race calls `projected`, `declared`, and `conceded` require explicit language.
+is good for them." A tone needs a quote of 3 to 25 words copied verbatim from
+the title, summary, or text, with the entity's name in the quote or within 200
+characters of it. A tone whose quote fails this is discarded. A race call of
+`projected`, `declared`, or `conceded` needs evidence that uses language for
+that status and names the winner, and is not negated, conditional, about a
+past election, or about a primary. A `leading` claim needs language about
+counted votes, not polls. Every race call from an item published before polls
+closed in that state is discarded, and before the first close nationally when
+the state is unknown. A caller's name stays only if the article names that
+caller. Rejecting a true claim costs less than publishing a false one, so these
+rules also drop some true claims.
 
 **Storyline labels.** The label is at most 8 words: "Name the event or subject,
 not its significance." The summary is at most 2 sentences stating what the
@@ -97,8 +105,10 @@ headlines report, and each sentence ends with the references it rests on.
 the context given. Do not guess."
 
 **Briefs.** "Every sentence must rest on the supplied items." A sentence with
-no citation is deleted. "Results are claims reported by news outlets, not
-official results. Attribute them." Seats are never totaled.
+no citation is deleted. A citation is checked to be a supplied item, not
+checked to support the claim. "Results are claims reported by news outlets, not
+official results. Attribute them." Seats are never totaled. Each outlet
+supplies at most 3 items to a brief.
 
 ## Metric definitions
 
@@ -109,39 +119,63 @@ copies.
 last 15 minutes and *e* is the count in the 120 minutes before that, times
 15/120. The score is (*o* - *e*) / sqrt(*e* + 1). An entry is rising when the
 score is at least 2 and *o* is at least 3. A storyline is new when its
-`first_seen_at` is within 30 minutes.
+`first_seen_at` is within 30 minutes. Rising Storylines lists only storylines
+that meet the rule.
 
 **State attention index.** The state's share of relevant items in the window,
-divided by its share over the baseline, November 1 12:00 to November 3 12:00
-ET. The ratio shrinks toward 1 with 5 pseudo-counts: (*n* + 5) / (*expected* +
-5), where *expected* is the baseline share times the window's total. 1.0 is
+divided by its share of relevant items over the baseline, November 1 12:00 to
+November 3 12:00 ET. Both shares divide by all relevant items, including
+stories that name no state, under the same Level, Language, and Unique
+controls. Focus chooses which states are shown and does not change a state's
+value. The ratio shrinks toward 1 with 5 pseudo-counts: (*n* + 5) / (*expected*
++ 5), where *expected* is the baseline share times the window's total. 1.0 is
 normal for that state.
 
+**States rising.** The attention index of the last 15 minutes, with the 120
+minutes before them as the baseline. A state is listed when its value is above
+1, largest first. A rise that every state shares leaves each state at 1.
+
 **Tone aggregates.** The mean of mention-level or item-level tone, with a 95%
-confidence interval from the standard error.
+*t*-interval: mean plus or minus *t* times *s* / sqrt(*n*), where *t* is the
+97.5th percentile with *n* - 1 degrees of freedom and *s* is the sample
+standard deviation. The interval stops at the ends of the scale, -2 and +2. In
+simulation with normally distributed tone, it covers the true mean 95% of the
+time at *n* of 6, 14, 30, and 100.
 
 - Hidden when *n* is under 5.
-- Flagged "low n" and drawn hollow when *n* is under 15.
-- The mean shrinks toward 0 with 5 pseudo-observations: sum / (*n* + 5).
-- Always shown with *n*.
+- Flagged "low n" when *n* is under 15. Charts draw the point hollow, and the
+  map's tooltip says "low n".
+- Always shown with *n*, the number of observations that have a tone.
 - Opinion items are excluded.
+- Figures that count all copies treat each copy as an observation. Copies of
+  one story are not independent, so those intervals are narrower than the
+  evidence supports.
 
 **Coverage by lean.** For storyline *s* and lean bucket *b*: items(*s*, *b*) /
 items(all relevant, *b*) in the window. This is the share of bucket *b*'s
 election coverage devoted to *s*, so a bucket with more outlets does not
-dominate.
+dominate. A bucket with no stories in the window has no share. It reads as no
+data, not 0%, and does not count toward divergence.
 
 **First to report.** The earliest `first_seen_at` per storyline among canonical
 items. Poll timing makes this accurate to about 3 minutes at best.
 
-**Race calls in the news.** Grouped by race and winner, with the number of
-distinct outlets, the earliest report, and who is said to have made the call.
-These are never added into a seat count.
+**Race calls in the news.** Grouped by race and named candidate, with the
+number of distinct outlets, their names, the earliest report, and who the
+article says made the call. A caller's name comes from article text, so the
+reporting outlets appear beside it. These are never added into a seat count.
 
 **Copies.** Near-duplicates form a group with one canonical member. Metrics
 count canonical members unless the Unique control says otherwise. Outlet-level
 metrics, such as coverage by lean and the outlet lists, count all copies,
 because republishing is that outlet's coverage choice.
+
+**Evidence.** A count on the dashboard opens a drawer listing what it counted,
+and the drawer's heading gives the same count. The heading also gives the
+number of outlets, and the number of mentions when the count is of an entity's
+mentions. The line under the heading names the filters and the time span, which
+for some figures is not the global window: stories per minute covers the last
+15 minutes, and Race Calls covers all time.
 
 **Focus.** A story matches a race through race keys from extraction, or through
 its classified state and race type. Without extraction, watching one House race
@@ -180,7 +214,9 @@ rate an outlet as a whole, not each story.
 district boundary files may not match them, so there is no district map. House
 races are listed by their `XX-NN` code, and county maps show local geography.
 County data comes from place names matched against the Census gazetteer, so a
-county named in a story is not proof the story is about all of that county.
+county named in a story is not proof the story is about all of that county. A
+name shared by several counties, with no state to choose among them, gets no
+county.
 
 **Search.** Results rank by cosine similarity, which measures closeness of
 meaning across languages, not truth or importance. Vectors cover the title and
@@ -188,17 +224,32 @@ summary, not the full text.
 
 ## Differences from the build specification
 
-`docs/verify_log.md` records every checked fact and difference. These two
-change what the dashboard shows.
+`docs/verify_log.md` records every checked fact and difference. These change
+what the dashboard shows.
 
 **Time axis.** The specification places every item at `first_seen_at`. On the
 dashboard, an item published more than 2 hours before it was first seen sits at
 its published time, so a feed's first fetch does not appear as one spike of
-days-old stories. An item published during a collection gap and first seen
-within 15 minutes after it also sits at its published time, so a gap does not
-appear as one spike on return. The article view shows the true first-seen time
-and says when an item was placed this way. `gold.*` bins use `first_seen_at`
-unchanged, so they can differ from dashboard counts for those items.
+days-old stories. An item published during a collection gap, or up to 20
+minutes before it, and first seen within 15 minutes after it also sits at its
+published time, so a gap does not appear as one spike on return. The article
+view shows the true first-seen time and says when and why an item was placed
+this way. `gold.*` bins use `first_seen_at` unchanged, so they can differ from
+dashboard counts for those items.
+
+**Tone.** The specification shrinks a mean toward 0 with 5 pseudo-observations
+and gives it a 95% interval from the standard error. An interval around the
+shrunk mean does not cover the true mean 95% of the time: in simulation with a
+true mean of -1.0 and a standard deviation of 0.5, it covered 32% at *n* of 6
+and 83% at *n* of 100. The dashboard draws the unshrunk mean with a
+*t*-interval, and the low-n flag marks small counts.
+
+**Replay.** Replay shows what had been first seen by its time, wherever an item
+sits on the time axis. The attention baseline, the active storyline count, and
+the status that admits a storyline to Rising are as of that time. Storyline
+labels, summaries, and assignments, and each item's classification and tone,
+are current, and the replay header says so. Feed health is not shown for a past
+moment.
 
 **Catching up after a gap.** Collection reads RSS and Atom feeds. After a gap
 of 5 minutes or more, it also reads each listed outlet's Google News sitemap

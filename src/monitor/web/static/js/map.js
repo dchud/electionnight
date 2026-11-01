@@ -39,6 +39,7 @@
       .attr("class", "map-state")
       .attr("d", path)
       .attr("data-usps", (feature) => USPS_BY_FIPS[feature.id])
+      .style("fill", surfaceColor())
       .on("click", (_event, feature) => onClick(USPS_BY_FIPS[feature.id]));
     const outlines = svg.append("g");
     return { svg, states, outlines, path, features };
@@ -105,7 +106,8 @@
     if (!container) return;
     let metric = "attention";
     let map = null;
-    let busy = false;
+    let running = null;
+    let again = false;
     const tip = document.getElementById("tip");
     const legend = document.createElement("div");
     legend.className = "map-legend";
@@ -117,25 +119,46 @@
       window.location.href = `/state/${usps}?${query}`;
     }
 
-    async function refresh() {
-      if (busy) return;
-      busy = true;
-      try {
-        if (!map) {
-          const topology = await (
-            await fetch("/static/topo/states-albers-10m.json")
-          ).json();
-          map = drawMap(container, { topology, onClick: navigate });
-        }
-        const params = Monitor.params();
-        params.set("metric", metric);
-        const data = await (await fetch(`/api/data/map?${params}`)).json();
-        paint(data);
-      } catch (error) {
-        console.warn("map refresh failed", error);
-      } finally {
-        busy = false;
+    async function refreshOnce() {
+      if (!map) {
+        const topology = await (
+          await fetch("/static/topo/states-albers-10m.json")
+        ).json();
+        map = drawMap(container, { topology, onClick: navigate });
       }
+      const qs = document.body.dataset.qs;
+      const shownMetric = metric;
+      const params = Monitor.params();
+      params.set("metric", shownMetric);
+      const data = await (await fetch(`/api/data/map?${params}`)).json();
+      /* The choice changed during the request, so this answer is stale. */
+      if (qs !== document.body.dataset.qs || shownMetric !== metric) {
+        again = true;
+        return;
+      }
+      paint(data);
+      Monitor.mapData = data;
+    }
+
+    /* A refresh asked for during another runs after it. */
+    function refresh() {
+      if (running) {
+        again = true;
+        return running;
+      }
+      running = (async () => {
+        do {
+          again = false;
+          try {
+            await refreshOnce();
+          } catch (error) {
+            console.warn("map refresh failed", error);
+          }
+        } while (again);
+        if (map) map.svg.classed("map-painted", true);
+        running = null;
+      })();
+      return running;
     }
 
     function valueOf(row) {
@@ -154,7 +177,7 @@
         .trim();
       const focus = data.focus_states ? new Set(data.focus_states) : null;
       map.states
-        .attr("fill", (feature) => {
+        .style("fill", (feature) => {
           const value = valueOf(byState.get(USPS_BY_FIPS[feature.id]));
           return value === null || value === undefined ? empty : color(value);
         })
@@ -184,9 +207,15 @@
           const title = document.createElement("strong");
           title.textContent = usps;
           tip.appendChild(title);
+          const counted =
+            metric === "tone" ? (row ? row.tone_n : 0) : row ? row.n : 0;
+          const lowN =
+            metric === "tone" && row && row.tone !== null && row.tone_low_n
+              ? " · low n"
+              : "";
           tip.appendChild(
             document.createTextNode(
-              ` · ${words} ${shown} · n=${row ? row.n : 0}`
+              ` · ${words} ${shown} · n=${counted}${lowN}`
             )
           );
           if (row && row.top_storyline) {
@@ -229,6 +258,7 @@
     }
     Monitor.bus.addEventListener("refresh", refresh);
     Monitor.bus.addEventListener("theme", refresh);
+    Monitor.switchers.push(() => Monitor.dimWhile(container, refresh()));
     refresh();
   }
 
@@ -315,10 +345,11 @@
         const rows = await fetchTable("story_map", el);
         const { counts, color } = volumeFill(rows, "usps");
         const empty = surfaceColor();
-        map.states.attr("fill", (feature) => {
+        map.states.style("fill", (feature) => {
           const n = counts.get(USPS_BY_FIPS[feature.id]);
           return n ? color(n) : empty;
         });
+        map.svg.classed("map-painted", true);
         bindVolumeTip(
           map.states,
           (feature) => USPS_BY_FIPS[feature.id],
@@ -366,10 +397,11 @@
         .attr("class", "map-county")
         .attr("d", path)
         .attr("data-fips", (feature) => feature.id)
+        .style("fill", surfaceColor())
         .on("click", (_event, feature) => {
           Monitor.openEvidence(`kind=county&key=${feature.id}`);
         });
-      return { features, counties };
+      return { features, counties, svg };
     }
     async function refresh() {
       try {
@@ -381,10 +413,11 @@
         const rows = await fetchTable("state_counties", el);
         const { counts, color } = volumeFill(rows, "fips");
         const empty = surfaceColor();
-        map.counties.attr("fill", (feature) => {
+        map.counties.style("fill", (feature) => {
           const n = counts.get(feature.id);
           return n ? color(n) : empty;
         });
+        map.svg.classed("map-painted", true);
         bindVolumeTip(
           map.counties,
           (feature) => feature.properties.name,

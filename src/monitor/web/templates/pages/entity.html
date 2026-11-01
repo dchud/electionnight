@@ -12,11 +12,11 @@
     </article>
     <article class="panel span-6 page-panel-tall">
       <div class="panel-head"><h2 class="panel-title">Tone over time</h2><span class="panel-note">95% CI band; bins under 5 hidden; hollow = n under 15; opinion excluded</span></div>
-      <div class="panel-chart"><div class="chart" data-chart="entity_tone" data-params="key={{ page_key }}" data-base-query="kind=entity&key={{ page_key }}" data-click="bin" data-time-axis="1" data-empty="Too few toned mentions for these filters. Each point needs at least 5."></div></div>
+      <div class="panel-chart"><div class="chart" data-chart="entity_tone" data-params="key={{ page_key }}" data-base-query="kind=tone&key={{ page_key }}&opinion=exclude" data-click="bin" data-time-axis="1" data-empty="Too few toned mentions for these filters. Each point needs at least 5."></div></div>
     </article>
     <article class="panel span-6 page-panel-tall">
       <div class="panel-head"><h2 class="panel-title">Tone by outlet lean</h2><span class="panel-note">all copies; opinion excluded</span></div>
-      <div class="panel-chart"><div class="chart" data-chart="entity_tone_lean" data-params="key={{ page_key }}" data-base-query="kind=entity&key={{ page_key }}&copies=all" data-click="lean" data-empty="Too few toned mentions per lean bucket. Each point needs at least 5."></div></div>
+      <div class="panel-chart"><div class="chart" data-chart="entity_tone_lean" data-params="key={{ page_key }}" data-base-query="kind=tone&key={{ page_key }}&copies=all&opinion=exclude" data-click="lean" data-empty="Too few toned mentions per lean bucket. Each point needs at least 5."></div></div>
     </article>
     <article class="panel span-6 page-panel-tall">
       <div class="panel-head"><h2 class="panel-title">Tone by lean, numbers</h2></div>

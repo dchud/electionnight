@@ -10,7 +10,7 @@ import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape as html_escape
 from typing import Any
 
@@ -20,8 +20,6 @@ from monitor import analytics
 from monitor.settings import Settings
 from monitor.web.filters import WINDOWS, Filters
 from monitor.web.panels import (
-    BASELINE_END,
-    BASELINE_START,
     LEAN_BUCKETS,
     Panels,
     decorate_item,
@@ -33,6 +31,7 @@ from monitor.web.panels import (
 from monitor.web.readmodel import ReadModel
 from monitor.web.vectors import SearchUnavailable, Vectors
 
+BACKLOG_AFTER = timedelta(hours=2)
 EXTRACT_CHARS = 1200
 NEIGHBORS = 8
 RELATED_STORYLINES = 8
@@ -106,6 +105,14 @@ def race_label(race: dict[str, Any]) -> str:
     label = OFFICE_LABELS.get(office, office.replace("_", " ").title())
     district = race.get("district")
     return f"{label} {district}" if district else label
+
+
+def placement_reason(item: dict[str, Any]) -> str | None:
+    """Why an item sits at its published time: `backlog`, `gap`, or None."""
+    placed, seen = item["first_seen_at"], item["seen_raw_at"]
+    if placed == seen:
+        return None
+    return "backlog" if seen - placed > BACKLOG_AFTER else "gap"
 
 
 def tone_cell(row: dict[str, Any]) -> dict[str, Any]:
@@ -479,10 +486,9 @@ class Drill:
             "storyline": story,
             "neighbors": self.neighbors(item, filters),
             "group": self.dup_group(item, filters),
-            "on_axis_at_published": item["first_seen_at"]
-            != item["seen_raw_at"],
+            "placed_because": placement_reason(item),
             "after_as_of": filters.is_replay
-            and item["first_seen_at"] > filters.now,
+            and item["seen_raw_at"] > filters.now,
         }
 
     def neighbors(
@@ -538,7 +544,7 @@ class Drill:
                    coalesce(s.name, f.source_id) AS outlet, f.source_id,
                    s.lean_label, s.country
             FROM facts f LEFT JOIN sources s USING (source_id)
-            WHERE f.dup_group_id = $group AND f.first_seen_at <= $as_of
+            WHERE f.dup_group_id = $group AND f.seen_raw_at <= $as_of
             ORDER BY f.canonical DESC, f.first_seen_at, f.item_id
             """,
             {"group": group, "as_of": filters.now},
@@ -860,9 +866,9 @@ class Drill:
             }
             for bucket in LEAN_FACETS
         ]
-        peak = max((bar["share"] for bar in bars), default=0) or 1
+        peak = max((bar["share"] or 0 for bar in bars), default=0) or 1
         for bar in bars:
-            bar["width"] = bar["share"] / peak * 100
+            bar["width"] = (bar["share"] or 0) / peak * 100
         return {"coverage": bars if any(bar["n"] for bar in bars) else []}
 
     def story_articles(
@@ -871,6 +877,7 @@ class Drill:
         """Items in the storyline. Unique collapses each duplicate group."""
         collapse = filters.copies == "unique"
         where, extra = self._where(filters, unique=False)
+        copies_where, _ = self._where(filters, windowed=False, unique=False)
         clauses = ["TRUE"]
         keyword = (params.get("kw") or "").strip()
         lean = params.get("lean") or ""
@@ -888,6 +895,7 @@ class Drill:
             self._sql(
                 "story_articles",
                 where,
+                copies_where=copies_where,
                 filter=" AND ".join(clauses),
                 group_key="coalesce(dup_group_id, item_id)"
                 if collapse
@@ -932,9 +940,21 @@ class Drill:
         ranked = self.vectors.storylines.rank(
             vector, list(by_id), RELATED_STORYLINES
         )
+        where, extra = self._where(filters, windowed=False)
+        counts = self.model.query(
+            "related_counts",
+            f"""
+            SELECT f.storyline_id, count(*) AS n FROM facts f
+            WHERE {where} AND f.storyline_id IN (SELECT unnest($ids))
+            GROUP BY 1
+            """,
+            {**extra, "ids": [key for key, _ in ranked]},
+        )
+        n_by_id = {row["storyline_id"]: row["n"] for row in counts}
         return {
             "related": [
-                {**by_id[key], "score": score} for key, score in ranked
+                {**by_id[key], "score": score, "n": n_by_id.get(key, 0)}
+                for key, score in ranked
             ]
         }
 
@@ -1144,44 +1164,29 @@ class Drill:
         )
         return rows[0] if rows else None
 
-    def _baseline(self) -> list[dict[str, Any]]:
-        return self.model.query(
-            "map_baseline",
-            """
-            SELECT s AS usps, count(*) AS n
-            FROM (SELECT *, unnest(states) AS s FROM facts
-                  WHERE relevant AND canonical
-                    AND first_seen_at >= $start AND first_seen_at < $end)
-            GROUP BY 1
-            """,
-            {"start": BASELINE_START, "end": BASELINE_END},
-        )
-
-    def _attention(self, usps: str, n: float, total: float) -> float:
-        """The state's attention index, from the baseline in the Methods."""
-        baseline = self._baseline()
-        state_baseline = next(
-            (row["n"] for row in baseline if row["usps"] == usps), 0
-        )
-        return analytics.attention_index(
-            n, total, state_baseline, sum(row["n"] for row in baseline)
-        )
-
     def state_head(
         self, filters: Filters, usps: str, params: Params
     ) -> dict[str, Any]:
         state = self.state(usps) or {}
         sets = self.panels.focus_sets()
         where, extra = filters.where(sets)
-        totals = self.model.query(
-            "state_totals",
-            f"""
+        totals_sql = """
             SELECT count(*) FILTER (WHERE list_contains(f.states, $usps)) AS n,
                    count(*) AS total
             FROM facts f WHERE {where}
-            """,
+        """
+        totals = self.model.query(
+            "state_totals",
+            totals_sql.format(where=where),
             {**extra, "usps": usps},
         )[0]
+        where, extra = filters.with_(focus="all").where(sets)
+        unfocused = self.model.query(
+            "state_totals",
+            totals_sql.format(where=where),
+            {**extra, "usps": usps},
+        )[0]
+        baseline = self.panels.attention_baseline(filters)
         close_at = parse_iso(state.get("poll_close_et"))
         all_close_at = parse_iso(state.get("poll_close_all_et"))
         return {
@@ -1189,14 +1194,22 @@ class Drill:
             "is_battleground": usps in sets.battleground_states,
             "state_watched": usps in sets.watch_states,
             "state_n": totals["n"],
-            "attention": self._attention(usps, totals["n"], totals["total"]),
+            "attention": analytics.attention_index(
+                unfocused["n"],
+                unfocused["total"],
+                baseline.by_state.get(usps, 0),
+                baseline.total,
+            ),
             "close_at": close_at,
             "all_close_at": all_close_at if all_close_at != close_at else None,
             "polls_closed": close_at is not None and close_at <= filters.now,
         }
 
     def state_attention(self, filters: Filters, usps: str) -> dict[str, Any]:
-        where, params = self._where(filters)
+        """The index per bin. As on the map, Focus does not change a value."""
+        unfocused = filters.with_(focus="all")
+        where, params = self._where(unfocused)
+        baseline = self.panels.attention_baseline(filters)
         minutes = max(bin_minutes(filters), 15)
         rows = self.model.query(
             "state_bins",
@@ -1215,7 +1228,13 @@ class Drill:
                 "n": row["n"],
                 "total": row["total"],
                 "attention": round(
-                    self._attention(usps, row["n"], row["total"]), 3
+                    analytics.attention_index(
+                        row["n"],
+                        row["total"],
+                        baseline.by_state.get(usps, 0),
+                        baseline.total,
+                    ),
+                    3,
                 ),
             }
             for row in rows
@@ -1344,6 +1363,10 @@ class Drill:
                 "SELECT canonical_name AS name FROM entities "
                 "WHERE entity_id = $key"
             ),
+            "tone": (
+                "SELECT canonical_name AS name FROM entities "
+                "WHERE entity_id = $key"
+            ),
             "source": "SELECT name FROM sources WHERE source_id = $key",
         }
         if kind not in lookups:
@@ -1370,4 +1393,8 @@ class Drill:
             },
         }
         builder = builders.get(chart)
-        return None if builder is None else builder(filters, key)
+        if builder is None:
+            return None
+        if chart.startswith("story_"):
+            key = self.resolve_storyline(key) or key
+        return builder(filters, key)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -21,6 +22,7 @@ from markupsafe import Markup, escape
 from monitor.llm.citations import split_sentences
 from monitor.logs import configure, get
 from monitor.settings import Settings, get_settings
+from monitor.web.access import AccessControl, is_loopback
 from monitor.web.drilldown import Drill
 from monitor.web.filters import (
     FOCUSES,
@@ -178,7 +180,19 @@ def create_app(
     """Build the app. `load_embedding_model` replaces the on-disk model."""
     from monitor.web.routes import api, fragments, pages, sse, under
 
-    app = FastAPI(title="Election Night Monitor", lifespan=lifespan)
+    # FastAPI's documentation pages load their assets from CDNs.
+    app = FastAPI(
+        title="Election Night Monitor",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
+    app.add_middleware(
+        AccessControl,
+        allowed_hosts=settings.web.allowed_hosts,
+        lan=not is_loopback(settings.web.host),
+    )
     app.state.web = Web(settings, load_embedding_model)
     app.mount(
         "/static",
@@ -205,7 +219,11 @@ def serve(
 ) -> None:
     configure("web", settings.paths.logs)
     log.info("web_starting", host=host, port=port, reload=reload)
+    settings.web.host = host
+    limit = None if is_loopback(host) else settings.web.lan_concurrency
     if reload:
+        # The reloader's child builds its own settings from the environment.
+        os.environ["WEB__HOST"] = host
         uvicorn.run(
             "monitor.web.app:create_app_from_env",
             factory=True,
@@ -215,8 +233,13 @@ def serve(
             reload=True,
             reload_dirs=[str(WEB_DIR)],
             reload_includes=["*.py", "*.sql"],
+            limit_concurrency=limit,
         )
         return
     uvicorn.run(
-        create_app(settings), host=host, port=port, log_level="warning"
+        create_app(settings),
+        host=host,
+        port=port,
+        log_level="warning",
+        limit_concurrency=limit,
     )

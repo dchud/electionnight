@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import io
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -15,11 +16,24 @@ import feedparser
 
 SUMMARY_MAX_CHARS = 2000
 RAW_ENTRY_MAX_CHARS = 8000
+RAW_FIELD_MAX_CHARS = 500
+CATEGORY_MAX_CHARS = 100
+CATEGORY_MAX_COUNT = 20
+URL_MAX_CHARS = 2048
+STRIP_INPUT_MAX_CHARS = 100_000
+FEED_MAX_BYTES = 10_000_000
 SITEMAP_MAX_BYTES = 20_000_000
+EARLIEST_YEAR = 2000
 
 TRACKING_PARAMS = {"fbclid", "gclid", "cmpid", "ocid", "ref", "smid"}
-TAG_RE = re.compile(r"<[^>]+>")
+TAG_RE = re.compile(r"<[^<>]+>")
 SPACE_RE = re.compile(r"\s+")
+# Numeric references to UTF-16 surrogates, which make `feedparser` raise.
+SURROGATE_REF_RE = re.compile(
+    rb"&#(?:[xX]0*[dD][89a-fA-F][0-9a-fA-F]{2}"
+    rb"|0*(?:5529[6-9]|55[3-9]\d{2}|56\d{3}|57[0-2]\d{2}|573[0-3]\d|5734[0-3]))"
+    rb";"
+)
 
 
 def canonicalize_url(url: str) -> str:
@@ -48,19 +62,34 @@ def canonicalize_url(url: str) -> str:
     return urlunsplit((scheme, host, path, urlencode(query), ""))
 
 
+def canonical_or_none(url: str) -> str | None:
+    """The canonical form, or None for a URL that cannot be parsed."""
+    try:
+        return canonicalize_url(url)
+    except ValueError:
+        return None
+
+
 def strip_html(text: str | None) -> str:
     """Remove tags and collapse whitespace."""
     if not text:
         return ""
-    without_tags = TAG_RE.sub(" ", text)
+    without_tags = TAG_RE.sub(" ", text[:STRIP_INPUT_MAX_CHARS])
     return SPACE_RE.sub(" ", html.unescape(without_tags)).strip()
+
+
+def _plausible(value: datetime) -> datetime | None:
+    """The date, unless no real story could carry it."""
+    if EARLIEST_YEAR <= value.year <= datetime.now(UTC).year + 1:
+        return value
+    return None
 
 
 def struct_to_datetime(value: struct_time | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime(*value[:6], tzinfo=UTC)
+        return _plausible(datetime(*value[:6], tzinfo=UTC))
     except (TypeError, ValueError):
         return None
 
@@ -93,6 +122,10 @@ def _entry_date(entry: Any) -> datetime | None:
     )
 
 
+def _clip(value: Any, limit: int) -> Any:
+    return value[:limit] if isinstance(value, str) else value
+
+
 def raw_entry(entry: Any) -> dict[str, Any]:
     """The entry as the feed sent it, up to a size cap."""
     contents = entry.get("content") or []
@@ -110,7 +143,16 @@ def raw_entry(entry: Any) -> dict[str, Any]:
     used = sum(len(str(value)) for value in raw.values() if value)
     if used <= RAW_ENTRY_MAX_CHARS:
         return raw
-    room = RAW_ENTRY_MAX_CHARS
+    short = ("id", "published", "updated", "title", "link", "author")
+    for name in short:
+        raw[name] = _clip(raw[name], RAW_FIELD_MAX_CHARS)
+    raw["tags"] = [
+        _clip(term, CATEGORY_MAX_CHARS)
+        for term in raw["tags"][:CATEGORY_MAX_COUNT]
+    ]
+    room = RAW_ENTRY_MAX_CHARS - sum(
+        len(str(raw[name])) for name in (*short, "tags") if raw[name]
+    )
     for name in ("summary", "content"):
         text = raw[name] or ""
         raw[name] = text[: max(room // 2, 0)]
@@ -119,8 +161,16 @@ def raw_entry(entry: Any) -> dict[str, Any]:
 
 
 def parse_feed(content: bytes | str) -> ParsedFeed:
-    """Parse feed bytes. Entries without a link or title are skipped."""
-    parsed = feedparser.parse(content)
+    """Parse feed bytes. Entries without a usable link or title are skipped.
+
+    One bad entry never costs the feed its other entries.
+
+    The bytes go in as a stream, because `feedparser.parse` opens bytes or text
+    as a local file path when it can, and a response body can name any file.
+    """
+    data = content.encode() if isinstance(content, str) else content
+    data = SURROGATE_REF_RE.sub(b"&#xFFFD;", data)
+    parsed = feedparser.parse(io.BytesIO(data))
     feed_language = (parsed.feed.get("language") or "")[:2].lower()
     entries: list[FeedEntry] = []
     for entry in parsed.entries:
@@ -128,23 +178,28 @@ def parse_feed(content: bytes | str) -> ParsedFeed:
         title = strip_html(entry.get("title"))
         if not url or not title or not url.startswith("http"):
             continue
+        if len(url) > URL_MAX_CHARS:
+            continue
+        canonical = canonical_or_none(url)
+        if canonical is None:
+            continue
         summary = strip_html(entry.get("summary"))[:SUMMARY_MAX_CHARS]
         categories = [
-            term
+            term[:CATEGORY_MAX_CHARS]
             for term in (tag.get("term") for tag in entry.get("tags", []))
             if term
         ]
         entries.append(
             FeedEntry(
                 url=url,
-                canonical_url=canonicalize_url(url),
+                canonical_url=canonical,
                 guid=(entry.get("id") or url)[:500],
                 title=title[:500],
                 summary=summary,
                 author=(entry.get("author") or "")[:200],
                 published_at=_entry_date(entry),
                 language=feed_language,
-                categories=categories[:20],
+                categories=categories[:CATEGORY_MAX_COUNT],
                 raw=raw_entry(entry),
             )
         )
@@ -176,11 +231,11 @@ def _child_text(element: ElementTree.Element, name: str) -> str:
 def _sitemap_date(text: str) -> datetime | None:
     try:
         value = datetime.fromisoformat(text)
-    except ValueError:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return _plausible(value.astimezone(UTC))
+    except (ValueError, OverflowError):
         return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
 
 
 def _sitemap_root(content: bytes) -> ElementTree.Element | None:
@@ -206,12 +261,17 @@ def parse_news_sitemap(content: bytes | str) -> ParsedFeed:
         title = strip_html(_child_text(node, "title"))
         if not url.startswith("http") or not title:
             continue
+        if len(url) > URL_MAX_CHARS:
+            continue
+        canonical = canonical_or_none(url)
+        if canonical is None:
+            continue
         date = _child_text(node, "publication_date")
         language = _child_text(node, "language")[:2].lower()
         entries.append(
             FeedEntry(
                 url=url,
-                canonical_url=canonicalize_url(url),
+                canonical_url=canonical,
                 guid=url[:500],
                 title=title[:500],
                 summary="",
@@ -221,8 +281,8 @@ def parse_news_sitemap(content: bytes | str) -> ParsedFeed:
                 categories=[],
                 raw={
                     "loc": url,
-                    "title": title,
-                    "publication_date": date,
+                    "title": title[:RAW_FIELD_MAX_CHARS],
+                    "publication_date": date[:RAW_FIELD_MAX_CHARS],
                     "language": language,
                 },
             )
@@ -240,7 +300,11 @@ def sitemap_children(content: bytes) -> list[str]:
         for node in root
         if _local_name(node.tag) == "sitemap"
     ]
-    urls = [url for url in urls if url.startswith("http")]
+    urls = [
+        url
+        for url in urls
+        if url.startswith("http") and len(url) <= URL_MAX_CHARS
+    ]
     news = [url for url in urls if "news" in url.lower()]
     return news or urls
 
