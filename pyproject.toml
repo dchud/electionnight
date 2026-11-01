@@ -44,6 +44,7 @@ extend-exclude = ["src/monitor/web/static", "*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "SIM"]
+ignore = ["SIM905", "SIM117"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["typer.Option", "typer.Argument"]
