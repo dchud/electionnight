@@ -270,16 +270,29 @@ class Panels:
         )
         return [self._decorate_item(row) for row in rows]
 
-    def wire_since(
-        self, filters: Filters, since: datetime, limit: int = 30
+    def recent_wire_ids(self, filters: Filters) -> set[str]:
+        """Items already recent, which a new stream should not resend."""
+        return {row["item_id"] for row in self.wire_recent(filters)}
+
+    def wire_recent(
+        self, filters: Filters, limit: int = 60
     ) -> list[dict[str, Any]]:
-        """Items seen after a time, for the live stream."""
+        """Items seen in the last 10 minutes, for the live stream.
+
+        Classification finishes out of order, so a stream cannot track a time
+        watermark: an item seen earlier may be committed after one seen later.
+        Callers track which ids they have sent.
+        """
         where, params = self._where(filters, windowed=False)
         rows = self.model.rows(
             load_sql("wire").replace(
                 "{where}", f"{where} AND f.first_seen_at > $since"
             ),
-            {**params, "limit": limit, "since": since},
+            {
+                **params,
+                "limit": limit,
+                "since": filters.now - timedelta(minutes=10),
+            },
         )
         return [self._decorate_item(row) for row in rows]
 

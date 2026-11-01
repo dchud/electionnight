@@ -175,21 +175,30 @@
   });
 
   /* The wire pauses while hovered, and catches up on leaving. */
-  const wire = document.getElementById("wire");
+  const wirePanel = document.getElementById("wire-panel");
+  const wireLive = document.getElementById("wire-live");
+  const WIRE_LIVE_MAX = 100;
   let wirePaused = false;
   let wireMissed = false;
-  if (wire) {
-    wire.addEventListener("mouseenter", () => {
+  if (wirePanel) {
+    wirePanel.addEventListener("mouseenter", () => {
       wirePaused = true;
     });
-    wire.addEventListener("mouseleave", () => {
+    wirePanel.addEventListener("mouseleave", () => {
       wirePaused = false;
       if (wireMissed) {
         wireMissed = false;
+        wireLive.replaceChildren();
         body.dispatchEvent(new Event("wire-resume"));
       }
     });
   }
+  document.addEventListener("htmx:afterSettle", (event) => {
+    if (event.detail.target !== wireLive) return;
+    while (wireLive.children.length > WIRE_LIVE_MAX) {
+      wireLive.lastElementChild.remove();
+    }
+  });
   document.addEventListener("htmx:sseBeforeMessage", (event) => {
     if (event.detail.type !== "wire") return;
     if (Monitor.replay.active) {
@@ -261,6 +270,7 @@
   function startReplay(from) {
     const replay = Monitor.replay;
     replay.active = true;
+    if (wireLive) wireLive.replaceChildren();
     replay.end = Date.now();
     replay.start = replay.end - REPLAY_SPAN_MS;
     replay.asOf = from || replay.start;

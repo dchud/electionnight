@@ -64,14 +64,14 @@ def dir_size(path: Path) -> int:
 
 
 def lake_file_sizes(conn: duckdb.DuckDBPyConnection) -> tuple[int, int]:
-    """Return (live bytes, total bytes on disk under the data path)."""
+    """Return (live bytes, live file count) from the catalog."""
     rows = conn.execute(
         """
-        SELECT coalesce(sum(file_size_bytes), 0)
+        SELECT coalesce(sum(file_size_bytes), 0), coalesce(sum(file_count), 0)
         FROM ducklake_table_info('lake')
         """
     ).fetchall()
-    return int(rows[0][0]), 0
+    return int(rows[0][0]), int(rows[0][1])
 
 
 def disk_figures(
@@ -123,9 +123,11 @@ def report_disk(settings: Settings) -> str:
             snapshots = conn.execute(
                 "SELECT count(*) FROM lake.snapshots()"
             ).fetchall()[0][0]
-            parquet = sum(1 for _ in settings.paths.data.rglob("*.parquet"))
+            on_disk = sum(1 for _ in settings.paths.data.rglob("*.parquet"))
+            live = lake_file_sizes(conn)[1]
             lines.append(f"{'snapshots':<24}{snapshots:>9}")
-            lines.append(f"{'parquet files':<24}{parquet:>9}")
+            lines.append(f"{'parquet files, live':<24}{live:>9}")
+            lines.append(f"{'parquet files, on disk':<24}{on_disk:>9}")
         return "\n".join(lines)
     finally:
         if conn is not None:

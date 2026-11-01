@@ -4,8 +4,10 @@
   <section class="band band-now" id="band-1" aria-label="Now">
     <article class="panel span-4" id="panel-wire">
       <div class="panel-head"><h2 class="panel-title">Live Wire</h2><span class="panel-note">newest relevant stories</span></div>
-      <div class="panel-body" id="wire" sse-swap="wire" hx-swap="afterbegin"
-           hx-get="/frag/wire?{{ qs }}" hx-trigger="load, replay-tick from:body, wire-resume from:body"></div>
+      <div class="panel-body" id="wire-panel">
+        <div id="wire-live" sse-swap="wire" hx-swap="afterbegin"></div>
+        <div id="wire" hx-get="/frag/wire?{{ qs }}" hx-trigger="load, replay-tick from:body, wire-resume from:body"></div>
+      </div>
     </article>
     <article class="panel span-5" id="panel-rising">
       <div class="panel-head"><h2 class="panel-title">Rising Storylines</h2><span class="panel-note">last 15 min vs prior 2 h</span></div>

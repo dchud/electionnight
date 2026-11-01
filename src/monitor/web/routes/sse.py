@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -21,7 +20,7 @@ async def events(request: Request) -> EventSourceResponse:
     queue = web.hub.subscribe()
 
     async def stream() -> AsyncIterator[dict[str, Any]]:
-        since = datetime.now(UTC)
+        sent = await asyncio.to_thread(web.panels.recent_wire_ids, filters)
         try:
             while True:
                 if await request.is_disconnected():
@@ -33,11 +32,12 @@ async def events(request: Request) -> EventSourceResponse:
                 kind = event["type"]
                 yield {"event": kind, "data": json.dumps(event)}
                 if kind == "snapshot":
-                    rows = await asyncio.to_thread(
-                        web.panels.wire_since, filters, since
+                    recent = await asyncio.to_thread(
+                        web.panels.wire_recent, filters
                     )
+                    rows = [r for r in recent if r["item_id"] not in sent]
                     if rows:
-                        since = max(row["first_seen_at"] for row in rows)
+                        sent.update(row["item_id"] for row in rows)
                         template = web.templates.get_template(
                             "fragments/wire_rows.html"
                         )
