@@ -184,7 +184,11 @@ class Discoverer:
             result.tried[url] = f"HTTP {response.status_code}"
             return
         final = str(response.url)
-        feed = parse_feed(response.content)
+        try:
+            feed = parse_feed(response.content)
+        except Exception as error:
+            result.tried[url] = type(error).__name__
+            return
         ok, reason = validate_feed(feed, result.source.scope, now)
         result.tried[url] = reason
         if ok and final not in {u for u, _ in result.good}:
@@ -249,6 +253,8 @@ def merge_existing(fresh: Source, existing: Source | None) -> Source:
     """Keep hand-edited fields when a source is rediscovered."""
     if existing is None:
         return fresh
+    fresh.poll_tier = existing.poll_tier
+    fresh.notes = existing.notes or fresh.notes
     fresh.lean_label = existing.lean_label
     fresh.lean_source = existing.lean_source
     fresh.lean_source_url = existing.lean_source_url
@@ -374,17 +380,18 @@ def run_discover(
     previous = {s.source_id: s for s in load_sources(settings)}
     sources: list[Source] = []
     for result in results:
-        source = merge_existing(
-            result.source, previous.get(result.source.source_id)
-        )
+        known = previous.get(result.source.source_id)
+        source = merge_existing(result.source, known)
         source.feed_urls = [url for url, _ in result.good]
-        source.enabled = bool(source.feed_urls)
+        # An outlet with feeds that is disabled was disabled by hand.
+        by_hand = known is not None and not known.enabled and known.feed_urls
+        source.enabled = bool(source.feed_urls) and not by_hand
         sources.append(source)
     seen = {source.source_id for source in sources}
     sources.extend(
         source
         for source_id, source in previous.items()
-        if source_id not in seen and limit is None
+        if source_id not in seen
     )
     write_sources(settings, sources)
     now = datetime.now(UTC)
@@ -428,9 +435,11 @@ async def _check(
                 return source, url, type(error).__name__
         if response.status_code != 200:
             return source, url, f"HTTP {response.status_code}"
-        _, reason = validate_feed(
-            parse_feed(response.content), source.scope, now
-        )
+        try:
+            feed = parse_feed(response.content)
+        except Exception as error:
+            return source, url, type(error).__name__
+        _, reason = validate_feed(feed, source.scope, now)
         return source, url, reason
 
     async with httpx.AsyncClient(

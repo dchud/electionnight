@@ -4,6 +4,10 @@ Items move between stages without waiting for a lake commit, so a chain of
 parsers can finish well inside one commit interval. The lake records what
 finished: on restart, and for a new parser version, each stage's `input_query`
 finds the work still owed and feeds it in behind live items.
+
+Only live items move through the queues. A backfilled item reaches a later
+stage through that stage's own `input_query`, so it runs there only if that
+stage still owes it at its current version.
 """
 
 from __future__ import annotations
@@ -32,6 +36,8 @@ log = get(__name__)
 
 MAX_ATTEMPTS = 3
 BACKFILL_POLL_SECONDS = 10.0
+RETRY_BACKFILL_SECONDS = 300.0
+IDLE_AFTER_FAILURE_SECONDS = 1.0
 
 
 @dataclass
@@ -72,6 +78,7 @@ class Stage:
         backfill: bool = True,
         backfill_batch: int = 200,
         retry_delay: float = 5.0,
+        retry_backfill_seconds: float = RETRY_BACKFILL_SECONDS,
     ) -> None:
         self.parser = parser
         self.db = db
@@ -81,6 +88,7 @@ class Stage:
         self.backfill_enabled = backfill
         self.backfill_batch = backfill_batch
         self.retry_delay = retry_delay
+        self.retry_backfill_seconds = retry_backfill_seconds
         self.next_stages: list[Stage] = []
         self.live: asyncio.Queue[Item] = asyncio.Queue()
         self.backlog: deque[Item] = deque()
@@ -159,16 +167,33 @@ class Stage:
                     "error": error,
                 }
             )
-        self.writer.add("nlp.parser_runs", runs)
+        # Runs go last, so a failure here leaves the items owed, not finished.
         for table, rows in output.rows.items():
             self.writer.add(table, rows)
+        self.writer.add("nlp.parser_runs", runs)
 
     def _forward(self, batch: list[Item], output: ParserOutput) -> None:
         for item in batch:
+            if item.backfill:
+                continue
             status, _ = output.statuses.get(item.item_id, ("ok", None))
             if status in {"ok", "skipped"}:
                 for stage in self.next_stages:
                     stage.enqueue(item)
+
+    def _requeue(self, item: Item) -> None:
+        if item.backfill:
+            self.backlog.append(item)
+        else:
+            self.live.put_nowait(item)
+
+    def _release_later(self, item_ids: list[str]) -> None:
+        """Let backfill find these items again, after a pause."""
+        asyncio.get_running_loop().call_later(
+            self.retry_backfill_seconds,
+            self.tracked.difference_update,
+            item_ids,
+        )
 
     def _fail(self, batch: list[Item], error: str) -> None:
         for item in batch:
@@ -178,12 +203,13 @@ class Stage:
                 delay = self.retry_delay * 2 ** (attempts - 1)
                 asyncio.get_running_loop().call_later(
                     delay * random.uniform(0.8, 1.2),
-                    self.live.put_nowait,
+                    self._requeue,
                     item,
                 )
             else:
                 self.errors += 1
                 self.attempts.pop(item.item_id, None)
+                self._release_later([item.item_id])
                 self.writer.add(
                     "nlp.parser_runs",
                     [
@@ -230,9 +256,22 @@ class Stage:
             self.lag_seconds = now - max(stamps)
 
     async def worker(self) -> None:
+        """Run batches until cancelled. One failure must not end this task."""
         while True:
-            batch = await self._next_batch()
-            await self._process(batch)
+            batch: list[Item] = []
+            try:
+                batch = await self._next_batch()
+                await self._process(batch)
+            except Exception:
+                log.exception(
+                    "stage_worker_failed",
+                    parser=self.parser.name,
+                    n=len(batch),
+                )
+                self.errors += len(batch)
+                self._release_later([item.item_id for item in batch])
+                if not batch:
+                    await asyncio.sleep(IDLE_AFTER_FAILURE_SECONDS)
 
     async def feeder(self) -> None:
         """Pull work the lake says is owed, behind live items."""
@@ -258,11 +297,14 @@ class Stage:
         owed = owed[: self.backfill_batch]
         if not owed:
             return
-        self.tracked.update(owed)
         rows = await self.db.fetch(HYDRATE_SQL, {"ids": owed})
         for row in rows:
             item = item_from_row(row)
+            # A live item may have arrived during the query.
+            if item.item_id in self.tracked:
+                continue
             item.backfill = True
+            self.tracked.add(item.item_id)
             self.backlog.append(item)
 
     def tasks(self) -> list[asyncio.Task[None]]:
@@ -279,7 +321,7 @@ class Stage:
         waiting = [
             item.first_seen_at.timestamp()
             for item in list(self.live._queue)  # type: ignore[attr-defined]
-            if item.first_seen_at
+            if item.first_seen_at and not item.backfill
         ]
         return time.time() - min(waiting) if waiting else 0.0
 

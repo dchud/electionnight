@@ -65,17 +65,31 @@ async def test_health_job_records_a_row(pipeline):
 
 
 @pytest.mark.parametrize(
-    ("free", "expected"),
+    ("free", "expected", "full_text", "prunes"),
     [
-        (9.0, DiskLevel.WARN),
-        (4.0, DiskLevel.DEGRADE),
-        (2.0, DiskLevel.AUTOPRUNE),
+        (9.0, DiskLevel.WARN, True, []),
+        (4.0, DiskLevel.DEGRADE, False, []),
+        (
+            2.0,
+            DiskLevel.AUTOPRUNE,
+            False,
+            [{"thin": "15m", "older_than": "1h"}],
+        ),
     ],
 )
-async def test_disk_levels_reach_the_pipeline(pipeline, free, expected):
+async def test_disk_levels_reach_the_pipeline(
+    pipeline, monkeypatch, free, expected, full_text, prunes
+):
+    calls = []
+    monkeypatch.setattr(
+        "monitor.pipeline.prune",
+        lambda settings, conn, **options: calls.append(options),
+    )
     pipeline.guard = DiskGuard(pipeline.settings, free_space=lambda p: free)
     await pipeline.disk_job()
     assert pipeline.guard.level() == expected
+    assert pipeline.guard.full_text_allowed() is full_text
+    assert calls == prunes
 
 
 def api_error(status):

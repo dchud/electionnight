@@ -34,6 +34,7 @@ log = get(__name__)
 
 QUEUE_SIZE = 2000
 STOP = object()
+STOP_SECONDS = 30.0
 
 
 @dataclass
@@ -90,6 +91,7 @@ class ArchiveWriter:
         self.unchanged = 0
         self.records = 0
         self.bytes_in = 0
+        self.stop_timeout = STOP_SECONDS
 
     def start(self) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -102,8 +104,11 @@ class ArchiveWriter:
     def stop(self) -> None:
         if self.thread is None:
             return
-        self.queue.put(STOP)
-        self.thread.join(timeout=30)
+        try:
+            self.queue.put(STOP, timeout=self.stop_timeout)
+        except queue.Full:
+            log.error("archive_stop_timed_out", queued=self.queue.qsize())
+        self.thread.join(timeout=self.stop_timeout)
         self.thread = None
 
     def _recover(self) -> None:
@@ -129,6 +134,9 @@ class ArchiveWriter:
     ) -> dict[str, Any] | None:
         """Queue one body. Returns its index row, or None if not stored."""
         if not self.options.enabled:
+            return None
+        if self.thread is not None and not self.thread.is_alive():
+            self.dropped += 1
             return None
         digest = hashlib.sha256(body).hexdigest()
         if skip_unchanged and self.last_hash.get(key) == digest:
@@ -197,9 +205,9 @@ class ArchiveWriter:
         interval = self.options.flush_seconds
         for stream in self.streams.values():
             if now - stream.last_flush >= interval:
+                stream.last_flush = now
                 stream.writer.flush(zstandard.FLUSH_BLOCK)
                 stream.handle.flush()
-                stream.last_flush = now
 
     def _write(
         self, kind: str, hour: str, header: dict[str, Any], body: bytes
@@ -218,23 +226,33 @@ class ArchiveWriter:
         self.bytes_in += len(body)
 
     def _loop(self) -> None:
+        """Write until stopped. One failure must not end this thread."""
         while True:
             try:
                 entry = self.queue.get(timeout=1.0)
             except queue.Empty:
-                self._flush_due()
-                continue
+                entry = None
             if entry is STOP:
                 break
             try:
-                self._write(*entry)
+                if entry is not None:
+                    self._write_counting_drops(entry)
                 self._flush_due()
-            except OSError as error:
-                self.dropped += 1
+            except Exception as error:
                 log.error("archive_write_failed", error=str(error)[:200])
         for stream in self.streams.values():
-            self._close(stream)
+            try:
+                self._close(stream)
+            except Exception as error:
+                log.error("archive_close_failed", error=str(error)[:200])
         self.streams.clear()
+
+    def _write_counting_drops(self, entry: tuple[Any, ...]) -> None:
+        try:
+            self._write(*entry)
+        except Exception:
+            self.dropped += 1
+            raise
 
     def status(self) -> dict[str, Any]:
         return {
@@ -242,4 +260,5 @@ class ArchiveWriter:
             "bytes_in": self.bytes_in,
             "unchanged": self.unchanged,
             "dropped": self.dropped,
+            "alive": self.thread is not None and self.thread.is_alive(),
         }

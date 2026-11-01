@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import duckdb
 import pyarrow as pa
@@ -27,6 +28,7 @@ from monitor.settings import Settings
 
 log = get(__name__)
 
+EASTERN = ZoneInfo("America/New_York")
 SCHEMAS = ("raw", "nlp", "gold", "ref")
 MAX_FLUSH_FAILURES = 3
 
@@ -208,6 +210,13 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def as_utc(moment: datetime) -> datetime:
+    """The moment in UTC. A time with no zone is Eastern."""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=EASTERN)
+    return moment.astimezone(UTC)
+
+
 def _attach_sql(settings: Settings, read_only: bool) -> str:
     catalog = settings.paths.catalog.resolve()
     data = settings.paths.data.resolve()
@@ -228,7 +237,8 @@ def connect(
             conn.execute(f"LOAD {extension}")
         except duckdb.Error:
             conn.execute(f"INSTALL {extension}; LOAD {extension}")
-    conn.execute("SET TimeZone = 'UTC'")
+    # A cursor is a new session, so only a global setting reaches every one.
+    conn.execute("SET GLOBAL TimeZone = 'UTC'")
     conn.execute(_attach_sql(settings, read_only))
     return conn
 
@@ -336,6 +346,21 @@ class BatchWriter:
         self.last_commit_at: datetime | None = None
         self.in_flight = False
         self._failures: dict[str, int] = {}
+        self._held: dict[str, int] = {}
+        self.rejected_rows = self._count_rejected()
+
+    def _count_rejected(self) -> int:
+        """Rows set aside so far, including by earlier runs."""
+        total = 0
+        control = self._settings.paths.control
+        for path in control.glob("rejected-*.jsonl"):
+            with path.open(encoding="utf-8") as handle:
+                total += sum(1 for _ in handle)
+        return total
+
+    def held_rows(self) -> int:
+        """Rows waiting in the buffer after a failed commit."""
+        return sum(self._held.values())
 
     def add(self, table: str, rows: Iterable[dict[str, Any]]) -> None:
         if table not in TABLES:
@@ -388,6 +413,8 @@ class BatchWriter:
         try:
             self._commit(batch)
             counts = {table: len(rows) for table, rows in batch.items()}
+            for table in batch:
+                self._settled(table)
         except Exception as error:
             log.warning(
                 "flush_failed",
@@ -397,8 +424,16 @@ class BatchWriter:
             counts = self._flush_each(batch)
         if counts:
             self.last_commit_at = utcnow()
-            self._write_signal(counts)
+            # The rows are committed. Readers notice them on the next signal.
+            try:
+                self._write_signal(counts)
+            except OSError as error:
+                log.warning("commit_signal_failed", error=str(error)[:200])
         return counts
+
+    def _settled(self, table: str) -> None:
+        self._failures.pop(table, None)
+        self._held.pop(table, None)
 
     def _flush_each(
         self, batch: dict[str, list[dict[str, Any]]]
@@ -411,7 +446,7 @@ class BatchWriter:
                 self._hold_back(table, rows, error)
             else:
                 counts[table] = len(rows)
-                self._failures.pop(table, None)
+                self._settled(table)
         return counts
 
     def _hold_back(
@@ -420,18 +455,26 @@ class BatchWriter:
         transient = isinstance(
             error, duckdb.TransactionException | duckdb.IOException
         )
-        failures = self._failures.get(table, 0) + 1
-        if transient or failures < MAX_FLUSH_FAILURES:
-            self._failures[table] = failures
-            with self._lock:
-                self._buffers[table] = rows + self._buffers[table]
+        if transient:
+            self._keep(table, rows)
             return
-        self._failures.pop(table, None)
+        failures = self._failures.get(table, 0) + 1
+        if failures < MAX_FLUSH_FAILURES:
+            self._failures[table] = failures
+            self._keep(table, rows)
+            return
         path = self._settings.paths.control / f"rejected-{table}.jsonl"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            for row in rows:
-                handle.write(json.dumps(row, default=str) + "\n")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as handle:
+                for row in rows:
+                    handle.write(json.dumps(row, default=str) + "\n")
+        except OSError as write_error:
+            log.error("reject_write_failed", error=str(write_error)[:200])
+            self._keep(table, rows)
+            return
+        self._settled(table)
+        self.rejected_rows += len(rows)
         log.error(
             "rows_rejected",
             table=table,
@@ -439,6 +482,11 @@ class BatchWriter:
             path=str(path),
             error=f"{type(error).__name__}: {error}"[:300],
         )
+
+    def _keep(self, table: str, rows: list[dict[str, Any]]) -> None:
+        with self._lock:
+            self._buffers[table] = rows + self._buffers[table]
+        self._held[table] = len(rows)
 
     def _write_signal(self, counts: dict[str, int]) -> None:
         path = self._settings.paths.last_commit

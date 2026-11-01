@@ -13,13 +13,38 @@ from typing import Any
 
 import duckdb
 
-from monitor.lake import BatchWriter, connect
+from monitor.lake import BatchWriter, as_utc, connect
 from monitor.logs import get
 from monitor.settings import Settings
 
 log = get(__name__)
 
 RECENT_WINDOW = timedelta(hours=2)
+BIN_SECONDS = 300
+LATE_REBUILD_EVERY = timedelta(minutes=10)
+# Rows are stamped when buffered, which is before they commit.
+LATE_CHECK_SLACK = timedelta(minutes=5)
+LATE_SQL = """
+SELECT EXISTS (
+    SELECT 1
+    FROM (
+        SELECT item_id FROM lake.nlp.classify_a WHERE created_at >= $after
+        UNION ALL
+        SELECT item_id FROM lake.nlp.dup_groups WHERE created_at >= $after
+        UNION ALL
+        SELECT item_id FROM lake.nlp.extract_b WHERE created_at >= $after
+        UNION ALL
+        SELECT item_id FROM lake.nlp.mentions WHERE created_at >= $after
+        UNION ALL
+        SELECT item_id FROM lake.nlp.places WHERE created_at >= $after
+        UNION ALL
+        SELECT item_id FROM lake.nlp.storyline_assign
+        WHERE created_at >= $after
+    ) changed
+    JOIN lake.raw.items i USING (item_id)
+    WHERE i.first_seen_at < $since
+)
+"""
 
 FACTS_SQL = """
 WITH items AS (
@@ -228,6 +253,12 @@ ROLLUPS = (
 )
 
 
+def bin_floor(moment: datetime) -> datetime:
+    """The start of the 5-minute bin holding this moment."""
+    seconds = int(moment.timestamp()) // BIN_SECONDS * BIN_SECONDS
+    return datetime.fromtimestamp(seconds, UTC)
+
+
 def _normalize_time(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.astimezone(UTC)
@@ -270,6 +301,35 @@ class RollupEngine:
         self.settings = settings
         self.writer = writer
         self.stored: dict[str, dict[tuple[Any, ...], tuple[Any, ...]]] = {}
+        self.late_checked_at: datetime | None = None
+        self.late_rebuilt_at: datetime | None = None
+
+    def _late_work_owed(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        now: datetime,
+        since: datetime,
+    ) -> bool:
+        """Whether enrichment arrived for items whose bins left the window.
+
+        Those bins are not recomputed each cycle, so this asks for a rebuild,
+        at most once per `LATE_REBUILD_EVERY`.
+        """
+        after, self.late_checked_at = self.late_checked_at, now
+        if after is None:
+            return False
+        if self.late_rebuilt_at is not None and (
+            now - self.late_rebuilt_at < LATE_REBUILD_EVERY
+        ):
+            self.late_checked_at = after
+            return False
+        rows = conn.execute(
+            LATE_SQL, {"after": after - LATE_CHECK_SLACK, "since": since}
+        ).fetchall()
+        if not rows[0][0]:
+            return False
+        self.late_rebuilt_at = now
+        return True
 
     def _load_stored(
         self, conn: duckdb.DuckDBPyConnection, rollup: Rollup, since: datetime
@@ -299,14 +359,14 @@ class RollupEngine:
     ) -> dict[str, int]:
         """Recompute a window of bins. Returns rows appended per table."""
         now = now or datetime.now(UTC)
-        since = (
-            datetime(2000, 1, 1, tzinfo=UTC)
-            if rebuild
-            else (now - RECENT_WINDOW)
-        )
+        recent = bin_floor(now - RECENT_WINDOW)
         cursor = conn.cursor()
         counts: dict[str, int] = {}
         try:
+            if not rebuild and self._late_work_owed(cursor, now, recent):
+                log.info("rollups_late_rebuild")
+                rebuild = True
+            since = datetime(2000, 1, 1, tzinfo=UTC) if rebuild else recent
             cursor.execute(
                 f"CREATE OR REPLACE TEMP TABLE facts AS {FACTS_SQL}",
                 {"since": since},
@@ -359,7 +419,10 @@ def rollups_standalone(settings: Settings, rebuild: bool = False) -> str:
 
 
 def replay_report(settings: Settings, start: datetime, end: datetime) -> str:
-    """Item counts by bin for a time range, for demo preparation."""
+    """Item counts by bin for a time range, for demo preparation.
+
+    A time with no zone is Eastern.
+    """
     conn = connect(settings, read_only=True)
     try:
         rows = conn.execute(
@@ -369,13 +432,17 @@ def replay_report(settings: Settings, start: datetime, end: datetime) -> str:
                    count(*) FILTER (WHERE c.election_relevant) AS relevant,
                    count(DISTINCT i.source_id) AS sources
             FROM lake.raw.items i
-            LEFT JOIN lake.nlp.classify_a c USING (item_id)
+            LEFT JOIN (
+                SELECT item_id, election_relevant FROM lake.nlp.classify_a
+                QUALIFY row_number() OVER (
+                    PARTITION BY item_id ORDER BY created_at DESC) = 1
+            ) c USING (item_id)
             WHERE i.first_seen_at >= $start AND i.first_seen_at < $end
             GROUP BY 1 ORDER BY 1
             """,
             {
-                "start": start.astimezone(UTC),
-                "end": end.astimezone(UTC),
+                "start": as_utc(start),
+                "end": as_utc(end),
             },
         ).fetchall()
     finally:
@@ -393,5 +460,5 @@ def replay_report(settings: Settings, start: datetime, end: datetime) -> str:
 def _missing_bins(
     rows: list[tuple[Any, ...]], start: datetime, end: datetime
 ) -> int:
-    expected = int((end - start).total_seconds() // 300)
+    expected = int((end - start).total_seconds() // BIN_SECONDS)
     return max(expected - len(rows), 0)

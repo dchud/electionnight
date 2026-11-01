@@ -216,11 +216,20 @@ async def test_backfill_items_do_not_count_as_lag(settings):
     conn = connect(settings)
     parser = Recording()
     stage, _ = stage_for(parser, conn, settings)
+    later, _ = stage_for(Recording(), conn, settings)
+    stage.then(later)
     old = datetime(2026, 11, 1, tzinfo=UTC)
     stage.backlog.append(Item("old", first_seen_at=old, backfill=True))
     await run_until(stage, lambda: stage.finished == 1)
     assert stage.lag_seconds == 0.0
+    # The ladder reads `oldest_live_age`, in this stage and in later ones.
+    assert later.live.empty()
+    assert later.oldest_live_age() == 0.0
+    stage.live.put_nowait(Item("retry", first_seen_at=old, backfill=True))
+    assert stage.oldest_live_age() == 0.0
+    stage.live.get_nowait()
     stage.enqueue(Item("new", first_seen_at=datetime.now(UTC)))
     await run_until(stage, lambda: stage.finished == 2)
     assert stage.lag_seconds < 60
+    assert later.live.qsize() == 1
     conn.close()

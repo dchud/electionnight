@@ -16,7 +16,7 @@ from typing import Any
 import duckdb
 import zstandard
 
-from monitor.lake import connect
+from monitor.lake import as_utc, connect, writer_lock
 from monitor.logs import get
 from monitor.settings import Settings
 
@@ -24,6 +24,18 @@ log = get(__name__)
 
 CLEANUP_AGE = timedelta(hours=2)
 BACKUP_NAME = re.compile(r"catalog-(\d{8}-\d{4})\.sqlite\.zst$")
+CATALOG_COMPANIONS = ("-wal", "-shm")
+LIVE_FILES_SQL = """
+SELECT s.path, t.path, f.path
+FROM ducklake_data_file f
+JOIN ducklake_table t ON t.table_id = f.table_id AND t.end_snapshot IS NULL
+JOIN ducklake_schema s ON s.schema_id = t.schema_id AND s.end_snapshot IS NULL
+WHERE f.end_snapshot IS NULL
+"""
+
+
+class RestoreError(RuntimeError):
+    """No backup can replace the catalog."""
 
 
 def run_maintenance(
@@ -103,10 +115,99 @@ def rotate_backups(settings: Settings) -> list[Path]:
     return removed
 
 
-def restore_backup(path: Path, target: Path) -> None:
-    """Decompress a backup to a catalog file."""
+def _decompress(path: Path, target: Path) -> None:
     with path.open("rb") as compressed, target.open("wb") as out:
         zstandard.ZstdDecompressor().copy_stream(compressed, out)
+
+
+def restore_backup(path: Path, target: Path) -> None:
+    """Decompress a backup to a catalog file, whole or not at all.
+
+    A leftover WAL goes too, because SQLite would replay it onto the older
+    file and corrupt it.
+    """
+    temporary = target.with_name(target.name + ".restoring")
+    _decompress(path, temporary)
+    for suffix in CATALOG_COMPANIONS:
+        target.with_name(target.name + suffix).unlink(missing_ok=True)
+    temporary.replace(target)
+
+
+def backup_problem(settings: Settings, path: Path) -> str | None:
+    """Why this backup cannot replace the catalog, or None if it can.
+
+    Maintenance deletes replaced Parquet files after a delay, and a prune
+    deletes them at once, so an older backup can name files that are gone.
+    """
+    checked = path.with_name(path.name + ".check")
+    try:
+        _decompress(path, checked)
+        catalog = sqlite3.connect(checked)
+        try:
+            result = catalog.execute("PRAGMA quick_check").fetchone()[0]
+            if result != "ok":
+                return f"catalog check failed: {result}"
+            rows = catalog.execute(LIVE_FILES_SQL).fetchall()
+        finally:
+            catalog.close()
+    except (zstandard.ZstdError, sqlite3.DatabaseError, OSError) as error:
+        return f"cannot be read: {error}"
+    finally:
+        for suffix in ("", *CATALOG_COMPANIONS):
+            checked.with_name(checked.name + suffix).unlink(missing_ok=True)
+    root = settings.paths.data.resolve()
+    missing = [
+        row
+        for row in rows
+        if not root.joinpath(*(part or "" for part in row)).exists()
+    ]
+    if missing:
+        return f"{len(missing)} of {len(rows)} Parquet files are gone"
+    return None
+
+
+def _set_aside(catalog: Path) -> Path:
+    """Keep the replaced catalog with its WAL, still paired by name."""
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+    aside = catalog.with_name(f"{catalog.name}.damaged-{stamp}")
+    for suffix in ("", *CATALOG_COMPANIONS):
+        source = catalog.with_name(catalog.name + suffix)
+        if source.exists():
+            source.rename(aside.with_name(aside.name + suffix))
+    return aside
+
+
+def restore_catalog(settings: Settings, dry_run: bool = False) -> str:
+    """Replace the catalog with the newest backup that can serve as one.
+
+    Raises `WriterBusy` while a pipeline runs. Raises `RestoreError`, with
+    nothing changed, when no backup is usable. The report names each newer
+    backup that was skipped and why.
+    """
+    with writer_lock(settings):
+        found = settings.paths.backups.glob("catalog-*.sqlite.zst")
+        pairs = [(backup_time(path), path) for path in found]
+        newest_first = sorted(
+            ((when, path) for when, path in pairs if when),
+            key=lambda pair: pair[0],
+            reverse=True,
+        )
+        report: list[str] = []
+        for _, path in newest_first:
+            problem = backup_problem(settings, path)
+            if problem is not None:
+                report.append(f"skipped {path.name}: {problem}")
+                continue
+            if dry_run:
+                report.append(f"would restore {path.name}")
+            else:
+                catalog = settings.paths.catalog
+                aside = _set_aside(catalog)
+                restore_backup(path, catalog)
+                report.append(f"restored {path.name}")
+                report.append(f"the replaced catalog is now {aside}")
+            return "\n".join(report)
+    raise RestoreError("\n".join(["no usable backup", *report]))
 
 
 def parse_span(text: str) -> timedelta:
@@ -195,9 +296,7 @@ def _versions_to_expire(
     if all_but_latest:
         return [s[0] for s in snapshots if s[0] != newest]
     if before:
-        limit = datetime.fromisoformat(before)
-        if limit.tzinfo is None:
-            limit = limit.replace(tzinfo=UTC)
+        limit = as_utc(datetime.fromisoformat(before))
         return [s[0] for s in snapshots if s[1] < limit and s[0] != newest]
     if thin:
         return thin_versions(
