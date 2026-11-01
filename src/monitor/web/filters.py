@@ -79,6 +79,7 @@ class Filters:
     lang: str = "all"
     copies: str = "unique"
     as_of: datetime | None = None
+    default_window: str = "1h"
 
     @classmethod
     def parse(cls, params: Any, default_window: str = "1h") -> Filters:
@@ -105,6 +106,7 @@ class Filters:
             lang=lang if lang in {"all", "en"} else "all",
             copies=copies if copies in {"unique", "all"} else "unique",
             as_of=as_of,
+            default_window=default_window,
         )
 
     @property
@@ -137,7 +139,7 @@ class Filters:
         """URL params for these filters, omitting defaults."""
         values = replace(self, **changes) if changes else self
         pairs = {}
-        if values.window != "1h":
+        if values.window != values.default_window:
             pairs["window"] = values.window
         if values.focus != "all":
             pairs["focus"] = values.focus
@@ -204,11 +206,13 @@ class Filters:
         """SQL and params applying every global control to `facts`.
 
         `unique` overrides the Unique control: outlet-level metrics count all
-        copies, because republishing is that outlet's coverage choice.
+        copies, because republishing is that outlet's coverage choice. Replay
+        keeps out anything first seen after its time, wherever the item sits on
+        the time axis.
         """
         clauses = []
         params: dict[str, Any] = {"as_of": self.now}
-        clauses.append(f"{alias}.first_seen_at <= $as_of")
+        clauses.append(f"{alias}.seen_raw_at <= $as_of")
         if windowed:
             clauses.append(f"{alias}.first_seen_at >= $window_start")
             params["window_start"] = self.window_start
@@ -228,9 +232,15 @@ class Filters:
             params.update(focus_params)
         return " AND ".join(clauses), params
 
-    def describe(self, windowed: bool = True) -> str:
-        """The filter in words, shown at the top of evidence lists."""
-        parts = [WINDOWS[self.window][0] if windowed else "all time"]
+    def describe(self, windowed: bool = True, span: str | None = None) -> str:
+        """The filter in words, shown at the top of evidence lists.
+
+        `span` names a period other than the window; empty leaves it out, for
+        a list whose time bin is named already.
+        """
+        if span is None:
+            span = WINDOWS[self.window][0] if windowed else "all time"
+        parts = [span] if span else []
         parts.append("unique" if self.copies == "unique" else "all copies")
         focus = (
             f"state {self.focused_state}"

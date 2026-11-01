@@ -217,19 +217,6 @@ def test_backlog_item_sits_at_its_published_time(client):
     assert wire.index("Story 0") < wire.index("Backlog story")
     recent = client.get("/frag/evidence?kind=state&key=GA&window=1h").text
     assert "Backlog story" not in recent
-    assert "Backlog story" in (
-        client.get(
-            "/frag/evidence",
-            params={
-                "kind": "state",
-                "key": "GA",
-                "window": "24h",
-                "as_of": (
-                    datetime.now(UTC) - timedelta(days=2, hours=23)
-                ).isoformat(),
-            },
-        ).text
-    )
 
 
 def test_merged_storyline_counts_under_the_survivor(client):

@@ -229,6 +229,12 @@
   .p-2 {
     padding: calc(var(--spacing) * 2);
   }
+  .text-right {
+    text-align: right;
+  }
+  .text-\[var\(--text-3\)\] {
+    color: var(--text-3);
+  }
   .filter {
     filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
   }
@@ -536,6 +542,32 @@ main {
   width: 100%;
   height: 100%;
 }
+.chart, [data-chart] {
+  position: relative;
+}
+.chart-stage {
+  width: 100%;
+  height: 100%;
+}
+[data-chart] .chart-stage-next {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+[hx-get], .chart, [data-chart], #us-map {
+  transition: opacity .2s ease-out;
+}
+.panel-dim {
+  opacity: .55;
+}
+.panel-arrive {
+  animation: panel-arrive .2s ease-out;
+}
+@keyframes panel-arrive {
+  from {
+    opacity: 0;
+  }
+}
 .empty {
   color: var(--text-3);
   font-size: .85rem;
@@ -581,11 +613,6 @@ main {
   }
   to {
     opacity: 1;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .fresh {
-    animation: none;
   }
 }
 .glyph {
@@ -742,12 +769,18 @@ main {
   width: 100%;
   height: 100%;
   display: block;
+  opacity: 0;
+  transition: opacity .25s ease-out;
+}
+.map-svg.map-painted {
+  opacity: 1;
 }
 .map-state {
+  fill: var(--surface-2);
   stroke: var(--surface-1);
   stroke-width: .6;
   cursor: pointer;
-  transition: fill .3s;
+  transition: fill .3s, opacity .3s;
 }
 .map-outline {
   fill: none;
@@ -1461,6 +1494,7 @@ pre.raw {
   height: 100%;
 }
 .map-county {
+  fill: var(--surface-2);
   stroke: var(--line);
   stroke-width: 1px;
   vector-effect: non-scaling-stroke;
@@ -1510,6 +1544,25 @@ pre.raw {
   .quote-columns {
     gap: .6rem;
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fresh, .panel-arrive {
+    animation: none;
+  }
+  [hx-get], .chart, [data-chart], #us-map, .map-svg, .map-state, .map-county {
+    transition: none;
+  }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+    animation: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+}
+::view-transition-old(root), ::view-transition-new(root) {
+  animation-duration: .15s;
 }
 @property --tw-blur {
   syntax: "*";

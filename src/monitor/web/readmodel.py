@@ -34,6 +34,7 @@ log = get(__name__)
 # Rows are stamped when added and committed up to one batch interval later, so
 # each refresh looks back further than that.
 WATERMARK_OVERLAP = timedelta(minutes=3)
+MERGE_HOPS = 8
 READ_RETRIES = 3
 QUERY_WINDOW_SECONDS = 60.0
 QUERY_TIMES_KEPT = 512
@@ -47,7 +48,8 @@ FACTS_COLUMNS = """
     us_politics BOOLEAN, levels TEXT[], primary_level TEXT, states TEXT[],
     race_types TEXT[], topics TEXT[], is_opinion BOOLEAN, is_results BOOLEAN,
     method TEXT, canonical BOOLEAN, dup_group_id TEXT, storyline_id TEXT,
-    similarity FLOAT, tone FLOAT, race_keys TEXT[], state_races TEXT[]
+    similarity FLOAT, tone FLOAT, race_keys TEXT[], state_races TEXT[],
+    visible_seq BIGINT
 """
 
 CHANGED_IDS = """
@@ -157,6 +159,8 @@ COPIED_TABLES = {
     "primary_level, status, merged_into FROM lake.nlp.storylines "
     "QUALIFY row_number() OVER (PARTITION BY storyline_id "
     "ORDER BY version DESC, created_at DESC) = 1",
+    "storyline_versions": "SELECT storyline_id, version, status, created_at "
+    "FROM lake.nlp.storylines",
     "briefs": "SELECT * FROM lake.nlp.briefs",
     "collection_gaps": "SELECT gap_start, gap_end, reason "
     "FROM lake.raw.collection_gaps",
@@ -260,6 +264,8 @@ class ReadModel:
         self.snapshot = Snapshot(0, None, ())
         self.watermark: datetime | None = None
         self.refreshed_at: datetime | None = None
+        self.refresh_failed_since: datetime | None = None
+        self.refresh_seq = 0
         self.refresh_ms = 0
         self._refresh_lock = threading.Lock()
         self._create_copies()
@@ -312,42 +318,72 @@ class ReadModel:
     def refresh(self, full: bool = False) -> bool:
         """Bring the local tables up to the lake's latest snapshot."""
         with self._refresh_lock:
-            latest = self.latest_snapshot()
-            if not full and latest.snapshot_id == self.snapshot.snapshot_id:
-                return False
-            started = time.monotonic()
-            now = datetime.now(UTC)
-            since = (
-                datetime(2000, 1, 1, tzinfo=UTC)
-                if full or self.watermark is None
-                else self.watermark - WATERMARK_OVERLAP
-            )
-            self._refresh_facts(since)
-            self._refresh_copies()
-            self._refresh_incremental(since)
-            self._apply_merges()
-            self.watermark = now
-            self.snapshot = latest
-            self.refreshed_at = now
-            self.refresh_ms = int((time.monotonic() - started) * 1000)
-            return True
+            try:
+                changed = self._refresh(full)
+            except Exception:
+                if self.refresh_failed_since is None:
+                    self.refresh_failed_since = datetime.now(UTC)
+                raise
+            self.refresh_failed_since = None
+            return changed
+
+    def _refresh(self, full: bool) -> bool:
+        latest = self.latest_snapshot()
+        if not full and latest.snapshot_id == self.snapshot.snapshot_id:
+            return False
+        started = time.monotonic()
+        now = datetime.now(UTC)
+        since = (
+            datetime(2000, 1, 1, tzinfo=UTC)
+            if full or self.watermark is None
+            else self.watermark - WATERMARK_OVERLAP
+        )
+        self._refresh_facts(since)
+        self._refresh_copies()
+        self._refresh_incremental(since)
+        self._apply_merges()
+        self.watermark = now
+        self.snapshot = latest
+        self.refreshed_at = now
+        self.refresh_ms = int((time.monotonic() - started) * 1000)
+        return True
 
     def _refresh_facts(self, since: datetime) -> None:
+        """Replace the changed items.
+
+        `visible_seq` is the refresh in which an item last became relevant, so
+        a stream can tell what is new to readers however late it was classified
+        and whatever its place on the time axis.
+        """
         sql = FACTS_SELECT.format(changed=CHANGED_IDS)
         arrow = self._lake_rows(sql, {"since": since})
         if arrow.num_rows == 0:
             return
+        seq = self.refresh_seq + 1
         cursor = self.db.cursor()
         try:
             cursor.register("_fresh", arrow)
             cursor.execute("BEGIN")
             cursor.execute(
+                "CREATE OR REPLACE TEMP TABLE _kept AS "
+                "SELECT item_id, visible_seq FROM facts "
+                "WHERE relevant AND item_id IN (SELECT item_id FROM _fresh)"
+            )
+            cursor.execute(
                 "DELETE FROM facts WHERE item_id IN "
                 "(SELECT item_id FROM _fresh)"
             )
-            cursor.execute("INSERT INTO facts BY NAME SELECT * FROM _fresh")
+            cursor.execute(
+                "INSERT INTO facts BY NAME "
+                "SELECT _fresh.*, "
+                "coalesce(_kept.visible_seq, $seq) AS visible_seq "
+                "FROM _fresh LEFT JOIN _kept USING (item_id)",
+                {"seq": seq},
+            )
+            cursor.execute("DROP TABLE _kept")
             cursor.execute("COMMIT")
             cursor.unregister("_fresh")
+            self.refresh_seq = seq
         finally:
             cursor.close()
 
@@ -386,17 +422,24 @@ class ReadModel:
             cursor.close()
 
     def _apply_merges(self) -> None:
-        """Point items at the storyline their storyline merged into."""
+        """Point items at the storyline their storyline ended up merged into.
+
+        Each pass moves items one hop along a chain of merges.
+        """
         cursor = self.db.cursor()
         try:
-            cursor.execute(
-                """
-                UPDATE facts SET storyline_id = s.merged_into
-                FROM storylines s
-                WHERE facts.storyline_id = s.storyline_id
-                  AND s.merged_into IS NOT NULL
-                """
-            )
+            for _ in range(MERGE_HOPS):
+                moved = cursor.execute(
+                    """
+                    UPDATE facts SET storyline_id = s.merged_into
+                    FROM storylines s
+                    WHERE facts.storyline_id = s.storyline_id
+                      AND s.merged_into IS NOT NULL
+                      AND s.merged_into <> s.storyline_id
+                    """
+                ).fetchone()
+                if not moved or not moved[0]:
+                    return
         finally:
             cursor.close()
 

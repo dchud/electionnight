@@ -17,11 +17,14 @@ router = APIRouter()
 async def events(request: Request) -> EventSourceResponse:
     web = request.app.state.web
     filters = web.filters(request)
-    queue = web.hub.subscribe()
 
     async def stream() -> AsyncIterator[dict[str, Any]]:
-        sent = await asyncio.to_thread(web.panels.recent_wire_ids, filters)
+        queue = web.hub.subscribe()
         try:
+            # Everything visible now is the browser's to read: it reloads the
+            # wire on this event, and only later arrivals are pushed.
+            sent_through = web.model.refresh_seq
+            yield {"event": "wire-ready", "data": "{}"}
             while True:
                 if await request.is_disconnected():
                     return
@@ -32,12 +35,12 @@ async def events(request: Request) -> EventSourceResponse:
                 kind = event["type"]
                 yield {"event": kind, "data": json.dumps(event)}
                 if kind == "snapshot":
-                    recent = await asyncio.to_thread(
-                        web.panels.wire_recent, filters
+                    through = web.model.refresh_seq
+                    rows = await asyncio.to_thread(
+                        web.panels.wire_recent, filters, sent_through, through
                     )
-                    rows = [r for r in recent if r["item_id"] not in sent]
+                    sent_through = through
                     if rows:
-                        sent.update(row["item_id"] for row in rows)
                         template = web.templates.get_template(
                             "fragments/wire_rows.html"
                         )

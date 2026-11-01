@@ -67,6 +67,9 @@ def section(request: Request, page: str, key: str, name: str) -> HTMLResponse:
     filters = web.filters(request)
     if page not in SECTION_PAGES or not web.drill.exists(page, key):
         raise HTTPException(404, "no such page")
+    if page == "story":
+        # A storyline can merge away while its page is open.
+        key = web.drill.resolve_storyline(key) or key
     context = web.drill.section(page, key, name, filters, request.query_params)
     if context is None:
         raise HTTPException(404, "no such section")
@@ -197,6 +200,12 @@ def _evidence_clause(
             "WHERE entity_id = $key)"
         )
         return clause, {"key": key}, "entity"
+    if kind == "tone":
+        clause = (
+            "f.item_id IN (SELECT item_id FROM mentions "
+            "WHERE entity_id = $key AND tone IS NOT NULL)"
+        )
+        return clause, {"key": key}, "entity"
     if kind == "bucket":
         clause = (
             "coalesce((SELECT lean_label FROM sources s "
@@ -253,23 +262,30 @@ def evidence(
     also: str = "",
     span: str = "",
     rel: str = "",
+    opinion: str = "",
+    recent: int | None = Query(None, ge=1),
     page: int = Query(0, ge=0),
 ) -> HTMLResponse:
     """The stories behind any number on the dashboard.
 
-    A count may cover more than the global window and the relevant items.
-    `span=all` drops the window and `rel=any` drops the relevance filter, so
-    the drawer lists what that count counted.
+    A count may cover another span than the global window, or more than the
+    relevant items. `span=all` drops the window, `recent` replaces it with the
+    last so many minutes, `rel=any` drops the relevance filter, and
+    `opinion=exclude` drops opinion items, so the drawer lists what that count
+    counted. A count of an entity's mentions is shown beside the stories.
     """
     web = _web(request)
     filters = web.filters(request)
     clause, extra, words = _evidence_clause(kind, key, filters, bin_start)
     label = [web.drill.evidence_label(kind, key) or words]
+    mention_entity = key if kind in {"entity", "tone"} else None
     if also:
         also_clause, also_extra, also_words = _also_clause(also, filters)
         clause = f"{clause} AND {also_clause}"
         extra = {**extra, **also_extra}
         also_kind, _, also_key = also.partition(":")
+        if also_kind == "entity" and mention_entity is None:
+            mention_entity = also_key
         label.append(
             web.drill.evidence_label(also_kind, also_key) or also_words
         )
@@ -290,17 +306,45 @@ def evidence(
         end = bin_start + timedelta(minutes=bin_minutes)
         label.append(f"{_clock(bin_start)}–{_clock(end)}")
     page_size = 50
-    windowed = span != "all"
+    windowed = span != "all" and recent is None
+    span_words: str | None = None
+    if recent is not None:
+        clause += " AND f.first_seen_at >= $recent_start"
+        extra = {
+            **extra,
+            "recent_start": filters.now - timedelta(minutes=recent),
+        }
+        span_words = f"last {recent} minutes"
+    elif bin_start is not None and not windowed:
+        span_words = ""
+    if opinion == "exclude":
+        clause += " AND NOT f.is_opinion"
+        label.append("opinion excluded")
     if rel == "any":
         label.append("including items not election relevant")
-    items, total = web.panels.evidence(
+    relevant = rel != "any"
+    items, total, outlets = web.panels.evidence(
         filters,
         clause,
         extra,
         limit=page_size,
         offset=page * page_size,
         windowed=windowed,
-        relevant=rel != "any",
+        relevant=relevant,
+    )
+    toned = kind == "tone"
+    mentions = (
+        None
+        if mention_entity is None
+        else web.panels.evidence_mentions(
+            filters,
+            clause,
+            extra,
+            mention_entity,
+            toned,
+            windowed=windowed,
+            relevant=relevant,
+        )
     )
     return web.render(
         request,
@@ -308,8 +352,13 @@ def evidence(
         filters,
         items=items,
         total=total,
+        outlets=outlets,
+        mentions=mentions,
+        toned=toned,
         page=page,
         page_size=page_size,
-        description=" · ".join([*label, filters.describe(windowed)]),
+        description=" · ".join(
+            [*label, filters.describe(windowed, span_words)]
+        ),
         next_params=str(request.query_params),
     )

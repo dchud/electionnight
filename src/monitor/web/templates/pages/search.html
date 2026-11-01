@@ -4,7 +4,7 @@
 <main class="page">
   <h1>Search</h1>
   <form class="search-form" method="get" action="/search" data-replay-form>
-    {% if filters.window != '1h' %}<input type="hidden" name="window" value="{{ filters.window }}">{% endif %}
+    {% if filters.window != filters.default_window %}<input type="hidden" name="window" value="{{ filters.window }}">{% endif %}
     {% if filters.focus != 'all' %}<input type="hidden" name="focus" value="{{ filters.focus }}">{% endif %}
     {% if filters.lang != 'all' %}<input type="hidden" name="lang" value="{{ filters.lang }}">{% endif %}
     {% if filters.copies != 'unique' %}<input type="hidden" name="copies" value="{{ filters.copies }}">{% endif %}

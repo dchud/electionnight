@@ -1,13 +1,14 @@
 {% if rows %}
 <table class="table">
-  <thead><tr><th>Race</th><th>Winner</th><th>Status</th><th>Called by</th><th>Outlets</th><th>First reported</th></tr></thead>
+  <thead><tr><th>Race</th><th>Candidate</th><th>Status</th><th>Caller named in article</th><th>Reported by</th><th>Outlets</th><th>First reported</th></tr></thead>
   <tbody>
   {% for row in rows %}
-  <tr class="clickable" data-claims="{{ row.item_ids|join(',') }}">
+  <tr class="clickable" data-evidence="{{ row.evidence }}">
     <td>{{ row.race }}</td>
     <td>{% if row.party %}<span class="party-chip" data-party="{{ row.party }}"></span>{% endif %}{{ row.winner_name or '—' }}</td>
     <td>{{ row.status }}</td>
     <td>{{ (row.called_by or [])|join(', ') or 'unspecified' }}</td>
+    <td>{{ (row.outlet_names or [])|join(', ') }}</td>
     <td class="num">{{ row.outlets }}</td>
     <td class="num">{{ row.first_reported|et_time }}</td>
   </tr>

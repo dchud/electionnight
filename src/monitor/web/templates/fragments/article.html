@@ -9,7 +9,7 @@
   <span>First seen {{ item.seen_raw_at|et_datetime }}</span>
   {% if item.published_at %}<span>Published {{ item.published_at|et_datetime }}</span>{% endif %}
 </div>
-{% if item.on_axis_at_published %}<p class="panel-note">Published more than 2 hours before it was first seen, so time charts place it at its published time.</p>{% endif %}
+{% if item.placed_because == 'backlog' %}<p class="panel-note">Published more than 2 hours before it was first seen, so time charts place it at its published time.</p>{% elif item.placed_because == 'gap' %}<p class="panel-note">Published during a collection gap and read on return, so time charts place it at its published time.</p>{% endif %}
 {% if item.after_as_of %}<p class="filter-line">First seen after the replay time.</p>{% endif %}
 <div class="article-actions">
   {% if item.url %}<a class="text-link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">Open original</a>{% endif %}

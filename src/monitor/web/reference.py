@@ -109,7 +109,11 @@ def feed_state(feed: dict[str, Any]) -> str:
     return "ok"
 
 
-GAP_CAUSES = {"sleep": "Laptop asleep", "network": "Network down"}
+GAP_CAUSES = {
+    "sleep": "Laptop asleep",
+    "network": "Network down",
+    "pipeline": "Pipeline stopped",
+}
 
 
 def clock_text(moment: datetime) -> str:
@@ -137,16 +141,23 @@ class Reference:
         rows = self.model.query(
             "sources_table", "SELECT * FROM sources ORDER BY name"
         )
+        # The same filters as the drawers these counts open.
+        where, params = filters.where(
+            self.panels.focus_sets(),
+            windowed=False,
+            unique=False,
+            relevant=False,
+        )
         counts = {
             row["source_id"]: row
             for row in self.model.query(
                 "source_counts",
                 """
-                SELECT source_id, count(*) AS items,
-                       count(*) FILTER (WHERE relevant) AS relevant
-                FROM facts WHERE first_seen_at <= $as_of GROUP BY 1
-                """,
-                {"as_of": now},
+                SELECT f.source_id, count(*) AS items,
+                       count(*) FILTER (WHERE f.relevant) AS relevant
+                FROM facts f WHERE {where} GROUP BY 1
+                """.replace("{where}", where),
+                params,
             )
         }
         fetches = {

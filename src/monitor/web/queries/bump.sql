@@ -19,6 +19,7 @@ ranked AS (
 )
 SELECT r.bin_start, r.entity_id, r.n, r.rank,
        coalesce(e.canonical_name, r.entity_id) AS entity,
-       coalesce(e.party, 'Other') AS party
+       CASE WHEN e.party IN ('Democratic', 'Republican') THEN e.party
+            ELSE 'Other' END AS party
 FROM ranked r LEFT JOIN entities e USING (entity_id)
 ORDER BY r.bin_start, r.rank

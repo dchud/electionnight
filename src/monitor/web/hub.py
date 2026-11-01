@@ -92,7 +92,7 @@ class Hub:
                 changed = await asyncio.to_thread(self.model.refresh)
             except Exception as error:
                 log.warning("refresh_failed", error=str(error)[:300])
-                continue
+                changed = False
             self._update_slow()
             self.pending = self.pending or changed
             now = time.monotonic()

@@ -5,7 +5,8 @@ import re
 import sqlite3
 import threading
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -23,7 +24,13 @@ from monitor.web.drilldown import (
     locate_spans,
     race_label,
 )
-from monitor.web.filters import race_state_pair, read_unwatched, read_watch
+from monitor.web.filters import (
+    Filters,
+    race_state_pair,
+    read_unwatched,
+    read_watch,
+)
+from monitor.web.panels import Panels
 from monitor.web.reference import censorship_note, feed_state, lean_display
 from monitor.web.vectors import SearchUnavailable, VectorIndex, Vectors
 
@@ -788,6 +795,8 @@ def page_settings(lake_template, tmp_path_factory):
 def client(page_settings, embedder):
     app = create_app(page_settings, lambda _settings: embedder)
     with TestClient(app) as test_client:
+        # Seeded claims are dated now, before polls first close.
+        test_client.app.state.web.panels.calls_open = None
         yield test_client
 
 
@@ -1219,7 +1228,7 @@ def test_search_as_of_excludes_later_items(client):
     earlier = (NOW - timedelta(hours=1)).isoformat()
     response = client.get("/search", params={"q": "lines", "as_of": earlier})
     assert "Georgia lines" not in response.text
-    assert "Backlog story" in response.text
+    assert "Backlog story" not in response.text
 
 
 def test_search_skips_irrelevant_items_unless_asked(client):
@@ -1380,6 +1389,17 @@ def test_story_related_uses_centroids_and_skips_merged_and_unlabeled(client):
     assert "Unlabeled" not in frag
 
 
+def test_story_related_counts_open_their_stories(client):
+    text = client.get("/frag/section/story/s1/related").text
+    rows = re.findall(
+        r'data-evidence="(kind=storyline[^"]+)"[^>]*>(\d+) items?', text
+    )
+    assert rows
+    for query, shown in rows:
+        drawer = client.get("/frag/evidence?" + query.replace("&amp;", "&"))
+        assert re.search(rf"\b{shown} stories", drawer.text)
+
+
 def test_merged_story_redirects_to_the_survivor(client):
     response = client.get("/story/s2?window=3h", follow_redirects=False)
     assert response.status_code == 307
@@ -1537,7 +1557,7 @@ def test_entity_tone_has_a_band_and_hides_small_bins(client):
 def test_entity_tone_by_lean_applies_the_hide_and_low_n_rules(client):
     frag = client.get("/frag/section/entity/e1/lean").text
     assert "low n" in frag
-    assert "kind=entity&key=e1&copies=all&bucket=C" in frag
+    assert "kind=entity&key=e1&copies=all&opinion=exclude&bucket=C" in frag
     chart = client.get("/api/data/entity_tone_lean?key=e1").json()["table"]
     assert {row["bucket"] for row in chart} == {"C", "All"}
     roe = client.get("/frag/section/entity/e2/lean").text
@@ -1590,6 +1610,17 @@ def test_entity_race_calls_carry_the_claims_banner(client):
     assert "not official results" in text
     assert "projected" in text
     assert "projected" not in client.get("/entity/e2").text
+
+
+def test_race_calls_name_the_reporting_outlets(client):
+    text = client.get("/entity/e1").text
+    assert "Reported by" in text
+    assert "Caller named in article" in text
+    head = text.split("Caller named in article")[0]
+    assert "<th>Winner</th>" not in head
+    assert "<th>Candidate</th>" in head
+    row = text.split("Reported by")[1].split("</tr>")[1]
+    assert "Wire Service" in row
 
 
 def test_entity_without_mentions_has_empty_states(client):
@@ -2194,3 +2225,20 @@ def test_pages_never_write_to_the_lake(lake_template, tmp_path):
         test_client.post("/watchlist/battleground?key=OH&value=in")
     assert conn.execute(query).fetchall() == before
     conn.close()
+
+
+def test_a_claim_from_before_polls_close_is_not_shown(client):
+    panels = client.app.state.web.panels
+    shown = panels.race_calls(Filters.parse({"window": "24h"}))
+    assert shown
+    panels.calls_open = datetime.now(UTC) + timedelta(days=1)
+    try:
+        assert panels.race_calls(Filters.parse({"window": "24h"})) == []
+    finally:
+        panels.calls_open = None
+
+
+def test_poll_closes_set_when_claims_can_first_appear(settings):
+    panels = Panels(settings, SimpleNamespace())
+    assert panels.calls_open == min(c.at for c in panels.poll_closes)
+    assert panels.calls_open.date() == date(2026, 11, 3)
