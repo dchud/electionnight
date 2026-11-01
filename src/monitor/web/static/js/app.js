@@ -157,8 +157,10 @@
 
   /* htmx integration */
   document.addEventListener("htmx:afterSwap", (event) => {
-    paintDots(event.detail.target);
-    if (event.detail.target.id === "drawer-body") openDrawer();
+    /* SSE swaps carry no target in their detail. */
+    const swapped = event.detail.target || event.target;
+    paintDots(swapped);
+    if (swapped.id === "drawer-body") openDrawer();
   });
   document.addEventListener("htmx:configRequest", (event) => {
     if (Monitor.replay.active && Monitor.replay.asOf) {
@@ -194,7 +196,7 @@
     });
   }
   document.addEventListener("htmx:afterSettle", (event) => {
-    if (event.detail.target !== wireLive) return;
+    if ((event.detail.target || event.target) !== wireLive) return;
     while (wireLive.children.length > WIRE_LIVE_MAX) {
       wireLive.lastElementChild.remove();
     }
