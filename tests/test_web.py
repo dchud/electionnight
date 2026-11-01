@@ -15,6 +15,7 @@ from monitor.web.panels import (
     load_poll_closes,
     parse_clock,
     sparkline_points,
+    whole_bin,
 )
 
 ET_OFFSET = timedelta(hours=-5)
@@ -419,3 +420,10 @@ def test_live_time_repeats_within_ten_seconds_and_never_runs_behind():
     assert first - before <= timedelta(seconds=10)
     assert first.second % 10 == 0
     assert second - first <= timedelta(seconds=10)
+
+
+def test_oldest_topic_bin_is_counted_whole():
+    moment = datetime(2026, 11, 3, 21, 37, 12, 5, tzinfo=UTC)
+    assert whole_bin(moment) == datetime(2026, 11, 3, 21, 30, tzinfo=UTC)
+    on_edge = datetime(2026, 11, 3, 21, 45, tzinfo=UTC)
+    assert whole_bin(on_edge) == on_edge

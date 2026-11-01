@@ -27,6 +27,7 @@ from monitor.web.readmodel import ReadModel
 
 ET = ZoneInfo("America/New_York")
 GAP_NOTICE = timedelta(minutes=30)
+TOPIC_HEAT_SPAN = timedelta(hours=3)
 # The attention index compares each window with this period.
 BASELINE_START = datetime(2026, 11, 1, 12, 0, tzinfo=ET)
 BASELINE_END = datetime(2026, 11, 3, 12, 0, tzinfo=ET)
@@ -119,6 +120,15 @@ def parse_clock(text: str | None) -> datetime | None:
         day = 3 if parsed.hour >= 6 else 4
         return datetime(2026, 11, day, parsed.hour, parsed.minute, tzinfo=ET)
     return None
+
+
+def whole_bin(moment: datetime, minutes: int = 15) -> datetime:
+    """The start of the bin holding a moment, so no bin is counted in part."""
+    return moment.replace(
+        minute=moment.minute - moment.minute % minutes,
+        second=0,
+        microsecond=0,
+    )
 
 
 def _clock(moment: datetime) -> str:
@@ -657,7 +667,7 @@ class Panels:
         return self.model.query(
             "topic_heat",
             load_sql("topic_heat").replace("{where}", where),
-            {**params, "since": filters.now - timedelta(hours=3)},
+            {**params, "since": whole_bin(filters.now - TOPIC_HEAT_SPAN)},
         )
 
     # Band 4

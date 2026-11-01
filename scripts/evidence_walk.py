@@ -43,6 +43,15 @@ def drawer_result(page: Page) -> tuple[bool, str]:
     return True, f"{total} stories; {filters.first.inner_text()[:70]}"
 
 
+def tooltip_count(page: Page) -> int | None:
+    """The story count a mark's tooltip states, if it states one."""
+    tooltip = page.locator("#vg-tooltip-element")
+    if tooltip.count() == 0:
+        return None
+    match = re.search(r"Stories\s*(\d+)", tooltip.inner_text())
+    return int(match.group(1)) if match else None
+
+
 def close(page: Page) -> None:
     page.keyboard.press("Escape")
     page.wait_for_timeout(250)
@@ -61,12 +70,21 @@ def click_mark(page: Page, chart: str) -> tuple[bool, str]:
             continue
         mark.scroll_into_view_if_needed()
         box = mark.bounding_box()
-        page.mouse.click(
-            box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
-        )
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        page.mouse.move(x, y)
+        page.wait_for_timeout(150)
+        shown = tooltip_count(page)
+        page.mouse.click(x, y)
         page.wait_for_timeout(400)
         if page.locator("#drawer").get_attribute("data-open") == "1":
-            return drawer_result(page)
+            ok, detail = drawer_result(page)
+            if shown is not None and f"{shown} stories" not in detail:
+                return (
+                    False,
+                    f"the mark says {shown}; the drawer says {detail}",
+                )
+            suffix = "" if shown is None else "; matches the mark"
+            return ok, f"{detail}{suffix}"
     return False, f"no mark opened a drawer among {count}"
 
 
