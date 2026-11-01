@@ -197,8 +197,15 @@ its published time, so a feed's first fetch does not appear as one spike of
 days-old stories. An item published during a collection gap and first seen
 within 15 minutes after it also sits at its published time, so a gap does not
 appear as one spike on return. The article view shows the true first-seen time
-and says when an item was placed this way. `gold.*` bins use `first_seen_at` unchanged, so
-they can differ from dashboard counts for those items.
+and says when an item was placed this way. `gold.*` bins use `first_seen_at`
+unchanged, so they can differ from dashboard counts for those items.
+
+**Catching up after a gap.** Collection reads RSS and Atom feeds. After a gap
+of 5 minutes or more, it also reads each listed outlet's Google News sitemap
+once, because a sitemap lists about two days of stories and a feed lists fewer.
+Only stories published since shortly before the gap are added. They have no
+feed summary and may come from sections the outlet's feed omits, so that outlet
+can show more stories for that period than it would otherwise.
 
 **Storyline thresholds.** The specification sets a join threshold of 0.82 and a
 merge threshold of 0.88. Baseline pairwise similarity over relevant items has a

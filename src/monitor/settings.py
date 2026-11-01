@@ -72,6 +72,8 @@ class Poll(BaseModel):
     sleep_gap_seconds: float = 60.0
     resume_stagger_seconds: float = 30.0
     min_gap_seconds: float = 60.0
+    catch_up_min_gap_seconds: float = 300.0
+    catch_up_concurrency: int = 8
 
 
 class Commit(BaseModel):

@@ -9,11 +9,13 @@ from datetime import UTC, datetime
 from time import struct_time
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from xml.etree import ElementTree
 
 import feedparser
 
 SUMMARY_MAX_CHARS = 2000
 RAW_ENTRY_MAX_CHARS = 8000
+SITEMAP_MAX_BYTES = 20_000_000
 
 TRACKING_PARAMS = {"fbclid", "gclid", "cmpid", "ocid", "ref", "smid"}
 TAG_RE = re.compile(r"<[^>]+>")
@@ -157,3 +159,95 @@ def parse_feed(content: bytes | str) -> ParsedFeed:
 def newest_entry_at(feed: ParsedFeed) -> datetime | None:
     dates = [e.published_at for e in feed.entries if e.published_at]
     return max(dates) if dates else None
+
+
+def _local_name(tag: Any) -> str:
+    return str(tag).rsplit("}", 1)[-1].lower()
+
+
+def _child_text(element: ElementTree.Element, name: str) -> str:
+    """Text of the first descendant with this local name."""
+    for child in element.iter():
+        if _local_name(child.tag) == name:
+            return (child.text or "").strip()
+    return ""
+
+
+def _sitemap_date(text: str) -> datetime | None:
+    try:
+        value = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _sitemap_root(content: bytes) -> ElementTree.Element | None:
+    if len(content) > SITEMAP_MAX_BYTES:
+        return None
+    try:
+        return ElementTree.fromstring(content)
+    except ElementTree.ParseError:
+        return None
+
+
+def parse_news_sitemap(content: bytes | str) -> ParsedFeed:
+    """Parse a Google News sitemap. It has titles and dates, not summaries."""
+    data = content.encode() if isinstance(content, str) else content
+    root = _sitemap_root(data)
+    if root is None:
+        return ParsedFeed(entries=[], title="", bozo=True, language="")
+    entries: list[FeedEntry] = []
+    for node in root:
+        if _local_name(node.tag) != "url":
+            continue
+        url = _child_text(node, "loc")
+        title = strip_html(_child_text(node, "title"))
+        if not url.startswith("http") or not title:
+            continue
+        date = _child_text(node, "publication_date")
+        language = _child_text(node, "language")[:2].lower()
+        entries.append(
+            FeedEntry(
+                url=url,
+                canonical_url=canonicalize_url(url),
+                guid=url[:500],
+                title=title[:500],
+                summary="",
+                author="",
+                published_at=_sitemap_date(date),
+                language=language,
+                categories=[],
+                raw={
+                    "loc": url,
+                    "title": title,
+                    "publication_date": date,
+                    "language": language,
+                },
+            )
+        )
+    return ParsedFeed(entries=entries, title="", bozo=False, language="")
+
+
+def sitemap_children(content: bytes) -> list[str]:
+    """Sitemap files listed by a sitemap index, news files first."""
+    root = _sitemap_root(content)
+    if root is None or _local_name(root.tag) != "sitemapindex":
+        return []
+    urls = [
+        _child_text(node, "loc")
+        for node in root
+        if _local_name(node.tag) == "sitemap"
+    ]
+    urls = [url for url in urls if url.startswith("http")]
+    news = [url for url in urls if "news" in url.lower()]
+    return news or urls
+
+
+def same_site(parent: str, child: str) -> bool:
+    """Whether a listed URL stays on the site that listed it."""
+    parent_host = (urlsplit(parent).hostname or "").lower()
+    child_host = (urlsplit(child).hostname or "").lower()
+    base = ".".join(parent_host.split(".")[-2:])
+    return child_host == base or child_host.endswith(f".{base}")

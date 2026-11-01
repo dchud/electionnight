@@ -45,8 +45,10 @@ A short network drop behaves the same way, with no action needed. Polling
 waits, no feed is penalized, and articles and model calls wait instead of being
 skipped or falling back to keywords.
 
-A feed lists only its newest stories, so a story that leaves a feed during a
-gap is not recovered. High-volume general feeds are the most exposed.
+A feed lists only its newest stories. After a gap of 5 minutes or more, the
+news sitemaps of the outlets in `config/news_sitemaps.csv` are read once to
+recover stories that left a feed. These stories have a title and date but no
+feed summary. A story that left a feed at any other outlet is not recovered.
 
 With no network at all, the dashboard still runs from local data, including
 replay. A phone hotspot works; collection reads about 650 MB per hour before

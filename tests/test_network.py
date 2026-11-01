@@ -10,14 +10,20 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from monitor.ingest.feeds import (
+    parse_news_sitemap,
+    same_site,
+    sitemap_children,
+)
 from monitor.ingest.network import NetworkGate
 from monitor.ingest.poller import FeedState, Poller, next_delay
 from monitor.ingest.sources import Source
-from monitor.lake import BatchWriter, connect, init_lake
+from monitor.lake import BatchWriter, connect, hash_id, init_lake
 from monitor.llm.budget import Budget
 from monitor.llm.client import LlmClient
 from monitor.parsers.base import Item
 from monitor.parsers.fetch_text import FetchTextParser
+from monitor.pipeline import Pipeline
 from monitor.web.app import create_app
 
 FEED = b"""<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>
@@ -378,3 +384,212 @@ def test_strip_says_when_collection_is_offline(settings):
         strip = client.get("/frag/status-strip").text
     assert "Offline since" in strip
     assert "not collecting" in strip
+
+
+SITEMAP = """<?xml version="1.0"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
+<url><loc>https://example.com/new?utm_source=x</loc><news:news>
+  <news:publication><news:name>S</news:name>
+  <news:language>es</news:language></news:publication>
+  <news:publication_date>{new}</news:publication_date>
+  <news:title>Polls close &amp; counting starts</news:title></news:news></url>
+<url><loc>https://example.com/old</loc><news:news>
+  <news:publication_date>{old}</news:publication_date>
+  <news:title>An older story</news:title></news:news></url>
+<url><loc>https://example.com/undated</loc><news:news>
+  <news:title>No date given</news:title></news:news></url>
+<url><loc>https://example.com/plain</loc></url>
+</urlset>"""
+
+
+def sitemap_body(new, old):
+    text = SITEMAP.format(new=new.isoformat(), old=old.isoformat())
+    return text.encode()
+
+
+def test_news_sitemap_entries_have_title_date_and_language():
+    new = datetime(2026, 11, 3, 23, 0, tzinfo=UTC)
+    old = new - timedelta(days=1)
+    feed = parse_news_sitemap(sitemap_body(new, old))
+    assert [entry.url for entry in feed.entries] == [
+        "https://example.com/new?utm_source=x",
+        "https://example.com/old",
+        "https://example.com/undated",
+    ]
+    first = feed.entries[0]
+    assert first.title == "Polls close & counting starts"
+    assert first.canonical_url == "https://example.com/new"
+    assert first.published_at == new
+    assert first.language == "es"
+    assert first.summary == ""
+    assert feed.entries[2].published_at is None
+
+
+@pytest.mark.parametrize("body", [b"<html><p>Sign in</p>", b"not xml", b""])
+def test_a_login_page_is_not_a_sitemap(body):
+    feed = parse_news_sitemap(body)
+    assert feed.entries == []
+    assert feed.bozo is True
+
+
+def test_sitemap_index_lists_news_files_first():
+    body = b"""<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <sitemap><loc>https://example.com/pages.xml</loc></sitemap>
+    <sitemap><loc>https://example.com/news-1.xml</loc></sitemap>
+    </sitemapindex>"""
+    assert sitemap_children(body) == ["https://example.com/news-1.xml"]
+    assert sitemap_children(SITEMAP.encode()) == []
+
+
+@pytest.mark.parametrize(
+    ("child", "expected"),
+    [
+        ("https://www.example.com/news.xml", True),
+        ("https://sitemaps.example.com/news.xml", True),
+        ("https://example.com/news.xml", True),
+        ("https://evil.test/news.xml", False),
+        ("http://127.0.0.1/news.xml", False),
+        ("https://notexample.com/news.xml", False),
+    ],
+)
+def test_a_sitemap_index_cannot_send_us_elsewhere(child, expected):
+    assert same_site("https://www.example.com/robots", child) is expected
+
+
+async def catching_up(settings, lake, handler, since):
+    settings.poll.resume_stagger_seconds = 0
+    rows = []
+    poller = Poller(
+        settings,
+        lake,
+        [source()],
+        set(),
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        gate=NetworkGate(settings),
+        on_new_items=rows.extend,
+        news_sitemaps={"s": "https://example.com/news.xml"},
+    )
+    await poller.catch_up(since)
+    return poller, rows
+
+
+async def test_catch_up_adds_only_stories_from_the_gap(settings, lake):
+    since = datetime.now(UTC) - timedelta(hours=1)
+    new = since + timedelta(minutes=10)
+    old = since - timedelta(hours=1)
+
+    def handler(request):
+        return httpx.Response(200, content=sitemap_body(new, old))
+
+    poller, rows = await catching_up(settings, lake, handler, since)
+    assert [row["url"] for row in rows] == [
+        "https://example.com/new?utm_source=x"
+    ]
+    assert rows[0]["feed_url"] == "https://example.com/news.xml"
+    assert poller.catch_up_since is None
+    assert poller.last_catch_up["new_items"] == 1
+    assert poller.last_catch_up["outlets"] == 1
+    assert poller.feeds[0].failures == 0
+
+
+async def test_catch_up_skips_stories_a_feed_already_gave(settings, lake):
+    since = datetime.now(UTC) - timedelta(hours=1)
+    new = since + timedelta(minutes=10)
+    old = since - timedelta(hours=1)
+
+    def handler(request):
+        return httpx.Response(200, content=sitemap_body(new, old))
+
+    settings.poll.resume_stagger_seconds = 0
+    seen = {hash_id("https://example.com/new")}
+    poller = Poller(
+        settings,
+        lake,
+        [source()],
+        seen,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        gate=NetworkGate(settings),
+        news_sitemaps={"s": "https://example.com/news.xml"},
+    )
+    await poller.catch_up(since)
+    assert poller.last_catch_up["new_items"] == 0
+
+
+async def test_catch_up_follows_a_sitemap_index_on_the_same_site(
+    settings, lake
+):
+    since = datetime.now(UTC) - timedelta(hours=1)
+    new = since + timedelta(minutes=10)
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        if request.url.path == "/news.xml":
+            return httpx.Response(
+                200,
+                content=b"""<sitemapindex
+                xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                <sitemap><loc>https://example.com/news-1.xml</loc></sitemap>
+                <sitemap><loc>http://127.0.0.1/news-2.xml</loc></sitemap>
+                </sitemapindex>""",
+            )
+        return httpx.Response(200, content=sitemap_body(new, new))
+
+    _, rows = await catching_up(settings, lake, handler, since)
+    assert "http://127.0.0.1/news-2.xml" not in requested
+    assert "https://example.com/news-1.xml" in requested
+    assert len(rows) >= 1
+
+
+async def test_interrupted_catch_up_starts_over_on_return(settings, lake):
+    since = datetime.now(UTC) - timedelta(hours=1)
+    network = Network()
+    network.up = False
+    settings.poll.resume_stagger_seconds = 0
+    gate = NetworkGate(settings, probe=network.probe)
+    poller = Poller(
+        settings,
+        lake,
+        [source()],
+        set(),
+        client=network.client(),
+        gate=gate,
+        news_sitemaps={"s": "https://example.com/news.xml"},
+    )
+    await gate.reachable()
+    await poller.catch_up(since)
+    assert poller.catch_up_since == since
+    assert poller.last_catch_up is None
+    later = since + timedelta(minutes=30)
+    network.up = True
+    network.body = sitemap_body(later, later)
+    gate._last_probe = float("-inf")
+    await gate.check_restored()
+    await poller.catch_up(later)
+    assert poller.catch_up_since is None
+    assert poller.last_catch_up["since"] == since
+
+
+async def test_short_gap_does_not_catch_up_and_long_gap_does(settings):
+    built = Pipeline(settings, no_llm=True)
+    calls = []
+
+    async def catch_up(since):
+        calls.append(since)
+
+    built.poller = SimpleNamespace(catch_up=catch_up, last_catch_up=None)
+    now = datetime.now(UTC)
+    limit = settings.poll.catch_up_min_gap_seconds
+    short = now - timedelta(seconds=limit - 1)
+    await built._network_restored(
+        {"gap_start": short, "gap_end": now, "reason": "network"}
+    )
+    assert built.catch_up_task is None
+    long = now - timedelta(seconds=limit + 1)
+    await built._network_restored(
+        {"gap_start": long, "gap_end": now, "reason": "sleep"}
+    )
+    await built.catch_up_task
+    assert calls == [long]
+    built.conn.close()

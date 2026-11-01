@@ -362,6 +362,7 @@ class Reference:
             "shedding": status.get("shedding"),
             "network": status.get("network") or {},
             "gaps": self.collection_gaps(),
+            "catch_up": status.get("catch_up"),
             "stages": status.get("stages") or [],
             "feeds": feeds,
             "feed_counts": states,
