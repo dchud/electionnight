@@ -1,19 +1,25 @@
 """Each dashboard card's link, and the page that shows what is behind it."""
 
 import html
+import inspect
 import math
 import re
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from conftest import clone_lake
+from fastapi.testclient import TestClient
 from test_under import add_rows, app_client, classified, item, seed
 
 from monitor.lake import connect
+from monitor.web.app import create_app
 from monitor.web.panels import Panels
 from monitor.web.readmodel import ReadModel
-from monitor.web.under import console_available
+from monitor.web.routes import sse
+from monitor.web.under import console_available, et_label
 from monitor.web.under_panels import (
     CARDS,
     CARDS_BY_KEY,
@@ -138,7 +144,7 @@ def test_every_card_on_the_home_page_has_the_control():
     )
     assert len(articles) >= 11
     for panel, body in articles:
-        head = body[: body.index("</div>")] + body[body.index("</div>") :]
+        head = body[: body.index("</div>")]
         assert "card.link(" in head, panel
 
 
@@ -187,7 +193,7 @@ def test_a_code_link_goes_to_the_code_section(client):
 
 def test_the_list_names_every_card_and_is_in_the_navigation(client):
     page = client.get(f"/under/panels?{QUERY}").text
-    assert 'href="/under/panels"' in page
+    assert 'href="/under/panels?' in page
     for card in CARDS:
         assert f"/under/panels/{card.key}?" in page
         assert card.title in html.unescape(page)
@@ -237,53 +243,54 @@ def test_changed_filters_change_the_statement_or_its_parameters(web, card):
     assert statements("window=3h&level=state") != statements("window=1h")
 
 
-ROUTE_CALLS = {
-    "wire": [("/frag/wire", "wire")],
-    "rising": [("/frag/rising", "rising")],
-    "brief": [
-        ("/frag/brief", "latest_brief"),
-        ("/frag/brief", "brief_count"),
-    ],
-    "map": [
-        ("/api/data/map", "map_data"),
-        ("/frag/states-rising", "states_rising"),
-    ],
-    "calls": [("/frag/race-calls", "race_calls")],
-    "stream": [
-        ("/api/data/stream", "stream_rows"),
-        ("/api/data/stream", "poll_rules"),
-    ],
-    "heat": [("/api/data/topic_heat", "topic_heat")],
-    "bump": [("/api/data/bump", "bump"), ("/api/data/bump", "poll_rules")],
-    "tone": [("/api/data/tone_by_lean", "tone_by_lean")],
-    "matrix": [("/api/data/coverage_matrix", "coverage_matrix")],
-    "global": [
-        ("/api/data/global_press", "global_press"),
-        ("/frag/translated", "latest_translated"),
-    ],
-    "kpis": [("/frag/kpis", "kpis")],
-}
+# A stream never finishes in a test client, so no request here covers it.
+STREAM_ROUTE = "/events"
+
+
+def watched(name, real, called, inside):
+    """A `Panels` method that notes a call no other method of it made."""
+
+    def spy(self, *args, **kwargs):
+        if getattr(inside, "active", False):
+            return real(self, *args, **kwargs)
+        called.add(name)
+        inside.active = True
+        try:
+            return real(self, *args, **kwargs)
+        finally:
+            inside.active = False
+
+    return spy
 
 
 @pytest.mark.parametrize("card", CARDS, ids=lambda card: card.key)
 def test_a_cards_method_list_is_what_its_routes_call(
     client, monkeypatch, card
 ):
-    called = []
-    for _, method in ROUTE_CALLS[card.key]:
-        real = getattr(Panels, method)
-
-        def spy(self, *args, real=real, method=method, **kwargs):
-            called.append(method)
-            return real(self, *args, **kwargs)
-
-        monkeypatch.setattr(Panels, method, spy)
-    for route, _ in ROUTE_CALLS[card.key]:
+    """Every public method is watched, so one the list omits fails this."""
+    called = set()
+    inside = threading.local()
+    for name, value in vars(Panels).items():
+        if inspect.isfunction(value) and not name.startswith("_"):
+            monkeypatch.setattr(
+                Panels, name, watched(name, value, called, inside)
+            )
+    listed = [m for m in card.methods if m.route != STREAM_ROUTE]
+    for route in {method.route for method in listed}:
         assert client.get(route).status_code == 200
-    for _, method in ROUTE_CALLS[card.key]:
-        assert method in called
-    named = {method.name for method in card.methods}
-    assert {method for _, method in ROUTE_CALLS[card.key]} <= named
+    assert called == {method.name for method in listed}
+
+
+def test_the_one_method_on_the_stream_is_what_the_stream_calls():
+    streamed = [
+        (card.key, method.name, method.route)
+        for card in CARDS
+        for method in card.methods
+        if method.route == STREAM_ROUTE
+    ]
+    assert streamed == [("wire", "wire_recent", "/events")]
+    assert [route.path for route in sse.router.routes] == [STREAM_ROUTE]
+    assert "web.panels.wire_recent" in inspect.getsource(sse)
 
 
 @pytest.mark.parametrize("card", CARDS, ids=lambda card: card.key)
@@ -642,3 +649,143 @@ def test_the_console_link_fills_the_box_without_running(
         console[console.index("<textarea") : console.index("</textarea>")]
     )
     assert "WITH RECURSIVE" in box
+
+
+# What these pages say.
+
+
+def page_text(client, path):
+    return " ".join(strip_tags(client.get(path).text).split())
+
+
+def test_the_stream_page_says_what_the_browser_computes(client):
+    page = page_text(client, "/under/panels/stream")
+    assert "It sums n per bin and storyline there" in page
+    assert "each storyline's share of its bin" in page
+    assert "computes no figure" not in page
+
+
+def test_the_map_page_says_what_focus_does_in_each_part(client):
+    page = page_text(client, "/under/panels/map")
+    assert "On the map, Focus dims the states outside it" in page
+    assert "In States rising, Focus chooses which states are listed" in page
+    assert "Focus only dims" not in page
+
+
+def test_the_list_of_cards_defines_its_two_labels(client):
+    page = page_text(client, "/under/panels")
+    assert (
+        "Code marks a card where a model or a statistical formula produces "
+        "what is on screen. SQL marks the others, whose pages list any "
+        "arithmetic done after the query." in page
+    )
+
+
+def test_the_briefing_page_says_it_shows_the_newest_brief(client):
+    page = page_text(client, "/under/panels/brief")
+    assert "This page shows the newest brief, with $offset = 0" in page
+
+
+def test_a_lake_form_says_rows_can_tie(client):
+    page = page_text(client, "/under/panels/rising")
+    assert "Open a lake form" in page
+    assert (
+        "Rows written in the same commit with the same key tie on the latest "
+        "row, and either may be returned" in page
+    )
+
+
+def test_a_request_from_elsewhere_is_offered_no_lake_form(client, filled):
+    assert "/under/sql?sql=" in client.get("/under/panels/rising").text
+    with TestClient(
+        create_app(filled),
+        base_url="http://testserver",
+        client=("192.168.1.30", 50000),
+    ) as remote:
+        page = remote.get("/under/panels/rising").text
+    assert "/under/sql?sql=" not in page
+    assert "Open a lake form" not in page
+    assert "no lake form is offered here" in page
+    assert remote.get("/under/sql").status_code == 403
+
+
+@pytest.mark.parametrize(
+    "path", ["/under/panels/rising", "/under/queries", "/under/data-model"]
+)
+def test_a_page_with_sql_says_once_that_line_breaks_are_added(client, path):
+    page = client.get(path).text
+    assert 'class="u-sql"' in page
+    assert page.count("Line breaks are added for reading.") == 1
+
+
+def test_a_page_with_no_sql_does_not_mention_line_breaks(client):
+    page = client.get("/under/panels").text
+    assert 'class="u-sql"' not in page
+    assert "Line breaks are added for reading." not in page
+
+
+def nav_cards_link(page):
+    return html.unescape(re.search(r'<a href="(/under/panels[^"]*)"', page)[1])
+
+
+@pytest.mark.parametrize("path", ["/under/panels", "/under/panels/rising"])
+def test_the_cards_navigation_link_keeps_the_filters(client, path):
+    link = nav_cards_link(client.get(f"{path}?{QUERY}").text)
+    assert "window=3h" in link
+    assert "focus=battleground" in link
+
+
+def test_the_cards_navigation_link_adds_no_filters_to_another_view(client):
+    assert nav_cards_link(client.get("/under/sql").text) == "/under/panels"
+
+
+def test_a_repeated_statement_says_which_methods_ran_it():
+    def ran(method):
+        return Recorded(
+            "focus_sets",
+            "SELECT 1",
+            None,
+            [],
+            1.0,
+            False,
+            method=method,
+            runs_by_method={method: 1},
+        )
+
+    merged = combined([ran("map_data")] * 3 + [ran("states_rising")] * 2)
+    assert len(merged) == 1
+    assert merged[0].runs == 5
+    assert merged[0].runs_by_method == {"map_data": 3, "states_rising": 2}
+
+
+def test_the_map_page_credits_each_run_to_its_method(client):
+    page = client.get(f"/under/panels/map?{QUERY}").text
+    assert "The method ran this" not in page
+    runs = re.findall(
+        r"This ran (\d+) times: (\d+) from <code>map_data</code>, "
+        r"(\d+) from <code>states_rising</code>\.",
+        page,
+    )
+    assert runs
+    for total, first, second in runs:
+        assert int(total) == int(first) + int(second)
+
+
+def test_a_replayed_card_page_says_which_moment_it_shows(client):
+    as_of = quote((now() - timedelta(hours=1)).isoformat())
+    stamp = et_label(now() - timedelta(hours=1))[:6]
+    response = client.get(f"/under/panels/rising?as_of={as_of}")
+    match = re.search(
+        r"<p[^>]*data-replay-moment[^>]*>([^<]*)</p>", response.text
+    )
+    assert match
+    assert stamp in match[1]
+    assert "Back returns to the replay at that moment" in match[1]
+    back = html.unescape(
+        re.search(r'<a class="text-link" href="(/\?[^"]*)"', response.text)[1]
+    )
+    assert "as_of=" in back
+
+
+def test_a_live_card_page_mentions_no_moment(client):
+    assert "data-replay-moment" not in client.get("/under/panels/rising").text

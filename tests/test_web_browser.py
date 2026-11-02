@@ -13,12 +13,14 @@ import time
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import duckdb
 import pytest
 from conftest import clone_lake
 
 from monitor.lake import TABLES, BatchWriter, connect
+from monitor.web.under import et_label
 
 pytestmark = [pytest.mark.slow, pytest.mark.enable_socket]
 
@@ -1410,3 +1412,136 @@ def test_math_draws_and_fits_at_1280_in_projector_mode(
     assert not found["pageWide"]
     assert found["size"] >= 14
     assert found["images"] == 0
+
+
+# A card's page in a replay.
+
+
+def start_replay(page):
+    page.evaluate(
+        "() => document.querySelector('[data-toggle-replay]').click()"
+    )
+    page.wait_for_function("() => window.Monitor.replay.active")
+
+
+def as_of_in(url):
+    text = parse_qs(urlsplit(url).query)["as_of"][0]
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+
+
+def test_a_card_link_in_a_replay_carries_the_moment_and_back_returns_to_it(
+    scratch, browser
+):
+    _, server = scratch
+    server.start()
+    _, page = open_page(browser, "/?window=3h")
+    start_replay(page)
+    replayed = page.evaluate("() => window.Monitor.replay.asOf")
+
+    page.locator('[data-card-link="rising"]').click()
+    page.wait_for_url("**/under/panels/rising*")
+    moment = as_of_in(page.url)
+    assert abs(moment.timestamp() * 1000 - replayed) < 60_000
+    assert "window=3h" in page.url
+    note = page.locator("[data-replay-moment]").inner_text()
+    assert et_label(moment) in note
+
+    page.locator("#under-main").get_by_text("Back to the dashboard").click()
+    page.wait_for_function(
+        "() => window.Monitor && window.Monitor.replay.active"
+    )
+    assert page.locator("#mode-pill").inner_text() == "REPLAY"
+    resumed = page.evaluate("() => window.Monitor.replay.asOf")
+    assert 0 <= resumed - moment.timestamp() * 1000 < 60_000
+    assert "window=3h" in page.url
+
+    page.evaluate(
+        "() => document.querySelector('[data-toggle-replay]').click()"
+    )
+    page.wait_for_load_state()
+    page.wait_for_function("() => window.Monitor")
+    assert "as_of" not in page.url
+    assert page.locator("#mode-pill").inner_text() == "LIVE"
+    assert not page.evaluate("() => window.Monitor.replay.active")
+
+
+# What a refresh of a view keeps.
+
+
+def refreshed(page, refresh):
+    """Run a refresh, and wait until it has replaced the view's content."""
+    page.evaluate(
+        "() => { window.before = document.querySelector('.u-section'); }"
+    )
+    refresh()
+    page.wait_for_function(
+        "() => document.querySelector('.u-section') !== window.before"
+    )
+
+
+@pytest.mark.parametrize("how", ["button", "key"])
+def test_formulas_stay_drawn_after_a_refresh_of_a_card_page(
+    scratch, browser, how
+):
+    _, server = scratch
+    server.start()
+    _, page = projector_page(browser)
+    page.goto(f"{BASE}/under/panels/rising")
+    page.wait_for_selector(".katex")
+    drawn = page.locator(".katex").count()
+    assert drawn
+
+    def refresh():
+        if how == "button":
+            page.locator("[data-under-refresh]").first.click()
+        else:
+            page.keyboard.press("r")
+
+    refreshed(page, refresh)
+    page.wait_for_selector(".katex")
+    assert page.locator(".katex").count() == drawn
+    assert page.locator(".math-display:not(:has(.katex))").count() == 0
+    assert "\\frac" not in page.locator("#methods").inner_text()
+
+
+def test_a_refresh_keeps_the_horizontal_scroll_of_a_rows_table(
+    scratch, browser
+):
+    settings, server = scratch
+    rows_scratch(settings)
+    server.start()
+    _, page = projector_page(browser)
+    page.goto(f"{BASE}/under/data-model?table=raw.items")
+    page.locator(
+        '[data-rows-open="recent"][data-rows-table="raw.items"]'
+    ).click()
+    box = page.locator('[data-rows-body="raw.items"] .u-scroll')
+    box.locator("table").wait_for()
+    box.evaluate("(element) => { element.scrollLeft = 240; }")
+    assert box.evaluate("(element) => element.scrollLeft") == 240
+    refreshed(page, page.locator("[data-under-refresh]").first.click)
+    assert box.evaluate("(element) => element.scrollLeft") == 240
+
+
+def test_a_sample_opened_from_the_no_time_message_is_the_open_mode(
+    scratch, browser
+):
+    settings, server = scratch
+    conn = connect(settings)
+    conn.execute("ALTER TABLE lake.raw.archive_index DROP COLUMN created_at")
+    conn.close()
+    server.start()
+    _, page = projector_page(browser)
+    page.goto(f"{BASE}/under/data-model?table=raw.archive_index")
+    controls = '[data-rows-table="raw.archive_index"]'
+    recent = page.locator(f'[data-rows-open="recent"]{controls}')
+    sample = page.locator(f'[data-rows-open="sample"]{controls}')
+    body = page.locator('[data-rows-body="raw.archive_index"]')
+    recent.click()
+    body.get_by_role("button", name="Show a sample").click()
+    body.get_by_role("button", name="Another sample").wait_for()
+    assert body.get_attribute("data-rows-mode") == "sample"
+    assert sample.get_attribute("aria-expanded") == "true"
+    assert recent.get_attribute("aria-expanded") == "false"
+    sample.click()
+    assert not body.is_visible()

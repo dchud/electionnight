@@ -1,9 +1,12 @@
 """The formulas in the Methods page: their rendering, and their agreement.
 
-Each case computes a value from the constants written in the document's own
-TeX, and through the function the dashboard calls.
+A case compares the formula with the function the dashboard calls. Where the
+TeX writes a constant, as in the velocity, attention, t, and cost formulas, the
+case reads it from the document. The share, title-hash, and merge formulas
+write no constant, so those cases compute the formula in the test.
 """
 
+import inspect
 import math
 import re
 from pathlib import Path
@@ -16,6 +19,7 @@ from conftest import clone_lake
 from test_under import app_client
 
 from monitor import analytics
+from monitor.llm.budget import estimate_usd
 from monitor.parsers import dedupe, storylines
 from monitor.settings import Settings
 from monitor.web.methods_doc import (
@@ -24,7 +28,7 @@ from monitor.web.methods_doc import (
     section_text,
     sections_html,
 )
-from monitor.web.panels import load_sql
+from monitor.web.panels import Panels, load_sql
 
 ROOT = Path(__file__).resolve().parents[1]
 TEXT = (ROOT / "docs" / "methods.md").read_text(encoding="utf-8")
@@ -303,6 +307,58 @@ def test_a_bucket_with_no_stories_has_no_share_and_no_part_in_divergence():
     shares = [0.5, None, 0.125]
     assert analytics.divergence(shares) == pytest.approx(0.5 - 0.125)
     assert analytics.divergence([None, None]) == 0.0
+
+
+# What a formula leaves out.
+
+
+def flat(section):
+    return " ".join(section_text(TEXT, section).split())
+
+
+def test_the_rising_section_states_the_conditions_beside_its_formula():
+    section = flat("velocity-and-rising")
+    limit = inspect.signature(Panels.rising).parameters["limit"].default
+    assert "a storyline's status was active at the time shown" in section
+    assert "its label is not empty" in section
+    assert f"it keeps the top {limit} by score" in section
+
+
+def test_the_attention_section_says_the_window_can_sit_inside_the_baseline():
+    assert (
+        "Before November 3 12:00 ET the window sits inside the baseline, so "
+        "$b_s$ includes $n_s$" in flat("state-attention-index")
+    )
+
+
+def test_the_coverage_section_states_what_its_formula_counts():
+    section = flat("coverage-by-lean")
+    assert "pass the Focus, Level, and Language controls" in section
+    assert "The Unrated bucket has no column in the matrix" in section
+
+
+# Cost.
+
+
+def test_the_cost_formula_is_what_the_function_computes():
+    section = section_text(TEXT, "cost")
+    read = number_after(r"([0-9.]+)\\,\\text\{cache read\}", section)
+    write = number_after(r"([0-9.]+)\\,\\text\{cache write\}", section)
+    settings = Settings()
+    model, (input_price, output_price) = next(
+        iter(settings.llm.prices_per_mtok.items())
+    )
+    wanted = (
+        100 + read * 20 + write * 30
+    ) * input_price / 1_000_000 + 40 * output_price / 1_000_000
+    assert estimate_usd(
+        settings,
+        model,
+        input_tokens=100,
+        output_tokens=40,
+        cache_read_tokens=20,
+        cache_write_tokens=30,
+    ) == pytest.approx(wanted)
 
 
 # Dedupe.

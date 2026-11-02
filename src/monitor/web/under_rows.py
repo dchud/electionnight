@@ -133,6 +133,25 @@ def failure(status_code: int, message: str) -> dict[str, Any]:
     return {"status": "error", "status_code": status_code, "error": message}
 
 
+def not_read(
+    under: Under,
+    base: dict[str, Any],
+    pinned: bool,
+    error: str | None,
+    query: Disclosed | None = None,
+) -> dict[str, Any]:
+    """Why no rows came back. A snapshot that is gone cannot be retried."""
+    if pinned and not under.snapshot_exists(base["at_snapshot"]):
+        return {**base, "status": "snapshot_gone", "status_code": 200}
+    return {
+        **base,
+        "status": "failed",
+        "status_code": 200,
+        "error": error,
+        "query": query,
+    }
+
+
 def rows_view(under: Under, params: Any) -> dict[str, Any]:
     """What the panel shows for one request."""
     table = params.get("table")
@@ -148,7 +167,8 @@ def rows_view(under: Under, params: Any) -> dict[str, Any]:
         )
     latest = under.snapshot_id or None
     snapshot = latest
-    if params.get("at") is not None:
+    pinned = params.get("at") is not None
+    if pinned:
         snapshot = checked_number(params.get("at"), 1, latest or 0)
         if snapshot is None:
             return failure(
@@ -171,13 +191,11 @@ def rows_view(under: Under, params: Any) -> dict[str, Any]:
         "retry_url": rows_url(table, mode, page, snapshot),
     }
     if not columns.ok:
-        return {
-            **base,
-            "status": "failed",
-            "status_code": 200,
-            "error": columns.error,
-        }
+        return not_read(under, base, False, columns.error)
     names = {column["column_name"] for column in columns.rows}
+    # A feed's first fetch brings many rows at once to a table with a row per
+    # item. It does so to no other table.
+    base["backlog_applies"] = "item_id" in names
     if mode == RECENT and TIME_COLUMN not in names:
         return {
             **base,
@@ -185,9 +203,19 @@ def rows_view(under: Under, params: Any) -> dict[str, Any]:
             "status_code": 200,
             "sample_url": rows_url(table, SAMPLE, 1, snapshot),
         }
-    last_page = max(1, math.ceil((catalog_rows or 0) / PAGE_ROWS))
-    if mode == RECENT and page > last_page:
-        return past_end(base, catalog_rows or 0, last_page)
+    if mode == RECENT and page > last_page_of(catalog_rows or 0):
+        # The catalog counts the latest snapshot, so there no scan runs. An
+        # older snapshot has a count of its own, which only a scan can read.
+        if snapshot == latest:
+            return past_end(base, catalog_rows or 0)
+        counted = under.scan_once(
+            [("count", count_sql(table, snapshot), None)], PAGE_ROWS
+        )["count"]
+        if not counted.ok:
+            return not_read(under, base, pinned, counted.error)
+        total = counted.first["n_rows"]
+        if page > last_page_of(total):
+            return past_end(base, total)
     sql = rows_sql(table, columns.rows, mode, page, snapshot)
     results = under.scan_once(
         [
@@ -199,18 +227,10 @@ def rows_view(under: Under, params: Any) -> dict[str, Any]:
     counted, ran = results["count"], results["rows"]
     query: Disclosed = ran.query
     if not ran.ok or not counted.ok:
-        return {
-            **base,
-            "status": "failed",
-            "status_code": 200,
-            "error": ran.error or counted.error,
-            "query": query,
-        }
+        return not_read(under, base, pinned, ran.error or counted.error, query)
     total = counted.first["n_rows"]
     if mode == RECENT and page > 1 and not ran.rows:
-        return past_end(
-            base, total, max(1, math.ceil(total / PAGE_ROWS)), query
-        )
+        return past_end(base, total, query)
     return {
         **base,
         **page_context(table, mode, page, snapshot, total, ran),
@@ -221,11 +241,12 @@ def rows_view(under: Under, params: Any) -> dict[str, Any]:
     }
 
 
+def last_page_of(total: int) -> int:
+    return max(1, math.ceil(total / PAGE_ROWS))
+
+
 def past_end(
-    base: dict[str, Any],
-    total: int,
-    last_page: int,
-    query: Disclosed | None = None,
+    base: dict[str, Any], total: int, query: Disclosed | None = None
 ) -> dict[str, Any]:
     return {
         **base,
@@ -234,7 +255,7 @@ def past_end(
         "total": total,
         "query": query,
         "last_url": rows_url(
-            base["table"], RECENT, last_page, base["at_snapshot"]
+            base["table"], RECENT, last_page_of(total), base["at_snapshot"]
         ),
     }
 

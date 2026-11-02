@@ -104,6 +104,12 @@ VEGA_NOTE = (
     "A Vega-Lite specification draws the chart in the browser from these "
     "rows. It decides marks, scales, and colors, and it computes no figure."
 )
+STREAM_NOTE = (
+    "A Vega-Lite specification draws the chart in the browser from these "
+    "rows. It sums n per bin and storyline there. The 100% view also computes "
+    "each storyline's share of its bin there, so no SQL result holds that "
+    "share."
+)
 TRANSLATED_NOTE = (
     "A headline in another language shows the classifier model's English "
     "translation when it has one, so that text comes from a model."
@@ -124,7 +130,7 @@ CARDS: tuple[Card, ...] = (
             MethodRef("wire", "/frag/wire", lambda p, f: p.wire(f)),
             MethodRef(
                 "wire_recent",
-                "/sse",
+                "/events",
                 lambda p, f: p.wire_recent(
                     f, p.model.refresh_seq - 1, p.model.refresh_seq
                 ),
@@ -196,6 +202,8 @@ CARDS: tuple[Card, ...] = (
             "was given. A sentence with no valid citation is dropped.",
             "A citation is checked to be a supplied item. It is not checked "
             "to support the claim.",
+            "This page shows the newest brief, with $offset = 0. The card's "
+            "Earlier button runs the same statement with a larger offset.",
         ),
         (
             CodeRef("monitor.parsers.briefs", "BriefWriter.write"),
@@ -235,7 +243,9 @@ CARDS: tuple[Card, ...] = (
             "index and the mean tone from them, in the functions below.",
             "The browser fetches these figures as JSON and joins them to the "
             "state shapes in map.js. D3 draws the map, and no SQL draws it.",
-            "Focus only dims states outside it. It does not change a value.",
+            "On the map, Focus dims the states outside it and does not "
+            "change a value. In States rising, Focus chooses which states are "
+            "listed, and it does not change a listed state's figure.",
         ),
         (
             CodeRef(ANALYTICS, "attention_index"),
@@ -288,7 +298,7 @@ CARDS: tuple[Card, ...] = (
                 "poll_rules", "/api/data/stream", lambda p, f: p.poll_rules(f)
             ),
         ),
-        (VEGA_NOTE, GAPS),
+        (STREAM_NOTE, GAPS),
         (CodeRef(SPECS, "stream"),),
         links=(Link("Volume", "/methods#volume"),),
     ),
@@ -519,6 +529,7 @@ class Recorded:
     cached: bool
     runs: int = 1
     method: str = ""
+    runs_by_method: dict[str, int] = field(default_factory=dict)
     console_sql: str = ""
     console_reason: str = ""
     local_tables: list[str] = field(default_factory=list)
@@ -559,6 +570,7 @@ class RecordingModel:
                 ms,
                 cached,
                 method=self.current_method,
+                runs_by_method={self.current_method: 1},
             )
         )
 
@@ -744,8 +756,12 @@ def combined(statements: list[Recorded]) -> list[Recorded]:
     for statement in statements:
         key = (statement.name, statement.sql, repr(statement.params))
         if key in seen:
-            seen[key].runs += 1
-            seen[key].cached = seen[key].cached and statement.cached
+            kept = seen[key]
+            kept.runs += 1
+            kept.cached = kept.cached and statement.cached
+            kept.runs_by_method[statement.method] = (
+                kept.runs_by_method.get(statement.method, 0) + 1
+            )
         else:
             seen[key] = statement
     return list(seen.values())

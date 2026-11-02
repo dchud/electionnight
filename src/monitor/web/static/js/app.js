@@ -515,13 +515,14 @@
       );
     }
     updateClock();
+    syncCardLinks();
   }
   function startReplay(from) {
     const replay = Monitor.replay;
     replay.active = true;
     if (wireLive) wireLive.replaceChildren();
     replay.end = Date.now();
-    replay.start = replay.end - REPLAY_SPAN_MS;
+    replay.start = Math.min(replay.end - REPLAY_SPAN_MS, from || Infinity);
     replay.asOf = from || replay.start;
     root.dataset.replay = "1";
     const replayNote = document.getElementById("replay-note");
@@ -545,11 +546,21 @@
   function toggleReplay() {
     if (Monitor.replay.active) {
       clearInterval(replayTimer);
-      window.location.reload();
+      const live = new URL(window.location.href);
+      live.searchParams.delete("as_of");
+      window.location.assign(live);
     } else {
       startReplay();
     }
   }
+  /* The dashboard opened at a moment, as from a card's page, replays from it. */
+  function resumeReplay() {
+    if (window.location.pathname !== "/") return;
+    const moment = new URLSearchParams(window.location.search).get("as_of");
+    const from = moment ? Date.parse(moment.replace(" ", "+")) : NaN;
+    if (!Number.isNaN(from)) startReplay(from);
+  }
+  resumeReplay();
   document.addEventListener("input", (event) => {
     if (event.target.id === "replay-scrubber") {
       Monitor.replay.asOf = Number(event.target.value);
@@ -734,6 +745,17 @@
         `[data-card-link="${model.dataset.cardLink}"]`
       );
       if (link) link.setAttribute("href", model.getAttribute("href"));
+    });
+    syncCardLinks();
+  }
+  /* In a replay, a card's link carries the moment on screen. */
+  function syncCardLinks() {
+    if (!Monitor.replay.active || !Monitor.replay.asOf) return;
+    const moment = new Date(Monitor.replay.asOf).toISOString();
+    document.querySelectorAll("[data-card-link]").forEach((link) => {
+      const url = new URL(link.getAttribute("href"), window.location.href);
+      url.searchParams.set("as_of", moment);
+      link.setAttribute("href", url.pathname + url.search + url.hash);
     });
   }
   /* The control shows the choice at once, and `f` and `w` advance from it. */

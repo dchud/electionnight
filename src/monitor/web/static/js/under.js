@@ -46,8 +46,14 @@
       if (open.has(element.dataset.key)) element.open = true;
     });
     const openRows = [...main.querySelectorAll("[data-rows-body][data-rows-mode]")];
+    const scrolled = openRows.flatMap(scrolledParts);
     main.replaceChildren(...fresh.childNodes);
     openRows.forEach(keepRows);
+    scrolled.forEach(({ element, left, top }) => {
+      element.scrollLeft = left;
+      element.scrollTop = top;
+    });
+    if (window.drawMath) window.drawMath(main);
     const stamp = page.getElementById("u-snapshot");
     if (stamp) document.getElementById("u-snapshot").textContent = stamp.textContent;
     if (window.htmx) window.htmx.process(main);
@@ -124,6 +130,17 @@
     });
   }
 
+  /* Moving an element out of the page resets its scroll, so note it first. */
+  function scrolledParts(rows) {
+    return [...rows.querySelectorAll(".u-scroll, pre")]
+      .filter((element) => element.scrollLeft || element.scrollTop)
+      .map((element) => ({
+        element,
+        left: element.scrollLeft,
+        top: element.scrollTop,
+      }));
+  }
+
   function keepRows(old) {
     const table = old.dataset.rowsBody;
     const fresh = rowsBody(table);
@@ -180,7 +197,10 @@
     const body = target.closest("[data-rows-body]");
     if (!body) return;
     const go = target.closest("[data-rows-go]");
-    if (go) showRows(body, body.dataset.rowsMode, go.dataset.rowsGo);
+    if (go) {
+      const url = new URL(go.dataset.rowsGo, window.location.href);
+      showRows(body, url.searchParams.get("mode"), go.dataset.rowsGo);
+    }
     if (target.closest("[data-rows-close]")) closeRows(body);
   }
 

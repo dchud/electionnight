@@ -27,7 +27,7 @@
   </div>
   <nav class="u-nav" aria-label="Under the hood views">
     {% for key, href, label in nav %}
-    <a href="{{ href }}" aria-current="{{ 'page' if view == key else 'false' }}">{{ label }}</a>
+    <a href="{{ href }}{% if key == 'panels' and view == 'panels' %}?{{ qs }}{% endif %}" aria-current="{{ 'page' if view == key else 'false' }}">{{ label }}</a>
     {% endfor %}
   </nav>
   <div class="u-controls">
@@ -41,7 +41,9 @@
   </div>
 </header>
 <main class="page under-main" id="under-main">
-{% block content %}{% endblock %}
+{% set shown %}{% block content %}{% endblock %}{% endset %}
+{{ shown }}
+{% if 'class="u-sql"' in shown and 'Line breaks are added for reading.' not in shown %}<p class="u-note">Line breaks are added for reading.</p>{% endif %}
 </main>
 <div id="tip" class="tip" hidden></div>
 </body>

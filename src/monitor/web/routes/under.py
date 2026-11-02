@@ -277,6 +277,7 @@ def panel(request: Request, card: str) -> HTMLResponse:
         "panels",
         filters,
         auto_refresh=False,
+        console_link=_local_request(request),
         **data,
     )
 

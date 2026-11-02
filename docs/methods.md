@@ -336,7 +336,9 @@ $$
 A storyline is rising when the score is at least 2 and $o$ is at
 least 3. Entities get no velocity score. A storyline is new when its
 `first_seen_at` is within 30 minutes. Rising Storylines lists only storylines
-that meet the rule.
+that meet the rule. It also requires that a storyline's status was active at
+the time shown and that its label is not empty, and it keeps the top 6 by
+score.
 
 ### State attention index
 
@@ -349,7 +351,8 @@ value. The ratio shrinks toward 1 with 5 pseudo-counts, so a small count stays
 near normal. $n_s$ is the state's items in the window and $N$ all items in the
 window. $b_s$ and $B$ are the same counts over the baseline. $E_s$ is the
 expected count, the baseline share times the window's total. 1.0 is normal for
-that state, and with no baseline items at all the index is 1.
+that state, and with no baseline items at all the index is 1. Before November 3
+12:00 ET the window sits inside the baseline, so $b_s$ includes $n_s$.
 
 $$
 E_s = \frac{b_s}{B} \cdot N
@@ -417,10 +420,12 @@ $$
 $$
 
 This is the share of bucket $b$'s election coverage devoted to $s$, so a bucket
-with more outlets does not dominate. A bucket with no stories in the window has
-no share. It reads as no data, not 0%, and does not count toward divergence.
-Divergence is the spread across the buckets that have a share, and the matrix
-sorts by it. It is 0 when no bucket has one.
+with more outlets does not dominate. The denominator counts only the items in
+$b$ that pass the Focus, Level, and Language controls. A bucket with no stories
+in the window has no share. It reads as no data, not 0%, and does not count
+toward divergence. Divergence is the spread across the buckets that have a
+share, and the matrix sorts by it. It is 0 when no bucket has one. The Unrated
+bucket has no column in the matrix and is left out of divergence.
 
 $$
 \text{divergence}(s) = \max_b \text{share}(s, b) - \min_b \text{share}(s, b)
@@ -643,10 +648,16 @@ entry lasts 5 minutes from its last use, and a request sent before the first
 response starts cannot read it. So when a purpose has had no success for 270 s,
 one request goes out alone, and the others wait for it, for at most 15 s.
 
-*usd* = (*input* + 0.1 *cache read* + 1.25 *cache write*) *input price* +
-*output* *output price*, with prices per token. The saving on the costs view
-compares this with the same tokens at the full input price. SDK retries are not
-counted, because the ledger sees one result per call.
+$$
+\text{usd} =
+\bigl(\text{input} + 0.1\,\text{cache read} + 1.25\,\text{cache write}\bigr)
+\,p_{\text{in}} + \text{output}\,p_{\text{out}}
+$$
+
+Input, cache read, cache write, and output count tokens. $p_{\text{in}}$ and
+$p_{\text{out}}$ are the input and output prices per token. The saving on the
+costs view compares this with the same tokens at the full input price. SDK
+retries are not counted, because the ledger sees one result per call.
 
 ## Values in this document
 

@@ -675,3 +675,122 @@ def test_the_button_sits_outside_the_text_it_copies(client):
     page = client.get("/under/queries").text
     for block in re.findall(r'<pre class="u-sql">.*?</pre>', page, flags=re.S):
         assert "Copy" not in block.replace("Copyright", "")
+
+
+# Only the rows the sentence is true of.
+
+
+@pytest.mark.parametrize(
+    ("table", "shown"),
+    [
+        ("raw.items", True),
+        ("nlp.mentions", True),
+        ("ref.sources", False),
+        ("gold.bin_counts", False),
+        ("nlp.maintenance_runs", False),
+    ],
+)
+def test_the_backlog_sentence_appears_where_a_first_fetch_brings_rows(
+    client, table, shown
+):
+    page = html.unescape(rows_page(client, table).text)
+    assert "a write time, not a publication time" in page
+    assert ("backlog from a feed's first fetch" in page) is shown
+
+
+# A pinned snapshot.
+
+
+def latest_snapshot(settings):
+    conn = connect(settings, read_only=True)
+    try:
+        return conn.execute(
+            "SELECT max(snapshot_id) FROM lake.snapshots()"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def pinned_lake(lake_template, tmp_path):
+    """10 rows at a snapshot, and 60 more written after it."""
+    settings = clone_lake(lake_template, tmp_path)
+    add_rows(
+        settings,
+        {"raw.items": [item(f"early-{n}", now()) for n in range(10)]},
+    )
+    pinned = latest_snapshot(settings)
+    add_rows(
+        settings,
+        {"raw.items": [item(f"later-{n}", now()) for n in range(60)]},
+    )
+    return settings, pinned
+
+
+def test_past_the_end_of_a_pinned_snapshot_uses_the_count_at_it(
+    lake_template, tmp_path
+):
+    settings, pinned = pinned_lake(lake_template, tmp_path)
+    with app_client(settings) as fresh:
+        page = rows_page(fresh, "raw.items", page=50, at=pinned).text
+        assert f"has 10 rows at snapshot {pinned}" in page
+        last = html.unescape(re.search(r'data-rows-go="([^"]+)"', page)[1])
+        assert parse_qs(urlsplit(last).query)["page"] == ["1"]
+        assert "Rows 1 to 10 of 10" in fresh.get(last).text
+
+
+def test_a_pinned_page_after_a_prune_says_the_snapshot_was_removed(
+    lake_template, tmp_path
+):
+    settings, pinned = pinned_lake(lake_template, tmp_path)
+    conn = connect(settings)
+    conn.execute(
+        f"CALL ducklake_expire_snapshots('lake', versions => [{pinned}])"
+    ).fetchall()
+    conn.close()
+    with app_client(settings) as fresh:
+        for page_number in (1, 50):
+            page = rows_page(
+                fresh, "raw.items", page=page_number, at=pinned
+            ).text
+            assert f"Snapshot {pinned} was removed from the lake" in page
+            assert "Close this and reopen" in page
+            assert "data-rows-close" in page
+            assert "Retry" not in page
+
+
+# A value of any type is cut in the SQL.
+
+
+def test_a_new_table_with_nested_columns_is_cut_in_the_sql(
+    lake_template, tmp_path, monkeypatch
+):
+    monkeypatch.setitem(TABLES, "nlp.nested", "box TEXT")
+    settings = clone_lake(lake_template, tmp_path)
+    conn = connect(settings)
+    conn.execute(
+        "CREATE TABLE lake.nlp.nested (box STRUCT(note VARCHAR), "
+        "lookup MAP(VARCHAR, VARCHAR), deep VARCHAR[][], "
+        "boxes STRUCT(note VARCHAR)[], amount INTEGER, created_at TIMESTAMPTZ)"
+    )
+    conn.execute(
+        "INSERT INTO lake.nlp.nested VALUES "
+        "({'note': $long}, MAP {'key': $long}, [[$long]], [{'note': $long}], "
+        "7, now())",
+        {"long": LONG},
+    )
+    conn.close()
+    with app_client(settings) as fresh:
+        page = html.unescape(rows_page(fresh, "nlp.nested").text)
+    assert MARKER not in page
+    statement = strip_tags(page)
+    for name in ("box", "lookup"):
+        assert (
+            f'left(CAST("{name}" AS VARCHAR), {SHOWN_CHARS + 1})' in statement
+        )
+    assert (
+        "Cut on this page: <code>box</code>, <code>lookup</code>, "
+        "<code>deep</code>, <code>boxes</code>." in page
+    )
+    assert ">7</td>" in page
+    assert 'CAST("amount"' not in statement
+    assert 'CAST("created_at"' not in statement

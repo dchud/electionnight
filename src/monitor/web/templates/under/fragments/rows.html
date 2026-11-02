@@ -10,6 +10,9 @@
 <p class="banner-warn u-error">These rows were not read. {{ error }}</p>
 <div class="u-rows-pager"><button type="button" class="u-button" data-rows-go="{{ retry_url }}">Retry</button>{{ close() }}</div>
 {% if query %}{{ u.sql_block(query.sql, console_link) }}{% endif %}
+{% elif status == 'snapshot_gone' %}
+<p class="banner-warn u-error">Snapshot {{ at_snapshot }} was removed from the lake, so this page cannot be read again. Close this and reopen.</p>
+{{ close() }}
 {% elif status == 'past_end' %}
 <p class="u-note">No rows on this page. <code>{{ table }}</code> has {{ total|u_int }} rows{% if at_snapshot %} at snapshot {{ at_snapshot }}{% endif %}.</p>
 <div class="u-rows-pager"><button type="button" class="u-button" data-rows-go="{{ last_url }}">Last page</button>{{ close() }}</div>
@@ -35,7 +38,7 @@
 </table></div>
 {% endif %}
 {% call u.caveat("These are rows") %}
-<p>In an append-only table one record can have several rows.{% if record_key %} A record here is one <code>{{ record_key }}</code>.{% endif %}{% if mode == 'recent' %} Most recent means by <code>{{ time_column }}</code>, the time the writer buffered the row. That is a write time, not a publication time, and many early rows are backlog from a feed's first fetch.{% else %} This is a sample of rows, not of stories: a record with more rows is more likely to appear. The query orders by <code>hash(rowid, {{ page }})</code>, so the same seed at the same snapshot returns these rows.{% endif %}{% if at_snapshot %} <code>AT (VERSION =&gt; {{ at_snapshot }})</code> keeps this page on one snapshot while new rows arrive. Close and reopen for the newest.{% endif %}</p>
-<p>Text over {{ shown_chars }} characters is cut in the SQL, so the full value stays in the lake.{% if cut_columns %} Cut on this page: {% for name in cut_columns %}<code>{{ name }}</code>{{ ', ' if not loop.last else '.' }}{% endfor %}{% else %} Nothing on this page was cut.{% endif %} A list shows its length and first 3 values. The SQL console can read stored text up to {{ console_cell_chars|u_int }} characters per cell.</p>
+<p>In an append-only table one record can have several rows.{% if record_key %} A record here is one <code>{{ record_key }}</code>.{% endif %}{% if mode == 'recent' %} Most recent means by <code>{{ time_column }}</code>, the time the writer buffered the row. That is a write time, not a publication time.{% if backlog_applies %} Many early rows are backlog from a feed's first fetch.{% endif %}{% else %} This is a sample of rows, not of stories: a record with more rows is more likely to appear. The query orders by <code>hash(rowid, {{ page }})</code>, so the same seed at the same snapshot returns these rows.{% endif %}{% if at_snapshot %} <code>AT (VERSION =&gt; {{ at_snapshot }})</code> keeps this page on one snapshot while new rows arrive. Close and reopen for the newest.{% endif %}</p>
+<p>Text and nested values over {{ shown_chars }} characters are cut in the SQL, so the full value stays in the lake.{% if cut_columns %} Cut on this page: {% for name in cut_columns %}<code>{{ name }}</code>{{ ', ' if not loop.last else '.' }}{% endfor %}{% else %} Nothing on this page was cut.{% endif %} A list shows its length and first 3 values. The SQL console can read stored text up to {{ console_cell_chars|u_int }} characters per cell.</p>
 {% endcall %}
 {% endif %}

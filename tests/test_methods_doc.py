@@ -369,8 +369,8 @@ def stated_phrases():
         f"less {minutes(readmodel.WATERMARK_OVERLAP)} minutes",
         f"following at most {readmodel.MERGE_HOPS} merges",
         # Cost
-        f"(*input* + {llm.cache_read_multiplier} *cache read* + "
-        f"{llm.cache_write_multiplier} *cache write*)",
+        f"{llm.cache_read_multiplier}\\,\\text{{cache read}}",
+        f"{llm.cache_write_multiplier}\\,\\text{{cache write}}",
         f"no success for {llm_client.CACHE_COLD_SECONDS:.0f} s",
         f"for at most {llm_client.COLD_WAIT_SECONDS:.0f} s",
     ]

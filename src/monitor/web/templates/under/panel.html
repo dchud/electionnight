@@ -5,6 +5,7 @@
 {% block content %}
 <h1>{{ card.title }}: what is behind this card</h1>
 <p class="u-lede"><a class="text-link" href="{{ back_href }}">Back to the dashboard</a>, with these filters. <a class="text-link" href="/under/panels?{{ qs }}">Every card</a>. Filters: {{ filters.describe() }}. Local tables at snapshot {{ at_snapshot }}.</p>
+{% if filters.is_replay %}<p class="u-note" data-replay-moment>Replay: this page shows the card as of {{ filters.as_of|u_et }}, and Back returns to the replay at that moment.</p>{% endif %}
 {% for failure in failures %}<p class="banner-warn u-error">This method did not finish, so the statements below may be incomplete. {{ failure }}</p>{% endfor %}
 
 <section class="u-section" id="layers">
@@ -34,15 +35,18 @@
 <section class="u-section" id="sql">
   <div class="u-section-head"><h2 class="u-section-title">The SQL that ran</h2><span class="panel-note">recorded while the card's methods ran</span></div>
   <div class="u-section-body">
+    <p class="u-note">Line breaks are added for reading.</p>
     {% for entry in entries %}
     {% set q = entry.statement %}
     <div class="u-call" id="statement-{{ loop.index }}">
-      <h3 class="u-chart-title"><code>{{ q.name }}</code>, from <code>{{ q.method }}</code></h3>
-      <p class="u-query-meta">{% if q.cached %}The result came from the read model's cache for this snapshot, so no time is shown.{% else %}Ran in {{ q.ms }} ms.{% endif %} Rows: {{ entry.n_rows|u_int }}.{% if q.runs > 1 %} The method ran this {{ q.runs }} times.{% endif %}</p>
+      <h3 class="u-chart-title"><code>{{ q.name }}</code>, from {% for method in q.runs_by_method %}<code>{{ method }}</code>{{ ', ' if not loop.last else '' }}{% endfor %}</h3>
+      <p class="u-query-meta">{% if q.cached %}The result came from the read model's cache for this snapshot, so no time is shown.{% else %}Ran in {{ q.ms }} ms.{% endif %} Rows: {{ entry.n_rows|u_int }}.{% if q.runs > 1 %} This ran {{ q.runs }} times: {% for method, runs in q.runs_by_method.items() %}{{ runs }} from <code>{{ method }}</code>{{ ', ' if not loop.last else '.' }}{% endfor %}{% endif %}</p>
       {% if entry.params_text %}<p class="u-query-meta">Parameters: <code>{{ entry.params_text }}</code></p>{% endif %}
       {{ u.sql_block(q.sql) }}
-      {% if q.console_sql %}
-      <p class="u-query-meta"><a class="u-button" href="/under/sql?sql={{ q.console_sql|urlencode }}">Open a lake form in the SQL console</a> It builds these local tables from the lake at snapshot {{ at_snapshot }} and fills in the parameters, so it reads Parquet where this query reads memory. It fills the box and runs nothing.</p>
+      {% if q.console_sql and console_link %}
+      <p class="u-query-meta"><a class="u-button" href="/under/sql?sql={{ q.console_sql|urlencode }}">Open a lake form in the SQL console</a> It builds these local tables from the lake at snapshot {{ at_snapshot }} and fills in the parameters, so it reads Parquet where this query reads memory. It fills the box and runs nothing. Rows written in the same commit with the same key tie on the latest row, and either may be returned, so this form and the panel can differ on those rows.</p>
+      {% elif q.console_sql %}
+      <p class="u-query-meta">The SQL console answers only on the machine running this dashboard, so no lake form is offered here.</p>
       {% else %}
       <p class="u-query-meta">The console cannot run this as it is, because it has the lake and not the local tables, and no lake form is offered. {{ q.console_reason }}</p>
       {% endif %}

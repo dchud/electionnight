@@ -29,7 +29,8 @@ STATISTIC_CHARS = 40
 LIST_VALUES_SHOWN = 3
 SAFE_TABLE_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 NUMBER_TYPE_RE = re.compile(r"^(u?int|float|decimal)")
-TEXT_TYPES = {"varchar", "json", "blob"}
+# Values of these types cannot be long. Every other type is cut as text.
+SHORT_TYPE_RE = re.compile(r"^(u?int|float|decimal|boolean|date|time|uuid)")
 NOT_SAMPLED = "-- Not run, because the column list could not be read."
 
 # Every table in the catalog, and what one row in it is. A test compares this
@@ -204,9 +205,11 @@ def with_stats(
 def cut_columns(
     columns: list[dict[str, Any]], chars: int = EXCERPT_CHARS
 ) -> list[str]:
-    """Select terms that cut long text and show a list by its length.
+    """Select terms that cut long values and show a list by its length.
 
-    The cut happens in SQL, so full text never leaves the child process.
+    The cut happens in SQL, so a full value never leaves the child process. A
+    struct, a map, a nested list, and any other type not known to be short are
+    cut as text.
     """
     element_types = {
         column["parent_column"]: column["column_type"]
@@ -220,14 +223,10 @@ def cut_columns(
         name = column["column_name"]
         quoted = '"' + name.replace('"', '""') + '"'
         kind = column["column_type"]
-        if kind in TEXT_TYPES:
-            text = (
-                quoted if kind == "varchar" else f"CAST({quoted} AS VARCHAR)"
-            )
-            parts.append(f"left({text}, {chars}) AS {quoted}")
-        elif kind == "list":
+        if kind == "list":
             first = f"{quoted}[1:{LIST_VALUES_SHOWN}]"
-            if element_types.get(column.get("column_id")) in TEXT_TYPES:
+            element = element_types.get(column.get("column_id"), "")
+            if not SHORT_TYPE_RE.match(element):
                 first = (
                     f"list_transform({first}, "
                     f"lambda value: left(CAST(value AS VARCHAR), {chars}))"
@@ -236,8 +235,13 @@ def cut_columns(
                 f"struct_pack(length := len({quoted}), first := {first}) "
                 f"AS {quoted}"
             )
-        else:
+        elif SHORT_TYPE_RE.match(kind):
             parts.append(quoted)
+        else:
+            text = (
+                quoted if kind == "varchar" else f"CAST({quoted} AS VARCHAR)"
+            )
+            parts.append(f"left({text}, {chars}) AS {quoted}")
     return parts
 
 

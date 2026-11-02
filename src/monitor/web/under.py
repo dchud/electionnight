@@ -956,6 +956,25 @@ class Under:
             self._gate.release()
         return self._scan_results(statements, outcome)
 
+    def snapshot_exists(self, snapshot_id: int) -> bool:
+        """Whether the catalog holds a snapshot, read now and not cached.
+
+        If the catalog cannot be read, this says yes, so a retry stays offered.
+        """
+        cursor = self._catalog_conn().cursor()
+        try:
+            found = cursor.execute(
+                "SELECT 1 "
+                "FROM __ducklake_metadata_lake.main.ducklake_snapshot "
+                "WHERE snapshot_id = $snapshot",
+                {"snapshot": snapshot_id},
+            ).fetchall()
+        except duckdb.Error:
+            return True
+        finally:
+            cursor.close()
+        return bool(found)
+
     def worker_call(
         self,
         cache_key: tuple[Any, ...],
