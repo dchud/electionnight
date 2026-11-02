@@ -27,6 +27,8 @@ seconds, and an archive read gets 15.
 | When | Open | The question it answers | The caveat to raise |
 |---|---|---|---|
 | Opening | `/under/coverage` | What can this system see, and what can it not? | The lean of most outlets is unknown, and major outlets have no working feed |
+| Before polls close | `/methods` | How does an article get from a feed to the screen? | The diagrams show what runs, not whether its answers are right |
+| Before polls close | `/under/lake` | What does DuckLake store, and how do we know? | A row count measures writes, and statistics leave out inlined rows |
 | Before polls close | `/under/inventory` | How many records are there, and where did they come from? | Rows are not records, and most early items were backlog |
 | Before polls close | `/under/storage` | How is this stored while it is being written? | Merge and cleanup change files, not answers |
 | Before polls close | `/under/data-model` | What does one table look like, from code to file? | A schema constrains shape, not truth |
@@ -34,6 +36,7 @@ seconds, and an archive read gets 15.
 | After a race call appears | `/under/models` | Which model produced this value? | Agreement between two methods is not accuracy |
 | Quiet stretch | `/under/feeds` | What does polling look like as a system? | Yield credits only the first feed to serve an item |
 | Quiet stretch | `/under/costs` | What did this cost? | Dollar figures are estimates, not an invoice |
+| Questions | `/under/queries` | What can this stack do with each kind of data? | Each query says what its result does not mean |
 | Questions | `/under/records`, `/under/sql` | Can we check that ourselves? | Stored values can mislead; read the labels |
 
 ## What to say
@@ -60,6 +63,27 @@ and House seats stand in for population because the gazetteer has none. A high
 ratio can come from a contested statewide race.
 
 End on "Conclusions this data cannot support". Ask the class to add one.
+
+### Methods
+
+Open `/methods`. The left navigation follows the section in view. Walk through
+the three diagrams: feed to screen, the processes and the single-writer rule,
+and DuckLake. Point out that `classify_a` feeds two branches, and that every
+writer goes through one batch writer. Each section links to its live view.
+The table at the end names the setting or constant behind each value, and a
+test compares them.
+
+### DuckLake
+
+Open `/under/lake`. The catalog is plain SQL, so read a row count aloud and
+open its query. Choose `nlp.embeddings` in the table browser. `ducklake_column`
+holds `vec` as a list with a child `element`, and the statistics sit on the
+child. Compare the rows in Parquet with the inlined rows. Statistics cover only
+the first of those. A sample row shows a vector's length and first values, and
+article text is cut to an excerpt in the query.
+
+Inventory compares rows with keys for every table. Storage has compression and
+time travel, and Data model has the table as the code declares it.
 
 ### Inventory
 
@@ -136,6 +160,16 @@ Compare the estimate with the same calls uncached. The saving comes from a long
 system prompt repeated on every call. `usd_est` is computed from configured
 prices, not an invoice, and SDK retries are not counted.
 
+### Queries
+
+Use `/under/queries` when the class asks what this stack can do. The first
+button groups queries by data shape, and the second by what produced the
+values. Start with the query on the latest-row rule, which gives two sums from
+one table, and then the English and Spanish vector match. A Spanish item's
+vector comes from the English the classifier wrote, so that match rests partly
+on the translation. Each query says what its result does not mean, and read
+that aloud. Its link opens it in the SQL console without running it.
+
 ### Records and SQL
 
 Use `/under/records` for "show me one". It filters stored values and links to
@@ -149,7 +183,8 @@ only, and it logs each query. These work:
 SELECT count(*) AS n_rows, count(DISTINCT (bin_start, source_id)) AS n_keys
 FROM lake.gold.source_bins;
 
-SELECT method, count(*) AS n FROM lake.nlp.dup_groups GROUP BY 1 ORDER BY n DESC;
+SELECT method, count(*) AS n FROM lake.nlp.dup_groups GROUP BY 1 ORDER BY n
+DESC;
 
 SELECT purpose, round(sum(usd_est), 2) AS usd
 FROM lake.nlp.llm_calls GROUP BY 1 ORDER BY usd DESC;

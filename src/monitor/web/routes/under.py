@@ -14,6 +14,8 @@ from fastapi.responses import HTMLResponse, Response
 from monitor.web.filters import Filters
 from monitor.web.under import Under, console_available, valid_item_id
 from monitor.web.under_coverage import coverage
+from monitor.web.under_lake import lake_view
+from monitor.web.under_queries import gallery
 from monitor.web.under_trace import (
     archive_record,
     records,
@@ -30,6 +32,7 @@ LOOPBACK_NAMES = {"127.0.0.1", "[::1]", "localhost"}
 NAV = (
     ("index", "/under", "Overview"),
     ("coverage", "/under/coverage", "Coverage"),
+    ("lake", "/under/lake", "DuckLake"),
     ("inventory", "/under/inventory", "Inventory"),
     ("storage", "/under/storage", "Storage"),
     ("data-model", "/under/data-model", "Data model"),
@@ -38,6 +41,7 @@ NAV = (
     ("records", "/under/records", "Records"),
     ("feeds", "/under/feeds", "Feeds"),
     ("costs", "/under/costs", "Costs"),
+    ("queries", "/under/queries", "Queries"),
     ("sql", "/under/sql", "SQL"),
 )
 
@@ -94,6 +98,26 @@ def coverage_view(request: Request) -> HTMLResponse:
         "coverage",
         filters,
         **coverage(_under(request), filters),
+    )
+
+
+@router.get("/lake", response_class=HTMLResponse)
+def lake(request: Request) -> HTMLResponse:
+    return _page(
+        request,
+        "lake",
+        "lake",
+        **lake_view(_under(request), request.query_params),
+    )
+
+
+@router.get("/queries", response_class=HTMLResponse)
+def queries(request: Request) -> HTMLResponse:
+    return _page(
+        request,
+        "queries",
+        "queries",
+        **gallery(_under(request), request.query_params.get("by") or "shape"),
     )
 
 
@@ -235,7 +259,8 @@ def sql_page(request: Request) -> Response:
         auto_refresh=False,
         available=console_available(),
         result=None,
-        sql="SELECT parser, status, count(*) AS n\n"
+        sql=request.query_params.get("sql", "")[:MAX_SQL_BYTES]
+        or "SELECT parser, status, count(*) AS n\n"
         "FROM lake.nlp.parser_runs\nGROUP BY ALL\nORDER BY n DESC",
     )
 

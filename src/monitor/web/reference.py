@@ -8,7 +8,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from markdown_it import MarkdownIt
 from markupsafe import Markup
 
 from monitor.settings import Settings
@@ -22,6 +21,8 @@ from monitor.web.filters import (
     set_race_watch,
     set_watch,
 )
+from monitor.web.methods_doc import drifted
+from monitor.web.methods_doc import render as render_methods
 from monitor.web.panels import (
     ET,
     Panels,
@@ -127,10 +128,7 @@ class Reference:
         self.settings = settings
         self.model = model
         self.panels = panels
-        self._markdown = MarkdownIt("commonmark", {"html": False}).enable(
-            "table"
-        )
-        self._methods: tuple[float, Markup] | None = None
+        self._methods: tuple[float, dict[str, Any]] | None = None
         self._disk: tuple[float, dict[str, float]] | None = None
         self._disk_lock = threading.Lock()
 
@@ -266,15 +264,23 @@ class Reference:
 
     # Methods
 
-    def methods_html(self) -> Markup:
-        """The Methods document as HTML, with raw HTML in it escaped."""
+    def methods_document(self) -> dict[str, Any]:
+        """The Methods document, its headings, and any drift from settings."""
         try:
             changed = METHODS_PATH.stat().st_mtime
         except OSError:
-            return Markup("")
+            return {"html": Markup(""), "headings": [], "drifted": []}
         if self._methods is None or self._methods[0] != changed:
             text = METHODS_PATH.read_text(encoding="utf-8")
-            self._methods = (changed, Markup(self._markdown.render(text)))
+            document = render_methods(text)
+            self._methods = (
+                changed,
+                {
+                    "html": document.html,
+                    "headings": document.headings,
+                    "drifted": drifted(text, self.settings),
+                },
+            )
         return self._methods[1]
 
     def ledger(self, filters: Filters) -> dict[str, Any]:

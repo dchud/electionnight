@@ -26,6 +26,7 @@
   <div class="u-section-body">
     <div class="u-views">
       <a class="u-view" href="/under/coverage"><strong>Coverage</strong><span>Where the source list is heavy, light, or missing, and what the data cannot support.</span></a>
+      <a class="u-view" href="/under/lake"><strong>DuckLake</strong><span>What the lake stores, from its own catalog: every table, its schema, statistics, and sample rows.</span></a>
       <a class="u-view" href="/under/inventory"><strong>Inventory</strong><span>Rows and distinct keys per table. Items by outlet, feed, and language, and when they arrived.</span></a>
       <a class="u-view" href="/under/storage"><strong>Storage</strong><span>Inlined and Parquet rows, files, column compression, snapshots, merges, and time travel.</span></a>
       <a class="u-view" href="/under/data-model"><strong>Data model</strong><span>A table as declared, as the catalog sees it, and as it sits in a Parquet file. The JSON schema of each model call.</span></a>
@@ -34,6 +35,7 @@
       <a class="u-view" href="/under/records"><strong>Records</strong><span>Low-level search over stored values. Not the semantic search in the main view.</span></a>
       <a class="u-view" href="/under/feeds"><strong>Feeds</strong><span>Polling as a system: status mix, conditional GET, yield per feed and tier, and circuit breakers.</span></a>
       <a class="u-view" href="/under/costs"><strong>Costs</strong><span>Spend by purpose, model, and day. What prompt caching saved. Cost per item for each stage.</span></a>
+      <a class="u-view" href="/under/queries"><strong>Queries</strong><span>Worked queries by data shape and by what produced the values, each with a live result.</span></a>
       <a class="u-view" href="/under/sql"><strong>SQL</strong><span>A read-only query box, limited to one SELECT, 1,000 rows, and 10 seconds.</span></a>
     </div>
     {{ u.show_query(overview.queries, "index-overview") }}

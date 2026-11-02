@@ -136,7 +136,7 @@ def methods(request: Request) -> HTMLResponse:
         request,
         "pages/methods.html",
         filters,
-        document=web.reference.methods_html(),
+        document=web.reference.methods_document(),
         stages=status.get("stages") or [],
         settings=web.settings,
         **web.reference.ledger(filters),

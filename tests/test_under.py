@@ -49,6 +49,8 @@ FEED_URL = "https://example.com/feed.xml"
 VIEWS = (
     "/under",
     "/under/coverage",
+    "/under/lake",
+    "/under/queries",
     "/under/inventory",
     "/under/storage",
     "/under/data-model",

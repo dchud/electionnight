@@ -1,24 +1,39 @@
 {% extends "base.html" %}
 {% block title %}Methods · Election Night Monitor{% endblock %}
 {% block content %}
-<main class="page page-narrow">
-  <article class="panel page-panel-body doc">
-    {% if document %}{{ document }}{% else %}<div class="empty">The Methods document is missing.</div>{% endif %}
-  </article>
-  <article class="panel">
-    <div class="panel-head"><h2 class="panel-title">Models and parsers in service</h2></div>
-    <div class="page-panel-body">
-      <p class="m-0">Bulk model: <code>{{ settings.llm.model_bulk }}</code>. Brief model: <code>{{ settings.llm.model_brief }}</code>. Embedding model: <code>{{ settings.nlp.embed_model }}</code>.</p>
-      {% if stages %}
-      <div class="wire-meta mt-1">{% for stage in stages %}<span class="chip">{{ stage.parser }} {{ stage.version }}</span>{% endfor %}</div>
-      {% else %}
-      <div class="empty">The pipeline status file is missing, so parser versions cannot be listed.</div>
-      {% endif %}
-    </div>
-  </article>
-  <article class="panel">
-    <div class="panel-head"><h2 class="panel-title">Cost ledger</h2><span class="panel-note">estimated from token counts; up to the replay time</span></div>
-    <div class="page-panel-body">{% include "fragments/ledger.html" %}</div>
-  </article>
-</main>
+<div class="page doc-page">
+  <nav class="doc-nav" aria-label="Sections of this page" data-doc-nav>
+    <ul>
+      {% for heading in document.headings if heading.level > 1 %}
+      <li class="doc-nav-{{ heading.level }}"><a href="#{{ heading.anchor }}">{{ heading.text|replace('`', '') }}</a></li>
+      {% endfor %}
+      <li class="doc-nav-2"><a href="#in-service">Models and parsers in service</a></li>
+      <li class="doc-nav-2"><a href="#cost-ledger">Cost ledger</a></li>
+    </ul>
+  </nav>
+  <main class="doc-main">
+    {% if document.drifted %}
+    <p class="banner-warn">A setting in service differs from this document: {{ document.drifted|join('; ') }}.</p>
+    {% endif %}
+    <article class="panel page-panel-body doc">
+      {% if document.html %}{{ document.html }}{% else %}<div class="empty">The Methods document is missing.</div>{% endif %}
+    </article>
+    <article class="panel doc-anchor" id="in-service">
+      <div class="panel-head"><h2 class="panel-title">Models and parsers in service</h2></div>
+      <div class="page-panel-body">
+        <p class="m-0">Bulk model: <code>{{ settings.llm.model_bulk }}</code>. Brief model: <code>{{ settings.llm.model_brief }}</code>. Embedding model: <code>{{ settings.nlp.embed_model }}</code>.</p>
+        {% if stages %}
+        <div class="wire-meta mt-1">{% for stage in stages %}<span class="chip">{{ stage.parser }} {{ stage.version }}</span>{% endfor %}</div>
+        {% else %}
+        <div class="empty">The pipeline status file is missing, so parser versions cannot be listed.</div>
+        {% endif %}
+      </div>
+    </article>
+    <article class="panel doc-anchor" id="cost-ledger">
+      <div class="panel-head"><h2 class="panel-title">Cost ledger</h2><span class="panel-note">estimated from token counts; up to the replay time</span></div>
+      <div class="page-panel-body">{% include "fragments/ledger.html" %}</div>
+    </article>
+  </main>
+</div>
+<script src="/static/js/methods.js" defer></script>
 {% endblock %}

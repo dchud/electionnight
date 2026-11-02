@@ -405,7 +405,22 @@ def seconds_label(value: Any) -> str:
     return f"{value / 86400:.1f} d"
 
 
+def result_cell(value: Any) -> str:
+    """One query result, cut short. Stored floats print at 4 digits."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    if isinstance(value, list):
+        parts = ", ".join(result_cell(part) for part in value[:6])
+        more = f", ... ({len(value)} values)" if len(value) > 6 else ""
+        return f"[{parts}{more}]"
+    text = str(value)
+    return text if len(text) <= 200 else f"{text[:200]}..."
+
+
 def register_filters(env: Any) -> None:
+    env.filters["u_cell"] = result_cell
     env.filters["u_bytes"] = human_bytes
     env.filters["u_int"] = thousands
     env.filters["u_pct"] = percent

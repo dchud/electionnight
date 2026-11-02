@@ -1863,7 +1863,7 @@ def test_lean_distribution_counts_outlets_by_shown_label(client):
 
 def test_methods_renders_the_document_and_the_ledger(client):
     text = client.get("/methods").text
-    assert "<h2>Metric definitions</h2>" in text
+    assert '<h2 id="metric-definitions">Metric definitions</h2>' in text
     assert "<table>" in text
     assert "app-header" in text
     assert "$2.00" in text

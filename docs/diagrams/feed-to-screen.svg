@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 606" role="img" aria-labelledby="feed-title">
+  <title id="feed-title">From a news feed to the screen: the poller and parser stages write through one batch writer into DuckLake, and the web process reads it into memory for the browser.</title>
+  <style>
+    .fd-bg { fill: var(--surface-1, #fcfcfb); }
+    .fd-area { fill: none; stroke: var(--line, #a9a9a3); stroke-width: 1.5; stroke-dasharray: 7 5; }
+    .fd-box { fill: var(--surface-2, #efefec); stroke: var(--text-3, #6f6e69); stroke-width: 1.5; }
+    .fd-llm { fill: var(--surface-2, #efefec); stroke: var(--accent, #6250d6); stroke-width: 3; }
+    .fd-name { fill: var(--text-1, #0b0b0b); font: 650 17px ui-sans-serif, system-ui, sans-serif; }
+    .fd-note { fill: var(--text-2, #52514e); font: 400 14px ui-sans-serif, system-ui, sans-serif; }
+    .fd-area-name { fill: var(--text-2, #52514e); font: 650 14px ui-sans-serif, system-ui, sans-serif; }
+    .fd-line { fill: none; stroke: var(--text-2, #52514e); stroke-width: 2; }
+    .fd-ask { stroke-dasharray: 6 4; }
+    .fd-head { fill: var(--text-2, #52514e); }
+  </style>
+  <defs>
+    <marker id="fd-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path class="fd-head" d="M0 0 L10 5 L0 10 Z"/>
+    </marker>
+  </defs>
+  <rect class="fd-bg" width="960" height="606"/>
+
+  <rect class="fd-area" x="6" y="6" width="948" height="364" rx="8"/>
+  <text class="fd-area-name" x="946" y="28" text-anchor="end">pipeline process</text>
+  <rect class="fd-area" x="6" y="450" width="948" height="150" rx="8"/>
+  <text class="fd-area-name" x="946" y="470" text-anchor="end">web process</text>
+
+  <rect class="fd-box" x="18" y="16" width="170" height="52" rx="6"/>
+  <text class="fd-name" x="30" y="38">Outlet feeds</text>
+  <text class="fd-note" x="30" y="58">RSS and Atom</text>
+
+  <rect class="fd-box" x="18" y="112" width="170" height="92" rx="6"/>
+  <text class="fd-name" x="30" y="134">Feed poller</text>
+  <text class="fd-note" x="30" y="154">every 60, 180, or</text>
+  <text class="fd-note" x="30" y="172">600 s by tier, with</text>
+  <text class="fd-note" x="30" y="190">conditional GET</text>
+
+  <rect class="fd-box" x="228" y="16" width="240" height="52" rx="6"/>
+  <text class="fd-name" x="240" y="38">Archive files</text>
+  <text class="fd-note" x="240" y="58">original feed bytes</text>
+
+  <rect class="fd-area" x="200" y="86" width="746" height="196" rx="8"/>
+  <text class="fd-area-name" x="214" y="106">Stages, each with its own queue and workers</text>
+
+  <rect class="fd-box" x="212" y="116" width="104" height="72" rx="6"/>
+  <text class="fd-name" x="222" y="138">lang</text>
+  <text class="fd-note" x="222" y="158">lingua,</text>
+  <text class="fd-note" x="222" y="176">local</text>
+
+  <rect class="fd-llm" x="342" y="116" width="156" height="72" rx="6"/>
+  <text class="fd-name" x="352" y="138">classify_a</text>
+  <text class="fd-note" x="352" y="158">relevance, states,</text>
+  <text class="fd-note" x="352" y="176">topics, translation</text>
+
+  <rect class="fd-box" x="524" y="116" width="104" height="72" rx="6"/>
+  <text class="fd-name" x="534" y="138">embed</text>
+  <text class="fd-note" x="534" y="158">384 floats,</text>
+  <text class="fd-note" x="534" y="176">local ONNX</text>
+
+  <rect class="fd-box" x="654" y="116" width="104" height="72" rx="6"/>
+  <text class="fd-name" x="664" y="138">dedupe</text>
+  <text class="fd-note" x="664" y="158">SimHash,</text>
+  <text class="fd-note" x="664" y="176">cosine</text>
+
+  <rect class="fd-llm" x="784" y="116" width="150" height="72" rx="6"/>
+  <text class="fd-name" x="794" y="138">storylines</text>
+  <text class="fd-note" x="794" y="158">relevant and</text>
+  <text class="fd-note" x="794" y="176">canonical items</text>
+
+  <rect class="fd-box" x="342" y="206" width="156" height="66" rx="6"/>
+  <text class="fd-name" x="352" y="228">fetch_text</text>
+  <text class="fd-note" x="352" y="248">relevant items,</text>
+  <text class="fd-note" x="352" y="264">paced per domain</text>
+
+  <rect class="fd-llm" x="524" y="206" width="280" height="66" rx="6"/>
+  <text class="fd-name" x="534" y="228">extract_b</text>
+  <text class="fd-note" x="534" y="248">relevant items: entities, tone,</text>
+  <text class="fd-note" x="534" y="264">places, race calls</text>
+
+  <rect class="fd-box" x="18" y="296" width="500" height="58" rx="6"/>
+  <text class="fd-name" x="30" y="318">BatchWriter</text>
+  <text class="fd-note" x="30" y="340">buffers rows and commits them in one transaction every 30 s</text>
+
+  <rect class="fd-llm" x="566" y="290" width="380" height="72" rx="6"/>
+  <text class="fd-name" x="578" y="310">Periodic jobs</text>
+  <text class="fd-note" x="578" y="331">rollups every 45 s; briefs checked every 60 s;</text>
+  <text class="fd-note" x="578" y="351">entity pass 300 s; storyline pass 600 s</text>
+
+  <rect class="fd-box" x="210" y="386" width="540" height="54" rx="6"/>
+  <text class="fd-name" x="222" y="408">DuckLake</text>
+  <text class="fd-note" x="222" y="429">SQLite catalog, inlined rows, and Parquet files</text>
+
+  <rect class="fd-box" x="18" y="484" width="226" height="68" rx="6"/>
+  <text class="fd-name" x="30" y="504">Read model</text>
+  <text class="fd-note" x="30" y="524">polls every 3 s, attached read-</text>
+  <text class="fd-note" x="30" y="542">only; facts held in memory</text>
+
+  <rect class="fd-box" x="310" y="484" width="214" height="68" rx="6"/>
+  <text class="fd-name" x="322" y="504">Panels</text>
+  <text class="fd-note" x="322" y="524">SQL over the in-memory</text>
+  <text class="fd-note" x="322" y="542">fact table</text>
+
+  <rect class="fd-box" x="746" y="484" width="196" height="68" rx="6"/>
+  <text class="fd-name" x="758" y="504">Browser</text>
+  <text class="fd-note" x="758" y="524">htmx fragments and</text>
+  <text class="fd-note" x="758" y="542">Vega charts</text>
+
+  <rect class="fd-box" x="310" y="560" width="214" height="34" rx="6"/>
+  <text class="fd-name" x="322" y="583">SSE hub, /events</text>
+
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M103 68 V112"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M188 124 L240 68"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M188 152 H212"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M316 152 H342"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M498 152 H524"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M628 152 H654"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M758 152 H784"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M420 188 V206"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M498 239 H524"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M103 204 V296"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M420 282 V296"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M566 326 H518"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M360 354 V386"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M650 386 V362"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M240 440 L190 484"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M244 518 H310"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M524 505 H746"/>
+  <path class="fd-line fd-ask" marker-end="url(#fd-arrow)" d="M746 534 H524"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M130 552 V577 H310"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M524 577 H844 V552"/>
+
+  <text class="fd-note" x="660" y="384">reads</text>
+  <text class="fd-note" x="370" y="384">commit</text>
+  <text class="fd-note" x="552" y="497">HTML, chart data</text>
+  <text class="fd-note" x="552" y="551">requests</text>
+  <text class="fd-note" x="552" y="570">snapshot event</text>
+  <text class="fd-note" x="500" y="38" font-weight="650">Heavy outline:</text>
+  <text class="fd-note" x="500" y="58">calls the Claude API</text>
+</svg>
