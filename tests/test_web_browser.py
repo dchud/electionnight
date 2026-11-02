@@ -511,6 +511,225 @@ def test_independent_has_a_line_on_the_bump_chart(scratch, browser):
     context.close()
 
 
+def test_a_bump_point_answers_to_the_pointer_beside_its_dot(scratch, browser):
+    settings, server = scratch
+    for number in range(3):
+        add_item(settings, f"i{number}", entity="ind")
+    server.start()
+    context, page = open_page(browser)
+    selector = '[data-chart="bump"] g.mark-symbol path[aria-label*="Rank"]'
+    page.wait_for_selector(selector)
+    page.locator(selector).first.scroll_into_view_if_needed()
+    page.wait_for_timeout(300)
+    dot = page.evaluate(
+        """
+        (selector) => {
+          const path = [...document.querySelectorAll(selector)]
+            .find((node) => node.getAttribute("fill") !== "transparent");
+          const box = path.getBoundingClientRect();
+          return {
+            x: box.x + box.width / 2,
+            y: box.y + box.height / 2,
+            width: box.width,
+          };
+        }
+        """,
+        selector,
+    )
+    assert dot["width"] < 8
+    page.mouse.move(dot["x"] + 6, dot["y"])
+    page.wait_for_timeout(300)
+    assert "Rank" in page.locator("#vg-tooltip-element").inner_text()
+    context.close()
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_heat_cells_run_from_the_first_to_the_last_stop(
+    scratch, browser, theme
+):
+    settings, server = scratch
+    add_item(settings, "i0")
+    server.start()
+    start = datetime(2026, 11, 3, 20, 0, tzinfo=UTC)
+    table = [
+        {
+            "topic": "turnout",
+            "bin_start": (start + timedelta(minutes=10 * n)).isoformat(),
+            "bin_end": (start + timedelta(minutes=10 * n + 10)).isoformat(),
+            "n": n + 1,
+            "total": 15,
+        }
+        for n in range(5)
+    ]
+    context, page = open_page(browser)
+    page.route(
+        "**/api/data/topic_heat*",
+        lambda route: route.fulfill(json={"table": table, "rules": []}),
+    )
+    page.evaluate(f"() => localStorage.setItem('theme', '{theme}')")
+    page.reload()
+    selector = (
+        '[data-chart="topic_heat"] g.mark-rect path[aria-label*="Stories"]'
+    )
+    page.wait_for_selector(selector)
+    found = page.evaluate(
+        """
+        (selector) => {
+          const stops = window.Monitor.heatStops()
+            .map((stop) => window.d3.rgb(stop).toString());
+          const fills = {};
+          document.querySelectorAll(selector).forEach((path) => {
+            const count = /Stories: (\\d+)/
+              .exec(path.getAttribute("aria-label"))[1];
+            fills[count] = window.d3.rgb(path.getAttribute("fill")).toString();
+          });
+          return {stops, fills};
+        }
+        """,
+        selector,
+    )
+    assert found["fills"]["1"] == found["stops"][0]
+    assert found["fills"]["5"] == found["stops"][4]
+    context.close()
+
+
+def test_the_volume_map_tops_out_at_the_last_heat_stop(scratch, browser):
+    settings, server = scratch
+    for number in range(3):
+        add_item(settings, f"i{number}")
+    server.start()
+    context, page = open_page(browser)
+    page.locator('#map-metric button[data-metric="volume"]').click()
+    page.wait_for_timeout(600)
+    top, fills = page.evaluate(
+        """
+        () => [
+          window.d3.rgb(window.Monitor.heatStops()[4]).toString(),
+          [...document.querySelectorAll("#us-map .map-state")]
+            .map((path) => window.d3.rgb(path.style.fill).toString()),
+        ]
+        """
+    )
+    assert top in fills
+    context.close()
+
+
+def test_a_selected_control_has_a_tint_a_ring_and_its_text_color(
+    scratch, browser
+):
+    settings, server = scratch
+    add_item(settings, "i0")
+    server.start()
+    context, page = open_page(browser)
+    found = page.evaluate(
+        """
+        () => {
+          const root = getComputedStyle(document.documentElement);
+          const color = (name) => window.d3
+            .rgb(root.getPropertyValue(name).trim()).toString();
+          const links = [...document.querySelectorAll(
+            '.control-group a[aria-current="true"]'
+          )];
+          return {
+            count: links.length,
+            bad: links.filter((link) => {
+              const style = getComputedStyle(link);
+              return window.d3.rgb(style.backgroundColor).toString()
+                  !== color("--selected-bg")
+                || window.d3.rgb(style.color).toString()
+                  !== color("--selected-text")
+                || !style.boxShadow.includes(color("--accent"));
+            }).length,
+          };
+        }
+        """
+    )
+    assert found["count"] >= 2
+    assert found["bad"] == 0
+    context.close()
+
+
+def test_selecting_a_control_keeps_its_font_weight(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "i0")
+    server.start()
+    context, page = open_page(browser)
+    weights = page.evaluate(
+        """
+        () => [...document.querySelectorAll(".control-group a")]
+          .map((link) => getComputedStyle(link).fontWeight)
+        """
+    )
+    assert len(set(weights)) == 1
+    context.close()
+
+
+def test_hover_keeps_the_tint_on_the_current_methods_section(scratch, browser):
+    _, server = scratch
+    server.start()
+    context = browser.new_context(viewport={"width": 1920, "height": 1400})
+    page = context.new_page()
+    page.goto(f"{BASE}/methods")
+    current = page.locator('.doc-nav a[aria-current="true"]').first
+    current.wait_for()
+    before = current.evaluate("el => getComputedStyle(el).backgroundColor")
+    current.hover()
+    page.wait_for_timeout(100)
+    after = current.evaluate("el => getComputedStyle(el).backgroundColor")
+    assert before == after
+    context.close()
+
+
+def test_the_projector_key_repaints_tone_dots_on_rows_already_shown(
+    scratch, browser
+):
+    settings, server = scratch
+    add_item(settings, "toned", tone=-1.5)
+    server.start()
+    context, page = open_page(browser)
+    wait_for_row(page, "Headline toned")
+    dot = page.locator("#wire-panel .tone-dot").first
+    before = dot.evaluate("el => getComputedStyle(el).backgroundColor")
+    page.keyboard.press("p")
+    page.wait_for_timeout(100)
+    after = dot.evaluate("el => getComputedStyle(el).backgroundColor")
+    assert before != after
+    context.close()
+
+
+def test_a_casing_lies_under_every_battleground_outline(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "i0")
+    server.start()
+    context, page = open_page(browser)
+    page.route(
+        "**/api/data/map*",
+        lambda route: route.fulfill(
+            json={**route.fetch().json(), "battleground": ["GA", "PA"]}
+        ),
+    )
+    page.reload()
+    page.wait_for_selector("#us-map path.map-outline")
+    found = page.evaluate(
+        """
+        () => {
+          const first = document.querySelector("#us-map .map-outline-casing");
+          const last = document.querySelector("#us-map .map-outline");
+          return {
+            casings: document
+              .querySelectorAll("#us-map .map-outline-casing").length,
+            outlines: document.querySelectorAll("#us-map .map-outline").length,
+            order: first.compareDocumentPosition(last)
+              & Node.DOCUMENT_POSITION_FOLLOWING,
+          };
+        }
+        """
+    )
+    assert found["casings"] == found["outlines"] == 2
+    assert found["order"]
+    context.close()
+
+
 def test_map_tooltip_gives_the_toned_count_and_flags_low_n(scratch, browser):
     settings, server = scratch
     for number in range(6):

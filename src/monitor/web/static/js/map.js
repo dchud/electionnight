@@ -41,8 +41,9 @@
       .attr("data-usps", (feature) => USPS_BY_FIPS[feature.id])
       .style("fill", surfaceColor())
       .on("click", (_event, feature) => onClick(USPS_BY_FIPS[feature.id]));
+    const casings = svg.append("g");
     const outlines = svg.append("g");
-    return { svg, states, outlines, path, features };
+    return { svg, states, casings, outlines, path, features };
   }
 
   function legendFor(metric, color, domain) {
@@ -181,12 +182,19 @@
     return `${count} ${label}${noun}`;
   }
 
+  function heatInterpolator() {
+    return window.d3.piecewise(
+      window.d3.interpolateHcl,
+      window.Monitor.heatStops()
+    );
+  }
+
   function scaleFor(metric) {
     const d3 = window.d3;
     if (metric === "volume") {
       return (peak) => ({
         color: d3
-          .scaleSequential(d3.interpolateViridis)
+          .scaleSequential(heatInterpolator())
           .domain([0, Math.max(peak, 1)]),
         domain: [0, Math.max(peak, 1)],
       });
@@ -344,17 +352,19 @@
         })
         .on("pointerleave", readout.clear);
       const battleground = new Set(data.battleground);
-      map.outlines
-        .selectAll("path")
-        .data(
-          map.features.filter((feature) =>
-            battleground.has(USPS_BY_FIPS[feature.id])
-          ),
-          (feature) => feature.id
-        )
-        .join("path")
-        .attr("class", "map-outline")
-        .attr("d", map.path);
+      const outlined = map.features.filter((feature) =>
+        battleground.has(USPS_BY_FIPS[feature.id])
+      );
+      /* A panel-colored casing keeps the line visible on any fill. */
+      [[map.casings, "map-outline-casing"], [map.outlines, "map-outline"]]
+        .forEach(([group, name]) => {
+          group
+            .selectAll("path")
+            .data(outlined, (feature) => feature.id)
+            .join("path")
+            .attr("class", name)
+            .attr("d", map.path);
+        });
       legend.innerHTML = legendFor(metric, color, domain);
     }
 
@@ -402,7 +412,7 @@
     const counts = new Map(rows.map((row) => [row[key], row.n]));
     const peak = Math.max(1, ...rows.map((row) => row.n));
     const color = window.d3
-      .scaleSequential(window.d3.interpolateViridis)
+      .scaleSequential(heatInterpolator())
       .domain([0, peak]);
     return { counts, peak, color };
   }
