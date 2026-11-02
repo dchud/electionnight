@@ -491,7 +491,7 @@ def race_rows(client, **filters):
     )
 
 
-def test_a_final_claim_replaces_the_leads_in_its_race(lake):
+def test_a_settled_race_shows_only_its_final_claims(lake):
     for name in ("a", "b", "c", "d"):
         lake.source(name)
     leads = [
@@ -511,21 +511,145 @@ def test_a_final_claim_replaces_the_leads_in_its_race(lake):
     with client_for(lake) as client:
         rows = race_rows(client)
     assert len(rows) == 1
-    assert rows[0]["status"] == "projected"
+    assert rows[0]["statuses"] == ["projected"]
     assert rows[0]["outlets"] == 2
     assert rows[0]["called_by"] == ["AP"]
     assert sorted(rows[0]["item_ids"]) == sorted(finals)
     assert rows[0]["first_reported"].timestamp() == called.timestamp()
 
 
-def test_a_race_with_no_final_claim_keeps_its_leads_and_close_reports(lake):
-    first = lake.item(NOW - timedelta(minutes=90), states=["GA"])
-    second = lake.item(NOW - timedelta(minutes=60), states=["GA"])
-    lake.call(first, status="leading", winner_name="Jon Doe")
-    lake.call(second, status="too_close", winner_name=None)
+def test_a_concession_does_not_read_as_the_winner_conceding(lake):
+    lake.source("other")
+    lake.call(lake.item(states=["GA"]), winner_name="Ann Roe")
+    lake.call(
+        lake.item(source="other", states=["GA"]),
+        winner_name="Ann Roe",
+        status="conceded",
+        called_by="unspecified",
+    )
     with client_for(lake) as client:
         rows = race_rows(client)
-    assert {row["status"] for row in rows} == {"leading", "too_close"}
+        page = client.get(
+            "/frag/race-calls", params={"as_of": NOW.isoformat()}
+        ).text
+    assert rows[0]["statuses"] == ["conceded", "projected"]
+    assert rows[0]["outlets"] == 2
+    assert "opponent conceded, projected" in page
+    assert "<td>conceded" not in page
+
+
+def seeded_lead_and_hidden_final(lake):
+    """A lead visible to filters, and a final claim they would hide."""
+    lake.source("abroad")
+    lead_at = NOW - timedelta(minutes=90)
+    lead = lake.item(lead_at, states=["GA"], levels=["state"], language="en")
+    lake.call(
+        lead,
+        status="leading",
+        winner_name="Bob Loser",
+        winner_entity_id="loser",
+        called_by="unspecified",
+    )
+    final = lake.item(
+        NOW - timedelta(minutes=30),
+        source="abroad",
+        states=[],
+        levels=["national"],
+        language="es",
+    )
+    lake.call(final, winner_name="Ann Winner", winner_entity_id="winner")
+
+
+@pytest.mark.parametrize(
+    "filters",
+    [{"focus": "state:GA"}, {"level": "state"}, {"lang": "en"}],
+)
+def test_a_filter_hiding_the_final_claim_brings_back_no_lead(lake, filters):
+    seeded_lead_and_hidden_final(lake)
+    with client_for(lake) as client:
+        rows = race_rows(client, **filters)
+    assert "leading" not in {s for row in rows for s in row["statuses"]}
+
+
+def test_a_candidate_page_does_not_show_a_lead_the_race_has_ended(lake):
+    seeded_lead_and_hidden_final(lake)
+    with client_for(lake) as client:
+        panels = client.app.state.web.panels
+        rows = panels.race_calls(
+            Filters.parse({"as_of": NOW.isoformat()}),
+            clause="rc.winner_entity_id = $entity_id",
+            extra={"entity_id": "loser"},
+        )
+    assert rows == []
+
+
+def test_a_replay_before_the_call_still_shows_the_lead(lake):
+    seeded_lead_and_hidden_final(lake)
+    earlier = NOW - timedelta(minutes=60)
+    with client_for(lake) as client:
+        panels = client.app.state.web.panels
+        rows = panels.race_calls(Filters.parse({"as_of": earlier.isoformat()}))
+    assert [row["statuses"] for row in rows] == [["leading"]]
+
+
+def test_one_unsupported_final_claim_does_not_end_the_other_reports(lake):
+    lake.source("other")
+    lake.call(
+        lake.item(NOW - timedelta(minutes=60), states=["GA"]),
+        status="too_close",
+        winner_name=None,
+    )
+    lake.call(
+        lake.item(NOW - timedelta(minutes=30), source="other", states=["GA"]),
+        called_by="unspecified",
+    )
+    with client_for(lake) as client:
+        rows = race_rows(client)
+    assert {tuple(row["statuses"]) for row in rows} == {
+        ("projected",),
+        ("too_close",),
+    }
+
+
+def test_two_outlets_settle_a_race_with_no_named_caller(lake):
+    lake.source("other")
+    lake.call(
+        lake.item(NOW - timedelta(minutes=60), states=["GA"]),
+        status="too_close",
+        winner_name=None,
+    )
+    for source in ("wire", "other"):
+        lake.call(
+            lake.item(
+                NOW - timedelta(minutes=30), source=source, states=["GA"]
+            ),
+            called_by="unspecified",
+        )
+    with client_for(lake) as client:
+        rows = race_rows(client)
+    assert [row["statuses"] for row in rows] == [["projected"]]
+
+
+def test_a_too_close_report_does_not_join_a_candidates_lead(lake):
+    lake.source("other")
+    lake.call(
+        lake.item(states=["GA"]),
+        status="leading",
+        winner_name="Jon Doe",
+        winner_entity_id="e1",
+    )
+    lake.call(
+        lake.item(source="other", states=["GA"]),
+        status="too_close",
+        winner_name="Jon Doe",
+        winner_entity_id="e1",
+    )
+    with client_for(lake) as client:
+        rows = race_rows(client)
+    by_status = {row["statuses"][0]: row for row in rows}
+    assert by_status["leading"]["outlets"] == 1
+    assert by_status["too_close"]["outlets"] == 1
+    assert by_status["too_close"]["winner_name"] is None
 
 
 def test_conflicting_final_claims_both_show(lake):
@@ -539,27 +663,30 @@ def test_conflicting_final_claims_both_show(lake):
     assert {row["winner_name"] for row in rows} == {"Jon Doe", "Ann Roe"}
 
 
-def test_race_calls_list_final_claims_before_newer_leads(lake):
-    older = lake.item(NOW - timedelta(minutes=90), states=["GA"])
+def test_race_calls_list_newest_first_so_leads_are_not_pushed_out(lake):
+    for number in range(61):
+        item = lake.item(NOW - timedelta(minutes=30), states=["GA"])
+        lake.call(item, race_key=f"2026-GA-{number:02d}")
     newer = lake.item(NOW - timedelta(minutes=5), states=["OH"])
-    lake.call(older)
     lake.call(
         newer, race_key="2026-OH-SEN", status="leading", winner_name="Ann Roe"
     )
     with client_for(lake) as client:
         rows = race_rows(client)
-    assert [row["status"] for row in rows] == ["projected", "leading"]
+    assert rows[0]["statuses"] == ["leading"]
+    assert len(rows) == 60
+    assert rows[0]["total"] == 62
 
 
 def test_the_race_card_says_when_rows_are_left_out(lake):
-    for number in range(32):
+    for number in range(62):
         item = lake.item(NOW - timedelta(minutes=number), states=["GA"])
         lake.call(item, race_key=f"2026-GA-{number:02d}")
     with client_for(lake) as client:
         page = client.get(
             "/frag/race-calls", params={"as_of": NOW.isoformat()}
         ).text
-    assert "30 of 32 shown" in page
+    assert "60 of 62 shown, newest first" in page
 
 
 def test_the_race_card_says_nothing_when_all_rows_fit(lake):
@@ -568,7 +695,41 @@ def test_the_race_card_says_nothing_when_all_rows_fit(lake):
         page = client.get(
             "/frag/race-calls", params={"as_of": NOW.isoformat()}
         ).text
-    assert " shown:" not in page
+    assert " shown," not in page
+
+
+def test_a_storys_articles_agree_with_its_unique_count(lake):
+    lake.story("s1")
+    lake.item(NOW - timedelta(hours=2), group="g", storyline="s1")
+    for minutes in (20, 10):
+        lake.item(NOW - timedelta(minutes=minutes), canonical=False, group="g")
+    query = {"as_of": NOW.isoformat(), "window": "1h"}
+    with client_for(lake) as client:
+        drill = client.app.state.web.drill
+        unique = drill.story_articles(Filters.parse(query), "s1", {})
+        every = drill.story_articles(
+            Filters.parse({**query, "copies": "all"}), "s1", {}
+        )
+        page = client.get("/story/s1", params=query).text
+    assert unique["articles_total"] == 0
+    assert every["articles_total"] == 2
+    assert "later copies fall inside it" in page
+    assert "No stories from this storyline fall" not in page
+
+
+def test_first_seen_on_a_story_counts_a_copy_seen_first(lake):
+    lake.source("early")
+    lake.story("s1")
+    late = NOW - timedelta(minutes=10)
+    early = NOW - timedelta(minutes=25)
+    lake.item(late, group="g", storyline="s1")
+    copy = lake.item(early, source="early", canonical=False, group="g")
+    with client_for(lake) as client:
+        web = client.app.state.web
+        head = web.drill.story_head(
+            Filters.parse({"as_of": NOW.isoformat()}), "s1", {}
+        )
+    assert head["first_report"]["item_id"] == copy
 
 
 def test_every_topic_heat_cell_opens_its_count(lake):

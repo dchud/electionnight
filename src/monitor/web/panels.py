@@ -738,7 +738,7 @@ class Panels:
     def race_calls(
         self,
         filters: Filters,
-        limit: int = 30,
+        limit: int = 60,
         clause: str = "TRUE",
         extra: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
@@ -747,15 +747,20 @@ class Panels:
         where, params = filters.where(
             sets, windowed=False, unique=False, relevant=False
         )
+        when = "f.seen_raw_at <= $as_of"
         if self.calls_open is not None:
-            where += (
+            opened = (
                 " AND least(f.seen_raw_at, "
                 "coalesce(f.published_at, f.seen_raw_at)) >= $calls_open"
             )
+            where += opened
+            when += opened
             params = {**params, "calls_open": self.calls_open}
         rows = self.model.query(
             "race_calls",
-            load_sql("race_calls").replace("{where}", f"{where} AND {clause}"),
+            load_sql("race_calls")
+            .replace("{where}", f"{where} AND {clause}")
+            .replace("{when}", when),
             {**params, **(extra or {}), "limit": limit},
         )
         return [

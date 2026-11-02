@@ -407,3 +407,19 @@ async def test_paused_backfill_does_not_strand_a_live_item(settings, lake):
         assert [item.item_id for item in stage.backlog] == ["old"]
     finally:
         await stop(tasks)
+
+
+async def test_parked_backfill_holds_back_the_feeder(settings, lake):
+    conn, writer = lake
+    stage = Stage(
+        Partitioned(),
+        Database(conn),
+        writer,
+        linger_seconds=0.0,
+        backfill=False,
+    )
+    stage.parked["one"] = [
+        seen_now(f"old{n}", "one", backfill=True) for n in range(5)
+    ]
+    stage.parked["two"] = [seen_now("live", "two")]
+    assert stage._waiting_backfill() == 5

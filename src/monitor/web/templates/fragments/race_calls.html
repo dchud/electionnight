@@ -6,7 +6,7 @@
   <tr class="clickable" data-evidence="{{ row.evidence }}">
     <td>{{ row.race }}</td>
     <td>{% if row.party %}<span class="party-chip" data-party="{{ row.party }}"></span>{% endif %}{{ row.winner_name or '—' }}</td>
-    <td>{{ row.status }}</td>
+    <td>{% for status in row.statuses %}{{ 'opponent conceded' if status == 'conceded' else status|replace('_', ' ') }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
     <td>{{ (row.called_by or [])|join(', ') or 'unspecified' }}</td>
     <td>{{ (row.outlet_names or [])|join(', ') }}</td>
     <td class="num">{{ row.outlets }}</td>
@@ -16,7 +16,7 @@
   </tbody>
 </table>
 {% if rows[0].total > rows|length %}
-<p class="panel-note">{{ rows|length }} of {{ rows[0].total }} shown: final claims first, then newest. Focus on a state or a group to see others.</p>
+<p class="panel-note">{{ rows|length }} of {{ rows[0].total }} shown, newest first. Focus on a state or a group to see others.</p>
 {% endif %}
 {% else %}
 <div class="empty">No race-call claims in the news for these filters.</div>

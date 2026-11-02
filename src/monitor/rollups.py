@@ -62,24 +62,41 @@ class AS (
         PARTITION BY item_id ORDER BY created_at DESC) = 1
 ),
 dups AS (
-    SELECT item_id, is_canonical FROM lake.nlp.dup_groups
+    SELECT item_id, is_canonical, dup_group_id FROM lake.nlp.dup_groups
     WHERE item_id IN (SELECT item_id FROM items)
     QUALIFY row_number() OVER (
         PARTITION BY item_id ORDER BY created_at DESC) = 1
 ),
+group_stories AS (
+    SELECT d.dup_group_id, s.storyline_id
+    FROM lake.nlp.dup_groups d
+    JOIN lake.nlp.storyline_assign s USING (item_id)
+    WHERE d.is_canonical
+      AND d.dup_group_id IN (SELECT dup_group_id FROM dups)
+    QUALIFY row_number() OVER (
+        PARTITION BY d.dup_group_id ORDER BY s.assigned_at DESC) = 1
+),
 stories AS (
     SELECT a.item_id, coalesce(m.merged_into, a.storyline_id) AS storyline_id
     FROM (
-        SELECT item_id, storyline_id FROM lake.nlp.storyline_assign
-        WHERE item_id IN (SELECT item_id FROM items)
-        QUALIFY row_number() OVER (
-            PARTITION BY item_id ORDER BY assigned_at DESC) = 1
+        SELECT i.item_id,
+               coalesce(o.storyline_id, g.storyline_id) AS storyline_id
+        FROM items i
+        LEFT JOIN (
+            SELECT item_id, storyline_id FROM lake.nlp.storyline_assign
+            WHERE item_id IN (SELECT item_id FROM items)
+            QUALIFY row_number() OVER (
+                PARTITION BY item_id ORDER BY assigned_at DESC) = 1
+        ) o USING (item_id)
+        LEFT JOIN dups d USING (item_id)
+        LEFT JOIN group_stories g USING (dup_group_id)
     ) a
     LEFT JOIN (
         SELECT storyline_id, merged_into FROM lake.nlp.storylines
         QUALIFY row_number() OVER (
             PARTITION BY storyline_id ORDER BY version DESC) = 1
     ) m USING (storyline_id)
+    WHERE a.storyline_id IS NOT NULL
 ),
 tone AS (
     SELECT item_id, article_tone FROM lake.nlp.extract_b

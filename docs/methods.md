@@ -141,11 +141,12 @@ An item is compared with items seen within 36 hours.
    because short titles such as "Live updates" repeat across unrelated stories.
    Formula (1) gives bit $k$ of the hash $H$, where $w$ runs over the title's
    tokens and $b_k(w)$ is bit $k$ of the token's `xxh64` hash.
-2. **Title match.** Two hashes match at a Hamming distance of 3 or less. An
-   identical title matches even when each copy is tagged with its own state. A
-   near-identical title must also pass a place check, because a template can
-   change only the state. Two items fail that check only when both name states
-   and share none, so an item with no state passes it.
+2. **Title match.** Two hashes match at a Hamming distance of 3 or less, if
+   they pass a place check, because a template can change only the state. Two
+   items fail that check only when both name states and share none, so an item
+   with no state passes it. An identical title that fails the check still
+   matches if the two texts reach a cosine of 0.95, because a copy of one story
+   can be tagged with each outlet's state.
 3. **Embedding match.** Otherwise an item matches at a cosine of at least 0.95,
    on the same published day, if the two also pass the place check.
 
@@ -284,15 +285,15 @@ is good for them." A tone needs a quote of 3 to 25 words copied verbatim from
 the title, summary, or text, with the entity's name in the quote or within 200
 characters of it. A tone whose quote fails this is discarded. A race call
 counts only if its evidence is verbatim in the article and the article names
-the candidate. A name in one script is not compared with text in another. A
-contest the model itself labels a primary is discarded. The model decides what
-the sentence means: whether it reports a call, a concession, or counted votes
-in this election, and whether the contest is for US Senate, US House, governor,
-or another statewide office. Every race call from an item published before
-polls closed in that state is discarded, and before the first close nationally
-when the state is unknown. A caller's name stays only if the article names that
-caller. `tests/fixtures/race_claims.jsonl` measures the model on true and false
-claims.
+the candidate. Only Latin-script text is compared with the name, because names
+take endings and prefixes in other scripts. A contest the model itself labels a
+primary is discarded. The model decides what the sentence means: whether it
+reports a call, a concession, or counted votes in this election, and whether
+the contest is for US Senate, US House, governor, or another statewide office.
+Every race call from an item published before the first polls closed in that
+state is discarded, and before the first close nationally when the state is
+unknown. A caller's name stays only if the article names that caller.
+`tests/fixtures/race_claims.jsonl` measures the model on true and false claims.
 
 ### Storyline labels
 
@@ -435,19 +436,22 @@ $$
 
 ### First to report
 
-The earliest `first_seen_at` per storyline among canonical
-items. Poll timing makes this accurate to about 3 minutes at best.
+The earliest `first_seen_at` per storyline among all its copies. Poll timing
+makes this accurate to about 3 minutes at best.
 
 ### Race calls in the news
 
-Grouped by race and named candidate, with the
-number of distinct outlets, their names, the earliest report, and who the
-article says made the call. Once a race has a final claim of `projected`,
-`declared`, or `conceded`, its leads and too-close reports drop out, so each
-figure on a row describes the claims it shows. Final claims list first, then
-the newest. The card shows 30 rows and says how many others exist. A caller's
-name comes from article text, so the reporting outlets appear beside it. These
-are never added into a seat count.
+Grouped by race and named candidate, with a candidate's final claims on one row
+and leads on another. A race is settled once a final claim of `projected`,
+`declared`, or `conceded` names a caller or comes from two outlets. Only the
+time asked for decides that, so a filter that hides the final claim cannot
+bring back a lead. A settled race shows only its final claims. An unsettled
+final claim shows beside the race's other reports. Each row's statuses,
+outlets, callers, and earliest report describe the claims on that row, and a
+concession reads "opponent conceded" on the winner's row. Rows list newest
+first. The card shows 60 rows and says how many others exist. A caller's name
+comes from article text, so the reporting outlets appear beside it. These are
+never added into a seat count.
 
 ### Copies
 

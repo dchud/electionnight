@@ -511,6 +511,38 @@ def test_rollup_counts_unique_and_appends_nothing_when_unchanged(settings):
     conn.close()
 
 
+def test_gold_storyline_bins_count_a_copy_in_its_canonicals_storyline(
+    settings,
+):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    seed_items(writer)
+    writer.add(
+        "nlp.dup_groups",
+        [{"item_id": "i0", "dup_group_id": "g", "is_canonical": True}],
+    )
+    writer.add(
+        "nlp.storyline_assign",
+        [
+            {
+                "item_id": "i0",
+                "storyline_id": "s1",
+                "similarity": 0.9,
+                "assigned_at": NOW,
+            }
+        ],
+    )
+    writer.flush()
+    RollupEngine(settings, writer).run(conn, now=NOW)
+    writer.flush()
+    rows = conn.execute(
+        "SELECT storyline_id, sum(n_items), sum(n_unique), sum(n_sources) "
+        "FROM lake.gold.storyline_bins GROUP BY 1"
+    ).fetchall()
+    assert rows == [("s1", 2, 1, 2)]
+    conn.close()
+
+
 def test_rollup_rebuild_agrees_with_incremental(settings):
     conn = connect(settings)
     writer = BatchWriter(conn, settings)

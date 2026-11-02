@@ -305,13 +305,20 @@ class Stage:
             finally:
                 self._release(batch)
 
+    def _waiting_backfill(self) -> int:
+        """Backfill items already in memory, including those set aside."""
+        parked = sum(
+            item.backfill for items in self.parked.values() for item in items
+        )
+        return len(self.backlog) + parked
+
     async def feeder(self) -> None:
         """Pull work the lake says is owed, behind live items."""
         while True:
             await asyncio.sleep(BACKFILL_POLL_SECONDS * random.uniform(0.5, 1))
             if self.pause_backfill or self.paused:
                 continue
-            if len(self.backlog) >= self.backfill_batch // 2:
+            if self._waiting_backfill() >= self.backfill_batch // 2:
                 continue
             try:
                 await self._load_backlog()
