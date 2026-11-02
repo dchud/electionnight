@@ -1,0 +1,63 @@
+site_name: Election Night News Monitor
+site_description: >-
+  An agent-coded teaching project that shows how news outlets cover an election
+  as it happens. Not intended as production software.
+site_url: https://dchud.github.io/electionnight/
+repo_url: https://github.com/dchud/electionnight
+edit_uri: edit/main/docs/
+
+hooks:
+  - scripts/mkdocs_hooks.py
+
+theme:
+  name: material
+  font: false
+  features:
+    - content.code.copy
+    - navigation.sections
+    - navigation.top
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+# The build copies these from the dashboard's vendored KaTeX.
+extra_css:
+  - assets/katex/katex.min.css
+extra_javascript:
+  - assets/katex/katex.min.js
+  - assets/katex/auto-render.min.js
+  - assets/javascripts/math.js
+
+nav:
+  - Overview: index.md
+  - Teaching:
+      - Class walkthrough: walkthrough.md
+      - Methods: methods.md
+  - Operating:
+      - Run of show: run_of_show.md
+      - Verification log: verify_log.md

@@ -5,6 +5,7 @@
 
 # Scratch
 tmp/
+site/
 
 # Runtime data and logs
 data/
