@@ -120,29 +120,22 @@ def _decompress(path: Path, target: Path) -> None:
         zstandard.ZstdDecompressor().copy_stream(compressed, out)
 
 
-def restore_backup(path: Path, target: Path) -> None:
-    """Decompress a backup to a catalog file, whole or not at all.
-
-    A leftover WAL goes too, because SQLite would replay it onto the older
-    file and corrupt it.
-    """
-    temporary = target.with_name(target.name + ".restoring")
-    _decompress(path, temporary)
-    for suffix in CATALOG_COMPANIONS:
-        target.with_name(target.name + suffix).unlink(missing_ok=True)
-    temporary.replace(target)
+def _discard(candidate: Path) -> None:
+    for suffix in ("", *CATALOG_COMPANIONS):
+        candidate.with_name(candidate.name + suffix).unlink(missing_ok=True)
 
 
-def backup_problem(settings: Settings, path: Path) -> str | None:
-    """Why this backup cannot replace the catalog, or None if it can.
+def _unpack_and_check(
+    settings: Settings, path: Path, candidate: Path
+) -> str | None:
+    """Decompress a backup, and say why it cannot replace the catalog, if so.
 
     Maintenance deletes replaced Parquet files after a delay, and a prune
     deletes them at once, so an older backup can name files that are gone.
     """
-    checked = path.with_name(path.name + ".check")
     try:
-        _decompress(path, checked)
-        catalog = sqlite3.connect(checked)
+        _decompress(path, candidate)
+        catalog = sqlite3.connect(candidate)
         try:
             result = catalog.execute("PRAGMA quick_check").fetchone()[0]
             if result != "ok":
@@ -152,9 +145,6 @@ def backup_problem(settings: Settings, path: Path) -> str | None:
             catalog.close()
     except (zstandard.ZstdError, sqlite3.DatabaseError, OSError) as error:
         return f"cannot be read: {error}"
-    finally:
-        for suffix in ("", *CATALOG_COMPANIONS):
-            checked.with_name(checked.name + suffix).unlink(missing_ok=True)
     root = settings.paths.data.resolve()
     missing = [
         row
@@ -166,22 +156,40 @@ def backup_problem(settings: Settings, path: Path) -> str | None:
     return None
 
 
-def _set_aside(catalog: Path) -> Path:
-    """Keep the replaced catalog with its WAL, still paired by name."""
+def _swap_in(candidate: Path, catalog: Path) -> Path | None:
+    """Put a checked file in the catalog's place, or leave everything as it is.
+
+    The replaced catalog keeps its WAL, still paired by name. SQLite would
+    replay a leftover WAL onto the older file and corrupt it.
+    """
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
     aside = catalog.with_name(f"{catalog.name}.damaged-{stamp}")
-    for suffix in ("", *CATALOG_COMPANIONS):
-        source = catalog.with_name(catalog.name + suffix)
-        if source.exists():
-            source.rename(aside.with_name(aside.name + suffix))
-    return aside
+    moved: list[tuple[Path, Path]] = []
+    try:
+        for suffix in ("", *CATALOG_COMPANIONS):
+            source = catalog.with_name(catalog.name + suffix)
+            if source.exists():
+                target = aside.with_name(aside.name + suffix)
+                source.rename(target)
+                moved.append((target, source))
+        candidate.replace(catalog)
+    except OSError as error:
+        for target, source in reversed(moved):
+            target.rename(source)
+        _discard(candidate)
+        raise RestoreError(
+            f"the catalog stays as it was; could not replace it: {error}"
+        ) from error
+    return aside if moved else None
 
 
 def restore_catalog(settings: Settings, dry_run: bool = False) -> str:
     """Replace the catalog with the newest backup that can serve as one.
 
-    Raises `WriterBusy` while a pipeline runs. Raises `RestoreError`, with
-    nothing changed, when no backup is usable. The report names each newer
+    The backup is decompressed and checked first, and the current catalog moves
+    aside only once a complete, usable file exists. Raises `WriterBusy` while a
+    pipeline runs. Raises `RestoreError`, with the catalog as it was, when no
+    backup is usable or the replacement fails. The report names each newer
     backup that was skipped and why.
     """
     with writer_lock(settings):
@@ -192,20 +200,28 @@ def restore_catalog(settings: Settings, dry_run: bool = False) -> str:
             key=lambda pair: pair[0],
             reverse=True,
         )
+        catalog = settings.paths.catalog
+        candidate = catalog.with_name(catalog.name + ".restoring")
         report: list[str] = []
         for _, path in newest_first:
-            problem = backup_problem(settings, path)
+            problem = _unpack_and_check(settings, path, candidate)
+            # Reading it may leave these beside it, and they belong to no file.
+            for suffix in CATALOG_COMPANIONS:
+                candidate.with_name(candidate.name + suffix).unlink(
+                    missing_ok=True
+                )
             if problem is not None:
+                _discard(candidate)
                 report.append(f"skipped {path.name}: {problem}")
                 continue
             if dry_run:
+                _discard(candidate)
                 report.append(f"would restore {path.name}")
             else:
-                catalog = settings.paths.catalog
-                aside = _set_aside(catalog)
-                restore_backup(path, catalog)
+                aside = _swap_in(candidate, catalog)
                 report.append(f"restored {path.name}")
-                report.append(f"the replaced catalog is now {aside}")
+                if aside is not None:
+                    report.append(f"the replaced catalog is now {aside}")
             return "\n".join(report)
     raise RestoreError("\n".join(["no usable backup", *report]))
 

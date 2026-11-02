@@ -576,6 +576,18 @@ main {
   font-size: .85rem;
   padding: 1rem .25rem;
 }
+.stale-note {
+  position: absolute;
+  top: .25rem;
+  right: .25rem;
+  z-index: 2;
+  padding: .1rem .4rem;
+  font-size: .72rem;
+  color: var(--text-1);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
 :root[data-projector="1"] .band-who, :root[data-projector="1"] .band-coverage {
   scroll-snap-align: start;
 }

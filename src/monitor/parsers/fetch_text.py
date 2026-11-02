@@ -182,6 +182,7 @@ class FetchTextParser:
                 f"{parts.scheme}://{parts.netloc}/robots.txt",
                 MAX_ROBOTS_BYTES,
                 self.settings.nlp.fetch_deadline_seconds,
+                network_up=self.gate.reachable,
             )
             parser = parse_robots(response.status_code, response.text)
             if response.status_code < 500:
@@ -240,6 +241,7 @@ class FetchTextParser:
                     MAX_PAGE_BYTES,
                     self.settings.nlp.fetch_deadline_seconds,
                     check_hop=self._check_hop,
+                    network_up=self.gate.reachable,
                 )
             except BodyTooLarge as error:
                 self._note_refusal(domain, error.status_code)

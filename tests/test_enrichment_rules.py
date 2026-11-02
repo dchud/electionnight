@@ -48,6 +48,7 @@ from monitor.parsers.classify_a import (
     classify_by_keywords,
     condensed_watchlist,
     load_vocabulary,
+    normalize_llm_result,
     states_in_text,
 )
 from monitor.parsers.dedupe import (
@@ -1164,6 +1165,26 @@ async def test_an_outage_does_not_overwrite_model_rows(settings):
     assert first.states == ["GA"]
 
 
+def test_below_the_threshold_is_stored_as_not_relevant(settings):
+    threshold = settings.nlp.relevance_threshold
+    parser = ClassifyParser(settings, None, {})
+    output = ParserOutput()
+    low = Item("a", title="Possibly about the election", summary="x")
+    high = Item("b", title="About the election", summary="y")
+    for item, confidence in ((low, threshold - 0.1), (high, threshold)):
+        result = model_result(
+            item.item_id, election_relevant=True, relevance_conf=confidence
+        )
+        parser._emit(
+            output, item, normalize_llm_result(result, item, parser.vocabulary)
+        )
+    rows = {r["item_id"]: r for r in output.rows["nlp.classify_a"]}
+    assert rows["a"]["election_relevant"] is False
+    assert low.relevant is False
+    assert rows["b"]["election_relevant"] is True
+    assert high.relevant is True
+
+
 async def test_outage_items_return_to_the_model_on_recovery(
     settings, monkeypatch
 ):
@@ -1814,7 +1835,8 @@ async def test_a_robots_timeout_blocks_the_domain_only_briefly(settings):
     def handler(request):
         if request.url.path == "/robots.txt":
             calls["robots"] += 1
-            if calls["robots"] == 1:
+            # The first request, and its one retry for plain bytes.
+            if calls["robots"] <= 2:
                 raise httpx.ReadTimeout("slow", request=request)
             return httpx.Response(404)
         calls["pages"] += 1
@@ -1827,7 +1849,7 @@ async def test_a_robots_timeout_blocks_the_domain_only_briefly(settings):
     assert calls["pages"] == 0
     # Still inside the retry delay, nothing is requested again.
     await parser.run([story])
-    assert calls["robots"] == 1
+    assert calls["robots"] == 2
     entry = parser.robots["example.com"]
     entry.fetched_at -= entry.ttl + 1
     second = await parser.run([story])

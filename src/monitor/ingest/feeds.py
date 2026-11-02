@@ -5,8 +5,10 @@ from __future__ import annotations
 import html
 import io
 import re
+from collections import Counter
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
+from email.utils import parsedate_to_datetime
 from time import struct_time
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -24,6 +26,7 @@ STRIP_INPUT_MAX_CHARS = 100_000
 FEED_MAX_BYTES = 10_000_000
 SITEMAP_MAX_BYTES = 20_000_000
 EARLIEST_YEAR = 2000
+ROUGH_DATE_MARGIN = timedelta(days=1)
 
 TRACKING_PARAMS = {"fbclid", "gclid", "cmpid", "ocid", "ref", "smid"}
 TAG_RE = re.compile(r"<[^<>]+>")
@@ -106,6 +109,9 @@ class FeedEntry:
     language: str
     categories: list[str] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
+    # The day, when the source gave a date with no time zone. No exact time
+    # can be known from that, so `published_at` stays empty.
+    rough_date: date | None = None
 
 
 @dataclass
@@ -221,21 +227,69 @@ def _local_name(tag: Any) -> str:
 
 
 def _child_text(element: ElementTree.Element, name: str) -> str:
-    """Text of the first descendant with this local name."""
-    for child in element.iter():
+    """Text of the first direct child with this local name."""
+    for child in element:
         if _local_name(child.tag) == name:
             return (child.text or "").strip()
     return ""
 
 
-def _sitemap_date(text: str) -> datetime | None:
+def _news_text(element: ElementTree.Element, name: str) -> str:
+    """Text of the first descendant in the news namespace with this name.
+
+    An image or video block in the same entry has fields with the same names.
+    """
+    for child in element.iter():
+        namespace, _, local = str(child.tag).rpartition("}")
+        if local.lower() == name and "news" in namespace.lower():
+            return (child.text or "").strip()
+    return ""
+
+
+def _read_date(text: str) -> datetime | None:
+    """A date in W3C or RFC 822 form."""
     try:
-        value = datetime.fromisoformat(text)
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return _plausible(value.astimezone(UTC))
-    except (ValueError, OverflowError):
+        return datetime.fromisoformat(text)
+    except ValueError:
+        pass
+    try:
+        return parsedate_to_datetime(text)
+    except (TypeError, ValueError):
         return None
+
+
+def _sitemap_date(text: str) -> tuple[datetime | None, date | None]:
+    """An exact time, or only the day when the text names no time zone."""
+    try:
+        value = _read_date(text)
+        if value is None or _plausible(value) is None:
+            return None, None
+        if value.tzinfo is None:
+            return None, value.date()
+        return _plausible(value.astimezone(UTC)), None
+    except (ValueError, OverflowError):
+        return None, None
+
+
+def published_since(entry: FeedEntry, since: datetime) -> bool:
+    """Whether an entry can have been published since `since`.
+
+    A date with no time zone can be most of a day off, so it passes within a
+    day of `since`, and deduplication decides. An undated entry does not pass.
+    """
+    if entry.published_at is not None:
+        return entry.published_at >= since
+    if entry.rough_date is None:
+        return False
+    return entry.rough_date >= (since - ROUGH_DATE_MARGIN).date()
+
+
+def main_language(feed: ParsedFeed) -> str:
+    """The language most of a feed's entries name, or an empty string."""
+    counts = Counter(
+        entry.language for entry in feed.entries if entry.language
+    )
+    return counts.most_common(1)[0][0] if counts else ""
 
 
 def _sitemap_root(content: bytes) -> ElementTree.Element | None:
@@ -258,7 +312,7 @@ def parse_news_sitemap(content: bytes | str) -> ParsedFeed:
         if _local_name(node.tag) != "url":
             continue
         url = _child_text(node, "loc")
-        title = strip_html(_child_text(node, "title"))
+        title = strip_html(_news_text(node, "title"))
         if not url.startswith("http") or not title:
             continue
         if len(url) > URL_MAX_CHARS:
@@ -266,8 +320,9 @@ def parse_news_sitemap(content: bytes | str) -> ParsedFeed:
         canonical = canonical_or_none(url)
         if canonical is None:
             continue
-        date = _child_text(node, "publication_date")
-        language = _child_text(node, "language")[:2].lower()
+        published = _news_text(node, "publication_date")
+        published_at, rough_date = _sitemap_date(published)
+        language = _news_text(node, "language")[:2].lower()
         entries.append(
             FeedEntry(
                 url=url,
@@ -276,15 +331,16 @@ def parse_news_sitemap(content: bytes | str) -> ParsedFeed:
                 title=title[:500],
                 summary="",
                 author="",
-                published_at=_sitemap_date(date),
+                published_at=published_at,
                 language=language,
                 categories=[],
                 raw={
                     "loc": url,
                     "title": title[:RAW_FIELD_MAX_CHARS],
-                    "publication_date": date[:RAW_FIELD_MAX_CHARS],
+                    "publication_date": published[:RAW_FIELD_MAX_CHARS],
                     "language": language,
                 },
+                rough_date=rough_date,
             )
         )
     return ParsedFeed(entries=entries, title="", bozo=False, language="")
@@ -310,8 +366,17 @@ def sitemap_children(content: bytes) -> list[str]:
 
 
 def same_site(parent: str, child: str) -> bool:
-    """Whether a listed URL stays on the site that listed it."""
-    parent_host = (urlsplit(parent).hostname or "").lower()
-    child_host = (urlsplit(child).hostname or "").lower()
-    base = ".".join(parent_host.split(".")[-2:])
+    """Whether a listed URL is on the host that listed it, or a subdomain.
+
+    A leading `www.` on the listing host does not count. A URL that cannot be
+    parsed is on no site.
+    """
+    try:
+        parent_host = (urlsplit(parent).hostname or "").lower()
+        child_host = (urlsplit(child).hostname or "").lower()
+    except ValueError:
+        return False
+    base = parent_host.removeprefix("www.")
+    if not base:
+        return False
     return child_host == base or child_host.endswith(f".{base}")

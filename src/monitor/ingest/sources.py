@@ -125,6 +125,17 @@ def load_news_sitemaps(settings: Settings) -> dict[str, str]:
         return {row["source_id"]: row["url"] for row in csv.DictReader(handle)}
 
 
+def outlet_for_language(sources: list[Source], language: str) -> Source | None:
+    """The first of these outlets that publishes in this language."""
+    wanted = language[:2].lower()
+    if not wanted:
+        return None
+    for source in sources:
+        if source.language[:2].lower() == wanted:
+            return source
+    return None
+
+
 def write_sources(settings: Settings, sources: list[Source]) -> None:
     path = sources_path(settings)
     path.parent.mkdir(parents=True, exist_ok=True)

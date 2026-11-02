@@ -5,6 +5,8 @@
   const root = document.documentElement;
   const body = document.body;
   const DIM_TIMEOUT_MS = 8000;
+  const STALE_TEXT =
+    "Update failed. This panel still shows the previous filters.";
 
   /* The event stream closes in a hidden tab and reopens on return. Each open
      stream holds one of the browser's six connections to this server, and
@@ -48,6 +50,7 @@
     }
   }
   let stream = null;
+  let openIsExpected = false;
   window.htmx.createEventSource = (url) => {
     if (stream) stream.close();
     stream = new PausableSource(url, { withCredentials: true });
@@ -56,6 +59,8 @@
   document.addEventListener("visibilitychange", () => {
     if (!stream) return;
     if (document.hidden) {
+      /* The next open is a return, whatever a switch expected of it. */
+      openIsExpected = false;
       stream.close();
     } else {
       stream.open();
@@ -93,14 +98,33 @@
     switchers: [],
     /* Old content stays and dims until `work` finishes, or until the timeout
        if a response never comes. */
-    dimWhile(element, work) {
+    dimWhile(element, work, onTimeout) {
       element.classList.add("panel-dim");
       const clear = () => element.classList.remove("panel-dim");
-      const timer = setTimeout(clear, DIM_TIMEOUT_MS);
+      const timer = setTimeout(() => {
+        clear();
+        if (onTimeout) onTimeout();
+      }, DIM_TIMEOUT_MS);
       return Promise.resolve(work).finally(() => {
         clearTimeout(timer);
         clear();
       });
+    },
+    /* Says that a panel still shows data from the previous filters. */
+    staleNote(element, shown) {
+      const note = element.querySelector(":scope > .stale-note");
+      if (!shown) {
+        if (note) note.remove();
+        return;
+      }
+      if (note) return;
+      if (getComputedStyle(element).position === "static") {
+        element.style.position = "relative";
+      }
+      const added = document.createElement("div");
+      added.className = "stale-note";
+      added.textContent = STALE_TEXT;
+      element.prepend(added);
     },
   });
 
@@ -299,6 +323,13 @@
   }
   Monitor.paintDots = paintDots;
 
+  /* A panel not yet updated for the filters on show says so if it fails. */
+  function noteIfAwaitingFilters(panel) {
+    if (panel && panel.dataset && panel.dataset.awaitingFilters) {
+      Monitor.staleNote(panel, true);
+    }
+  }
+
   /* htmx integration */
   document.addEventListener("htmx:afterSwap", (event) => {
     /* SSE swaps carry no target in their detail. */
@@ -306,6 +337,10 @@
     paintDots(swapped);
     if (swapped.id === "drawer-body") openDrawer();
     if (swapped.classList) swapped.classList.remove("panel-dim");
+    if (swapped.dataset && swapped.dataset.awaitingFilters) {
+      delete swapped.dataset.awaitingFilters;
+      Monitor.staleNote(swapped, false);
+    }
   });
   /* A panel's first content fades in. A refresh replaces content silently. */
   document.addEventListener("htmx:beforeSwap", (event) => {
@@ -323,6 +358,7 @@
     document.addEventListener(kind, (event) => {
       const target = event.detail.target;
       if (target && target.classList) target.classList.remove("panel-dim");
+      noteIfAwaitingFilters(target);
     });
   });
   /* A missing item still explains itself in the drawer. */
@@ -665,7 +701,10 @@
       fresh.append(...old.childNodes);
       /* A response still on its way to the old element lands nowhere. */
       old.replaceWith(fresh);
-      Monitor.dimWhile(fresh, new Promise(() => {}));
+      fresh.dataset.awaitingFilters = "1";
+      Monitor.dimWhile(fresh, new Promise(() => {}), () =>
+        noteIfAwaitingFilters(fresh)
+      );
       window.htmx.process(fresh);
     });
   }
@@ -726,9 +765,11 @@
       const text = await response.text();
       if (mine !== switchCount) return;
       const page = new DOMParser().parseFromString(text, "text/html");
+      switchRequest = null;
       applySwitch(url, page, addToHistory);
     } catch (error) {
       if (mine !== switchCount) return;
+      switchRequest = null;
       console.warn("filter switch fell back to a page load", error);
       window.location.href = url;
     }
@@ -742,21 +783,27 @@
     event.preventDefault();
     switchFilters(link.href, link);
   });
+  /* A switch on its way is replaced, even by a return to what is shown. */
   window.addEventListener("popstate", () => {
-    if (canSwitchInPlace() && window.location.search !== shownSearch) {
+    if (
+      canSwitchInPlace() &&
+      (switchRequest || window.location.search !== shownSearch)
+    ) {
       switchFilters(window.location.href, null, false);
     }
   });
 
   /* The server filters the stream by its URL, so a switch reopens it. */
-  let openIsExpected = false;
   function reconnectStream(url) {
     body.setAttribute("sse-connect", url);
     if (!stream) return;
-    openIsExpected = true;
     stream.url = url;
     stream.close();
-    if (!document.hidden) stream.open();
+    /* In a hidden tab the stream opens on return, which refreshes panels. */
+    if (!document.hidden) {
+      openIsExpected = true;
+      stream.open();
+    }
   }
 
   /* Events were missed while the stream was down, so refresh every panel. */
@@ -764,6 +811,7 @@
   document.body.addEventListener("htmx:sseOpen", () => {
     if (!streamOpened) {
       streamOpened = true;
+      openIsExpected = false;
       return;
     }
     if (openIsExpected) {
