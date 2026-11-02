@@ -1,0 +1,5 @@
+{# The small link in a dashboard card's header to the page behind that card. #}
+{% macro link(key, qs) %}
+{% set target = CARD_LINKS[key] %}
+<a class="card-link" data-card-link="{{ key }}" href="{{ target.href }}?{{ qs }}{{ target.anchor }}">{{ target.label }}</a>
+{% endmacro %}

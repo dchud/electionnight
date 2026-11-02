@@ -26,6 +26,25 @@ fetch @fontsource-variable/inter@5.3.0/files/inter-latin-wght-normal.woff2 \
 fetch @fontsource-variable/inter@5.3.0/files/inter-latin-ext-wght-normal.woff2 \
   inter-latin-ext.woff2
 
+mkdir -p "$VENDOR/katex/fonts"
+KATEX=katex@0.16.11/dist
+fetch "$KATEX/katex.min.js" katex/katex.min.js
+fetch "$KATEX/katex.min.css" katex/katex.min.css
+fetch "$KATEX/contrib/auto-render.min.js" katex/auto-render.min.js
+for font in \
+  KaTeX_AMS-Regular.woff2 KaTeX_Caligraphic-Bold.woff2 \
+  KaTeX_Caligraphic-Regular.woff2 KaTeX_Fraktur-Bold.woff2 \
+  KaTeX_Fraktur-Regular.woff2 KaTeX_Main-Bold.woff2 \
+  KaTeX_Main-BoldItalic.woff2 KaTeX_Main-Italic.woff2 \
+  KaTeX_Main-Regular.woff2 KaTeX_Math-BoldItalic.woff2 \
+  KaTeX_Math-Italic.woff2 KaTeX_SansSerif-Bold.woff2 \
+  KaTeX_SansSerif-Italic.woff2 KaTeX_SansSerif-Regular.woff2 \
+  KaTeX_Script-Regular.woff2 KaTeX_Size1-Regular.woff2 \
+  KaTeX_Size2-Regular.woff2 KaTeX_Size3-Regular.woff2 \
+  KaTeX_Size4-Regular.woff2 KaTeX_Typewriter-Regular.woff2; do
+  fetch "$KATEX/fonts/$font" "katex/fonts/$font"
+done
+
 if [[ ! -x bin/tailwindcss ]]; then
   curl -fsSL --retry 3 -o bin/tailwindcss \
     "https://github.com/tailwindlabs/tailwindcss/releases/download/$TAILWIND_VERSION/tailwindcss-macos-arm64"

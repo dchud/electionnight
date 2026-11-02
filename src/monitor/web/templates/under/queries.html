@@ -26,7 +26,7 @@
       {% if member.note %}<p class="u-note">{{ member.note }}</p>{% endif %}
       <details class="u-query" data-key="gallery-{{ member.query.key }}" open>
         <summary>Show query</summary>
-        <pre class="u-sql">{{ ran.query.sql|u_sql }}</pre>
+        {{ u.sql_block(ran.query.sql) }}
         <p class="u-query-meta">Ran on: {{ ran.query.where }}{% if ran.query.ms is not none %}; {{ ran.query.ms }} ms{% endif %}{% if ran.query.rows is not none %}; {{ ran.query.rows }} rows{% endif %}.{% if ran.query.where != 'not run' %} <a class="text-link" href="/under/sql?sql={{ ran.query.sql|urlencode }}">Open in the SQL console</a>{% endif %}</p>
       </details>
       {{ u.ran_note(ran) }}

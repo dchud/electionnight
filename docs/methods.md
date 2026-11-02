@@ -139,6 +139,8 @@ An item is compared with items seen within 36 hours.
    Chinese, Japanese, and Korean. Each token's 64-bit `xxh64` hash votes on
    each bit of a 64-bit SimHash. A title of under 7 tokens gets no hash,
    because short titles such as "Live updates" repeat across unrelated stories.
+   Formula (1) gives bit $k$ of the hash $H$, where $w$ runs over the title's
+   tokens and $b_k(w)$ is bit $k$ of the token's `xxh64` hash.
 2. **Title match.** Two hashes match at a Hamming distance of 3 or less. An
    identical title matches even when each copy is tagged with its own state. A
    near-identical title must also pass a place check, because a template can
@@ -146,6 +148,28 @@ An item is compared with items seen within 36 hours.
    and share none, so an item with no state passes it.
 3. **Embedding match.** Otherwise an item matches at a cosine of at least 0.95,
    on the same published day, if the two also pass the place check.
+
+Formula (1) is the title hash, (2) is the title match, where $d$ counts the bits
+that differ, and (3) is the embedding match, where $u$ and $v$ are the two
+items' vectors.
+
+$$
+H_k =
+\begin{cases}
+1 & \text{if } \sum_{w} \bigl(2\,b_k(w) - 1\bigr) > 0 \\
+0 & \text{otherwise}
+\end{cases}
+\qquad k = 0, \dots, 63 \tag{1}
+$$
+
+$$
+d(H_a, H_b) \le 3 \tag{2}
+$$
+
+$$
+\cos(u, v) = \frac{u \cdot v}{\lVert u \rVert \, \lVert v \rVert} \ge 0.95
+\tag{3}
+$$
 
 A relevant item joins only groups a relevant item started, so the canonical
 copy of a relevant story is relevant. `nlp.dup_groups.method` says
@@ -161,15 +185,30 @@ for each decision.
 Clustering is online and takes items in the order they were seen. An item joins
 the nearest storyline whose centroid has a cosine of at least 0.92 with it,
 among storylines with an item in the last 8 hours. Otherwise it starts a
-storyline. A join moves the centroid: *c* becomes (1 - 0.1) *c* + 0.1 *v*, then
-scaled back to length 1.
+storyline. A join moves the centroid: $c$ becomes $(1 - 0.1) c + 0.1 v$, then
+scaled back to length 1. Here $v$ is the item's vector and $c$ the storyline's
+centroid.
+
+$$
+\text{join when } \cos(v, c) \ge 0.92
+\qquad
+c' = \frac{(1 - 0.1)\,c + 0.1\,v}{\lVert (1 - 0.1)\,c + 0.1\,v \rVert}
+$$
 
 A storyline starts as a candidate and becomes active at 3 items from 2 outlets
 within 3 hours. Only an active storyline gets a label. It is labeled once, then
 again when it reaches 1.5 times the items at its last label, from 8 headlines
 each time. A pass every 600 s merges active storylines at a cosine of at least
 0.95 into the older one, and marks one with no item for 4 hours as dormant. A
-new item can wake a dormant storyline.
+new item can wake a dormant storyline. A merge weights each centroid by its
+items, where $n_a$ and $n_b$ count them, and scales the result back to length
+1.
+
+$$
+\text{merge when } \cos(c_a, c_b) \ge 0.95
+\qquad
+c' = \frac{n_a c_a + n_b c_b}{\lVert n_a c_a + n_b c_b \rVert}
+$$
 
 A stored `similarity` of 1.0 in `nlp.storyline_assign` is a placeholder for an
 item that started a storyline.
@@ -284,9 +323,17 @@ copies.
 
 ### Velocity and rising
 
-For a storyline, *o* is the count in the last 15 minutes and *e* is the count
-in the 120 minutes before that, times 15/120. The score is (*o* - *e*) /
-sqrt(*e* + 1). A storyline is rising when the score is at least 2 and *o* is at
+For a storyline, $o$ is the count in the last 15 minutes and $e$ is the count
+in the 120 minutes before that, times 15/120. Written with $t$ for that earlier
+count:
+
+$$
+e = t \cdot \frac{15}{120}
+\qquad
+\text{score} = \frac{o - e}{\sqrt{e + 1}}
+$$
+
+A storyline is rising when the score is at least 2 and $o$ is at
 least 3. Entities get no velocity score. A storyline is new when its
 `first_seen_at` is within 30 minutes. Rising Storylines lists only storylines
 that meet the rule.
@@ -298,29 +345,63 @@ divided by its share of relevant items over the baseline, November 1 12:00 to
 November 3 12:00 ET. Both shares divide by all relevant items, including
 stories that name no state, under the same Level, Language, and Unique
 controls. Focus chooses which states are shown and does not change a state's
-value. The ratio shrinks toward 1 with 5 pseudo-counts:
-(*n* + 5) / (*expected* + 5), where *expected* is the baseline share times the
-window's total. 1.0 is normal for that state.
+value. The ratio shrinks toward 1 with 5 pseudo-counts, so a small count stays
+near normal. $n_s$ is the state's items in the window and $N$ all items in the
+window. $b_s$ and $B$ are the same counts over the baseline. $E_s$ is the
+expected count, the baseline share times the window's total. 1.0 is normal for
+that state, and with no baseline items at all the index is 1.
+
+$$
+E_s = \frac{b_s}{B} \cdot N
+\qquad
+A_s = \frac{n_s + 5}{E_s + 5}
+$$
 
 ### States rising
 
 The attention index of the last 15 minutes, with the 120
-minutes before them as the baseline. A state is listed when its value is above
-1, largest first. A rise that every state shares leaves each state at 1.
+minutes before them as the baseline. So $n_s$ and $N$ count the last 15 minutes,
+and $b_s$ and $B$ count the 120 before them. A state is listed when its value is
+above 1, largest first. A rise that every state shares leaves each state at 1.
 
 ### Tone aggregates
 
 The mean of mention-level or item-level tone, with a 95%
-*t*-interval: mean plus or minus *t* times *s* / sqrt(*n*), where *t* is the
-97.5th percentile with *n* - 1 degrees of freedom and *s* is the sample
-standard deviation. The interval stops at the ends of the scale, -2 and +2. In
-simulation with normally distributed tone, it covers the true mean 95% of the
-time at *n* of 6, 14, 30, and 100.
+$t$-interval: mean plus or minus $t_\nu$ times $s / \sqrt{n}$, where $t_\nu$ is
+the 97.5th percentile with $\nu = n - 1$ degrees of freedom and $s$ is the
+sample standard deviation. Each $x_i$ is one observed tone. The interval stops
+at the ends of the scale, -2 and +2. In simulation with normally distributed
+tone, it covers the true mean 95% of the time at $n$ of 6, 14, 30, and 100.
 
-- Hidden when *n* is under 5.
-- Flagged "low n" when *n* is under 15. Charts draw the point hollow, and the
+$$
+\bar{x} = \frac{1}{n} \sum_i x_i
+\qquad
+s^2 = \frac{n}{n - 1} \left( \frac{1}{n} \sum_i x_i^2 - \bar{x}^2 \right)
+$$
+
+$$
+\text{interval} = \left[
+\max\left(\bar{x} - t_\nu \frac{s}{\sqrt{n}},\ -2\right),\
+\min\left(\bar{x} + t_\nu \frac{s}{\sqrt{n}},\ 2\right)
+\right]
+$$
+
+The code computes $t_\nu$ with the Cornish-Fisher expansion around the normal
+quantile $z = 1.959964$, which is within 0.001 for $\nu$ of 4 or more:
+
+$$
+\begin{aligned}
+t_\nu = {} & z + \frac{z^3 + z}{4\nu} +
+\frac{5z^5 + 16z^3 + 3z}{96\nu^2} +
+\frac{3z^7 + 19z^5 + 17z^3 - 15z}{384\nu^3} \\
+& + \frac{79z^9 + 776z^7 + 1482z^5 - 1920z^3 - 945z}{92160\nu^4}
+\end{aligned}
+$$
+
+- Hidden when $n$ is under 5.
+- Flagged "low n" when $n$ is under 15. Charts draw the point hollow, and the
   map's tooltip says "low n".
-- Always shown with *n*, the number of observations that have a tone.
+- Always shown with $n$, the number of observations that have a tone.
 - Opinion items are excluded.
 - Figures that count all copies treat each copy as an observation. Copies of
   one story are not independent, so those intervals are narrower than the
@@ -328,11 +409,22 @@ time at *n* of 6, 14, 30, and 100.
 
 ### Coverage by lean
 
-For storyline *s* and lean bucket *b*: items(*s*, *b*) /
-items(all relevant, *b*) in the window. This is the share of bucket *b*'s
-election coverage devoted to *s*, so a bucket with more outlets does not
-dominate. A bucket with no stories in the window has no share. It reads as no
-data, not 0%, and does not count toward divergence.
+For storyline $s$ and lean bucket $b$, in the window:
+
+$$
+\text{share}(s, b) =
+\frac{\text{items}(s, b)}{\text{items}(\text{all relevant}, b)}
+$$
+
+This is the share of bucket $b$'s election coverage devoted to $s$, so a bucket
+with more outlets does not dominate. A bucket with no stories in the window has
+no share. It reads as no data, not 0%, and does not count toward divergence.
+Divergence is the spread across the buckets that have a share, and the matrix
+sorts by it. It is 0 when no bucket has one.
+
+$$
+\text{divergence}(s) = \max_b \text{share}(s, b) - \min_b \text{share}(s, b)
+$$
 
 ### First to report
 
@@ -448,8 +540,8 @@ The specification shrinks a mean toward 0 with 5 pseudo-observations
 and gives it a 95% interval from the standard error. An interval around the
 shrunk mean does not cover the true mean 95% of the time: in simulation with a
 true mean of -1.0, a standard deviation of 0.5, and tone clamped to the scale,
-it covered 32% at *n* of 6 and 83% at *n* of 100. The dashboard draws the
-unshrunk mean with a *t*-interval, and the low-n flag marks small counts.
+it covered 32% at $n$ of 6 and 83% at $n$ of 100. The dashboard draws the
+unshrunk mean with a $t$-interval, and the low-n flag marks small counts.
 
 ### Replay
 

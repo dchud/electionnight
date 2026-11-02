@@ -43,6 +43,7 @@ from monitor.web.panels import Panels, lean_glyph, lean_text
 from monitor.web.readmodel import ReadModel
 from monitor.web.reference import Reference
 from monitor.web.under import Under, register_filters
+from monitor.web.under_panels import link_targets as card_link_targets
 from monitor.web.vectors import Vectors
 
 log = get(__name__)
@@ -121,6 +122,7 @@ def create_templates() -> Jinja2Templates:
         LEVELS=LEVELS,
         FOCUSES=FOCUSES,
         ALL_STATES=ALL_STATES,
+        CARD_LINKS=card_link_targets(),
     )
     return templates
 

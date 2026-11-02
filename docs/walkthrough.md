@@ -74,6 +74,21 @@ flush and merge directly on the same connection. Each section links to its live
 view. The table at the end names the setting or constant behind each value, and
 a test compares them.
 
+### From a card to its SQL
+
+Each card on the dashboard has a small link in its header. Click SQL on a card
+while it is on screen, with the filters you are showing. The page runs that
+card's own methods and shows each statement, its parameters, and its row count.
+Change a filter on the dashboard and follow the link again, to see which
+parameters move. Then read "What is not SQL": most cards compute something in
+Python or draw in the browser. Briefing and Tone by Outlet Lean say Code,
+because a model wrote the one and a formula makes the other's points.
+
+Show the three layers. These queries read `facts` and other in-memory tables,
+and the end of the page has the SQL that builds each one from the lake. "Open a
+lake form in the SQL console" writes those tables as common table expressions
+over the lake, so the same question runs against Parquet.
+
 ### DuckLake
 
 Open `/under/lake`. Start at the table map: it shows the overall shape, and the
@@ -88,7 +103,9 @@ Statistics cover only the first of those. A sample row shows a vector's length
 and first values, and article text is cut to an excerpt in the query.
 
 Inventory compares rows with keys for every table. Storage has compression and
-time travel, and Data model has the table as the code declares it.
+time travel, and Data model has the table as the code declares it. Each of them
+opens a table's most recent 25 rows or a sample of 25 in place, with the query
+above the rows and a button that copies it or opens it in the SQL console.
 
 ### Inventory
 

@@ -40,6 +40,7 @@
     <form class="u-form" method="get" action="#columns"><label>Table <select class="field" name="table" onchange="this.form.submit()">{% for name in tables %}<option value="{{ name }}" {{ 'selected' if name == table else '' }}>{{ name }}</option>{% endfor %}</select></label></form>
   </div>
   <div class="u-section-body">
+    {{ u.rows_panel(table) }}
     {% if columns.failed %}
     {{ u.scan_failed(columns.failed) }}
     {% elif columns.empty %}

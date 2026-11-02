@@ -201,31 +201,50 @@ def with_stats(
     return merged
 
 
-def sample_sql(table: str, columns: list[dict[str, Any]]) -> str:
-    """Newest rows, with long text cut and lists shown by length.
+def cut_columns(
+    columns: list[dict[str, Any]], chars: int = EXCERPT_CHARS
+) -> list[str]:
+    """Select terms that cut long text and show a list by its length.
 
     The cut happens in SQL, so full text never leaves the child process.
     """
+    element_types = {
+        column["parent_column"]: column["column_type"]
+        for column in columns
+        if column["parent_column"] is not None
+    }
     parts = []
-    names = set()
     for column in columns:
         if column["parent_column"] is not None:
             continue
         name = column["column_name"]
-        names.add(name)
         quoted = '"' + name.replace('"', '""') + '"'
         kind = column["column_type"]
         if kind in TEXT_TYPES:
-            parts.append(
-                f"left(CAST({quoted} AS VARCHAR), {EXCERPT_CHARS}) AS {quoted}"
+            text = (
+                quoted if kind == "varchar" else f"CAST({quoted} AS VARCHAR)"
             )
+            parts.append(f"left({text}, {chars}) AS {quoted}")
         elif kind == "list":
+            first = f"{quoted}[1:{LIST_VALUES_SHOWN}]"
+            if element_types.get(column.get("column_id")) in TEXT_TYPES:
+                first = (
+                    f"list_transform({first}, "
+                    f"lambda value: left(CAST(value AS VARCHAR), {chars}))"
+                )
             parts.append(
-                f"struct_pack(length := len({quoted}), "
-                f"first := {quoted}[1:{LIST_VALUES_SHOWN}]) AS {quoted}"
+                f"struct_pack(length := len({quoted}), first := {first}) "
+                f"AS {quoted}"
             )
         else:
             parts.append(quoted)
+    return parts
+
+
+def sample_sql(table: str, columns: list[dict[str, Any]]) -> str:
+    """Newest rows, with long text cut and lists shown by length."""
+    parts = cut_columns(columns)
+    names = {column["column_name"] for column in columns}
     parts += ["snapshot_id AS _snapshot", "filename AS _file"]
     order = "ORDER BY created_at DESC " if "created_at" in names else ""
     body = ",\n       ".join(parts)

@@ -17,12 +17,13 @@
 </script>
 <script src="/static/vendor/htmx.min.js" defer></script>
 <script src="/static/js/under.js" defer></script>
+{% block head %}{% endblock %}
 </head>
 <body class="under" data-auto-refresh="{{ '1' if auto_refresh else '0' }}">
 <header class="u-header">
   <div class="u-brand">
     <a class="u-title" href="/under">Under the hood</a>
-    <a class="text-link u-back" href="/">Back to the dashboard</a>
+    <a class="text-link u-back" href="{{ back_href|default('/') }}">Back to the dashboard</a>
   </div>
   <nav class="u-nav" aria-label="Under the hood views">
     {% for key, href, label in nav %}

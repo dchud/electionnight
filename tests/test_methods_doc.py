@@ -298,7 +298,7 @@ def stated_phrases():
         f"an item matches at a cosine of at least {nlp.dedupe_cosine}",
         f"whose centroid has a cosine of at least {nlp.storyline_join}",
         f"in the last {hours(storylines.POOL_WINDOW)} hours",
-        f"(1 - {storylines.EMA_ALPHA}) *c* + {storylines.EMA_ALPHA} *v*",
+        f"$(1 - {storylines.EMA_ALPHA}) c + {storylines.EMA_ALPHA} v$",
         f"at {nlp.storyline_promote_items} items from "
         f"{nlp.storyline_promote_sources} outlets within "
         f"{hours(storylines.PROMOTION_WINDOW)} hours",
@@ -340,19 +340,19 @@ def stated_phrases():
         f"the count in the last {short} minutes",
         f"the count in the {trailing} minutes before that, times "
         f"{short}/{trailing}",
-        f"score is at least {analytics.RISING_SCORE:.0f} and *o* is at least "
+        f"score is at least {analytics.RISING_SCORE:.0f} and $o$ is at least "
         f"{analytics.RISING_MIN_OBSERVED}",
         f"within {minutes(analytics.NEW_WINDOW)} minutes",
         f"{start:%B} {start.day} {start:%H:%M} to {end:%B} {end.day} "
         f"{end:%H:%M} ET",
         f"shrinks toward 1 with {pseudo:.0f} pseudo-counts",
-        f"(*n* + {pseudo:.0f}) / (*expected* + {pseudo:.0f})",
+        f"\\frac{{n_s + {pseudo:.0f}}}{{E_s + {pseudo:.0f}}}",
         f"The attention index of the last {short} minutes, with the "
         f"{trailing} minutes before them",
         f"ends of the scale, {analytics.TONE_MIN:.0f} and "
         f"+{analytics.TONE_MAX:.0f}",
-        f"Hidden when *n* is under {analytics.TONE_HIDE_BELOW}",
-        f'"low n" when *n* is under {analytics.TONE_LOW_N_BELOW}',
+        f"Hidden when $n$ is under {analytics.TONE_HIDE_BELOW}",
+        f'"low n" when $n$ is under {analytics.TONE_LOW_N_BELOW}',
         f"covers the last {panels.KPI_RECENT_MINUTES} minutes",
         f"clipped to {under_worker.CONSOLE_MAX_CELL_CHARS:,} characters per "
         "cell",
@@ -513,13 +513,13 @@ def shrunk_interval_coverage(n):
 
 @pytest.mark.parametrize("n", [6, 14, 30, 100])
 def test_the_stated_interval_covers_95_percent(n):
-    assert "*n* of 6, 14, 30, and 100" in spaced(TEXT)
+    assert "$n$ of 6, 14, 30, and 100" in spaced(TEXT)
     assert t_interval_coverage(n) == pytest.approx(0.95, abs=0.01)
 
 
 @pytest.mark.parametrize(("n", "percent"), [(6, 32), (100, 83)])
 def test_the_stated_shrunk_coverage_matches_a_simulation(n, percent):
-    assert f"{percent}% at *n* of {n}" in spaced(TEXT)
+    assert f"{percent}% at $n$ of {n}" in spaced(TEXT)
     assert shrunk_interval_coverage(n) == pytest.approx(
         percent / 100, abs=0.015
     )
@@ -568,7 +568,7 @@ def test_cleanup_says_when_the_clock_starts():
 
 def test_velocity_is_for_storylines_only():
     section = spaced(TEXT)
-    assert "For a storyline, *o*" in section
+    assert "For a storyline, $o$" in section
     assert "storyline or entity" not in section
     assert "Entities get no velocity score" in section
     uses = [
@@ -576,7 +576,8 @@ def test_velocity_is_for_storylines_only():
         for path in (ROOT / "src/monitor/web").rglob("*.py")
         if "velocity_score" in path.read_text(encoding="utf-8")
     ]
-    assert uses == []
+    # The cards page shows this function by name, and does not call it.
+    assert set(uses) <= {"under_panels.py"}
 
 
 def test_every_text_basis_in_the_code_is_stated():

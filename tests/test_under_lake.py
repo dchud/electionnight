@@ -314,7 +314,7 @@ def test_no_full_article_text_on_the_page(client, table):
 
 def test_sample_cuts_text_in_the_query(under):
     detail = lake_view(under, {"table": "raw.article_text"})["detail"]
-    assert "left(CAST(" in detail["sample"].query.sql
+    assert 'left("text", 160)' in detail["sample"].query.sql
     for row in detail["sample"].rows:
         assert len(row["text"] or "") <= 160
 

@@ -537,11 +537,29 @@ main {
 .panel-title {
   font-size: .85rem;
   font-weight: 650;
-  margin: 0;
+  margin: 0 auto 0 0;
 }
 .panel-note {
   font-size: .72rem;
   color: var(--text-3);
+}
+.card-link {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-self: center;
+  align-items: center;
+  min-height: 1.5rem;
+  padding: 0 .55rem;
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--text-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.card-link:hover, .card-link:focus-visible {
+  color: var(--text-1);
+  border-color: var(--text-2);
+  text-decoration: none;
 }
 .panel-body {
   flex: 1;
@@ -1575,6 +1593,14 @@ pre.raw {
 .doc a {
   text-decoration: underline;
 }
+.math-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}
+.math-display .katex-display {
+  margin: .5rem 0;
+}
 .doc code {
   font-size: .85em;
   background: var(--surface-2);
@@ -1882,6 +1908,81 @@ pre.raw {
   max-height: 26rem;
   overflow-y: auto;
   overflow-x: hidden;
+}
+.u-sql-block {
+  display: flex;
+  align-items: flex-start;
+  gap: .4rem;
+}
+.u-sql-block .u-sql {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.u-sql-tools {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: stretch;
+  gap: .25rem;
+  font-size: var(--u-small);
+}
+.u-sql-tools .u-button {
+  padding: .15rem .55rem;
+  text-align: center;
+  white-space: nowrap;
+}
+.u-rows {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+.u-rows-controls {
+  display: inline-flex;
+  gap: .3rem;
+}
+.u-rows-controls .u-button, .u-rows-pager .u-button {
+  padding: .1rem .5rem;
+  font-size: var(--u-small);
+}
+.u-rows-controls .u-button[aria-expanded="true"] {
+  color: var(--surface-1);
+  background: var(--text-1);
+}
+.u-rows-body {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  font-size: var(--u-small);
+  white-space: normal;
+}
+.u-rows-body:empty {
+  display: none;
+}
+.u-rows-body .u-sql {
+  max-height: 9rem;
+}
+.u-rows-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .3rem .5rem;
+}
+.u-rows-pager .u-button[disabled] {
+  opacity: .45;
+  cursor: default;
+}
+.u-rows-body .u-scroll {
+  overflow-x: auto;
+}
+.u-rows-table td {
+  min-width: 8rem;
+  max-width: 24rem;
+}
+.u-rows-cut {
+  font-size: var(--u-tiny);
+  font-weight: 600;
+  color: var(--warn-text);
+  white-space: nowrap;
 }
 .u-details {
   font-size: .85rem;

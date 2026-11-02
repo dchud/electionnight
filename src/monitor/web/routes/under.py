@@ -15,7 +15,9 @@ from monitor.web.filters import Filters
 from monitor.web.under import Under, console_available, valid_item_id
 from monitor.web.under_coverage import coverage
 from monitor.web.under_lake import lake_view
+from monitor.web.under_panels import panel_view, panels_list
 from monitor.web.under_queries import gallery
+from monitor.web.under_rows import rows_view
 from monitor.web.under_trace import (
     archive_record,
     records,
@@ -42,6 +44,7 @@ NAV = (
     ("feeds", "/under/feeds", "Feeds"),
     ("costs", "/under/costs", "Costs"),
     ("queries", "/under/queries", "Queries"),
+    ("panels", "/under/panels", "Cards"),
     ("sql", "/under/sql", "SQL"),
 )
 
@@ -246,6 +249,48 @@ def _local_request(request: Request) -> bool:
         return False
     origin = request.headers.get("origin")
     return not origin or origin == f"http://{host}"
+
+
+@router.get("/panels", response_class=HTMLResponse)
+def panels(request: Request) -> HTMLResponse:
+    filters = request.app.state.web.filters(request)
+    return _page(
+        request,
+        "panels",
+        "panels",
+        filters,
+        auto_refresh=False,
+        **panels_list(filters),
+    )
+
+
+@router.get("/panels/{card}", response_class=HTMLResponse)
+def panel(request: Request, card: str) -> HTMLResponse:
+    """One card's real methods run here, in a worker thread."""
+    filters = request.app.state.web.filters(request)
+    data = panel_view(_under(request), card, filters)
+    if data is None:
+        return HTMLResponse("No such card.", status_code=404)
+    return _page(
+        request,
+        "panel",
+        "panels",
+        filters,
+        auto_refresh=False,
+        **data,
+    )
+
+
+@router.get("/rows", response_class=HTMLResponse)
+def rows(request: Request) -> HTMLResponse:
+    """One table's rows, as a fragment for the panel that asked."""
+    return _page(
+        request,
+        "fragments/rows",
+        "rows",
+        console_link=_local_request(request),
+        **rows_view(_under(request), request.query_params),
+    )
 
 
 @router.get("/sql", response_model=None)

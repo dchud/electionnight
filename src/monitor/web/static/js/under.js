@@ -45,7 +45,9 @@
     fresh.querySelectorAll("details[data-key]").forEach((element) => {
       if (open.has(element.dataset.key)) element.open = true;
     });
+    const openRows = [...main.querySelectorAll("[data-rows-body][data-rows-mode]")];
     main.replaceChildren(...fresh.childNodes);
+    openRows.forEach(keepRows);
     const stamp = page.getElementById("u-snapshot");
     if (stamp) document.getElementById("u-snapshot").textContent = stamp.textContent;
     if (window.htmx) window.htmx.process(main);
@@ -104,7 +106,127 @@
     target.scrollIntoView({ block: "start" });
   }
 
+  /* A table's rows open in place. A refresh keeps an open panel as it is, so
+     it asks for no new scan. */
+  function rowsBody(table) {
+    return [...document.querySelectorAll("[data-rows-body]")].find(
+      (element) => element.dataset.rowsBody === table
+    );
+  }
+
+  function markRows(table, mode) {
+    document.querySelectorAll("[data-rows-open]").forEach((control) => {
+      if (control.dataset.rowsTable !== table) return;
+      control.setAttribute(
+        "aria-expanded",
+        control.dataset.rowsOpen === mode ? "true" : "false"
+      );
+    });
+  }
+
+  function keepRows(old) {
+    const table = old.dataset.rowsBody;
+    const fresh = rowsBody(table);
+    if (!fresh) return;
+    fresh.replaceWith(old);
+    old.closest("[data-rows-wrap]").hidden = false;
+    markRows(table, old.dataset.rowsMode);
+  }
+
+  function closeRows(body) {
+    delete body.dataset.rowsMode;
+    delete body.dataset.rowsTicket;
+    body.replaceChildren();
+    body.closest("[data-rows-wrap]").hidden = true;
+    markRows(body.dataset.rowsBody, "");
+  }
+
+  let rowsTickets = 0;
+
+  async function showRows(body, mode, url) {
+    const ticket = String(++rowsTickets);
+    body.dataset.rowsMode = mode;
+    body.dataset.rowsTicket = ticket;
+    body.closest("[data-rows-wrap]").hidden = false;
+    markRows(body.dataset.rowsBody, mode);
+    let html;
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      html = await response.text();
+    } catch (error) {
+      html =
+        '<p class="banner-warn u-error">The server did not answer, so no ' +
+        "rows are shown. Close this and try again.</p>";
+    }
+    if (body.dataset.rowsTicket !== ticket) return;
+    /* The server escapes every value in this fragment. */
+    body.innerHTML = html;
+  }
+
+  function rowsUrl(table, mode) {
+    const query = new URLSearchParams({ table, mode });
+    return "/under/rows?" + query.toString();
+  }
+
+  function onRowsClick(target) {
+    const open = target.closest("[data-rows-open]");
+    if (open) {
+      const body = rowsBody(open.dataset.rowsTable);
+      const mode = open.dataset.rowsOpen;
+      if (body.dataset.rowsMode === mode) closeRows(body);
+      else showRows(body, mode, rowsUrl(open.dataset.rowsTable, mode));
+      return;
+    }
+    const body = target.closest("[data-rows-body]");
+    if (!body) return;
+    const go = target.closest("[data-rows-go]");
+    if (go) showRows(body, body.dataset.rowsMode, go.dataset.rowsGo);
+    if (target.closest("[data-rows-close]")) closeRows(body);
+  }
+
+  /* The clipboard API needs a secure context, which a LAN address is not. */
+  async function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (error) {
+        /* Fall through to a selection. */
+      }
+    }
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } catch (error) {
+      copied = false;
+    }
+    area.remove();
+    return copied;
+  }
+
+  async function onCopyClick(button) {
+    const block = button.closest(".u-sql-block");
+    const copied = await copyText(
+      block.querySelector("pre.u-sql").textContent.trim()
+    );
+    button.focus();
+    button.textContent = copied ? "Copied" : "Copy failed";
+    window.setTimeout(() => {
+      button.textContent = "Copy";
+    }, 1500);
+  }
+
   document.addEventListener("click", (event) => {
+    onRowsClick(event.target);
+    const copy = event.target.closest("[data-copy-sql]");
+    if (copy) onCopyClick(copy);
     if (event.target.closest("[data-under-refresh]")) refresh();
     if (event.target.closest("[data-under-projector]")) toggleProjector();
     if (event.target.closest("[data-under-theme]")) toggleTheme();

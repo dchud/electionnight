@@ -929,6 +929,33 @@ class Under:
                 )
         return results
 
+    def scan_once(
+        self,
+        statements: list[tuple[str, str, dict[str, Any] | None]],
+        max_rows: int,
+    ) -> dict[str, Ran]:
+        """Run fixed statements in a child process and keep no result.
+
+        If another scan holds the gate, this returns at once.
+        """
+        if not self._gate.acquire(blocking=False):
+            return self._unfinished(statements, GATE_BUSY)
+        try:
+            outcome = run_worker(
+                self._lake_request(
+                    mode="scan",
+                    max_rows=max_rows,
+                    statements=[
+                        {"name": name, "sql": sql, "params": params}
+                        for name, sql, params in statements
+                    ],
+                ),
+                CHILD_LIMIT_SECONDS,
+            )
+        finally:
+            self._gate.release()
+        return self._scan_results(statements, outcome)
+
     def worker_call(
         self,
         cache_key: tuple[Any, ...],

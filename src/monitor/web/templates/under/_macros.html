@@ -1,3 +1,31 @@
+{# A statement, colored, with a button that copies its text. `console` adds a
+link that fills the SQL console without running it. #}
+{% macro sql_block(sql, console=false) %}
+<div class="u-sql-block">
+  <pre class="u-sql">{{ sql|u_sql }}</pre>
+  <div class="u-sql-tools">
+    <button type="button" class="u-button" data-copy-sql>Copy</button>
+    {% if console %}<a class="u-button" href="/under/sql?sql={{ sql|urlencode }}">Open in SQL console</a>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{# The two controls that open a table's rows, and where those rows appear. #}
+{% macro rows_controls(table) %}
+<span class="u-rows-controls"><button type="button" class="u-button" data-rows-open="recent" data-rows-table="{{ table }}" aria-expanded="false">Most recent 25</button> <button type="button" class="u-button" data-rows-open="sample" data-rows-table="{{ table }}" aria-expanded="false">Sample 25</button></span>
+{% endmacro %}
+
+{% macro rows_body(table) %}
+<div class="u-rows-body" data-rows-body="{{ table }}"></div>
+{% endmacro %}
+
+{% macro rows_panel(table) %}
+<div class="u-rows">
+  {{ rows_controls(table) }}
+  <div data-rows-wrap hidden>{{ rows_body(table) }}</div>
+</div>
+{% endmacro %}
+
 {# A disclosure of the SQL a panel ran. `queries` is one query or a list. #}
 {% macro show_query(queries, key) %}
 {% set items = [queries] if queries.sql is defined else queries %}
@@ -8,7 +36,7 @@
     <p class="u-query-meta">Ran on: {{ q.where }}{% if q.ms is not none %}; {{ q.ms }} ms{% endif %}{% if q.rows is not none %}; {{ q.rows }} rows{% endif %}.</p>
     {% if q.note %}<p class="u-query-meta">{{ q.note }}</p>{% endif %}
     {% if q.params_text %}<p class="u-query-meta">Parameters: <code>{{ q.params_text }}</code></p>{% endif %}
-    <pre class="u-sql">{{ q.sql|u_sql }}</pre>
+    {{ sql_block(q.sql) }}
   </div>
   {% endfor %}
 </details>

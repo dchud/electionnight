@@ -89,6 +89,9 @@
     <p class="u-note">Statistics cover the {{ detail.row.parquet_rows|u_int }} rows in Parquet files. The {{ detail.row.inlined_rows|u_int }} inlined rows are not in them. These are table-wide figures, added up or compared across files. A long text minimum or maximum is cut here to 40 characters. A query skips a file by that file's own minimum and maximum in <code>ducklake_file_column_stats</code>, not by these totals.{% if detail.has_lists %} On a list's <code>element</code> row, Values counts the elements, and Nulls counts NULL lists, empty lists, and null elements, each as one.{% endif %}</p>
     {{ u.show_query([detail.columns.query, detail.stats.query], "lake-schema") }}
 
+    <h3 class="u-chart-title">Rows of this table, in place</h3>
+    {{ u.rows_panel(detail.table) }}
+
     <h3 class="u-chart-title">Newest rows</h3>
     {% if detail.sample_rows %}
     {% for entry in detail.sample_rows %}

@@ -726,6 +726,16 @@
       if (control) control.focus();
     }
   }
+  /* A card's link to its SQL carries the filters, and it is no panel, so
+     swapping the panels leaves it behind. */
+  function updateCardLinks(page) {
+    page.querySelectorAll("[data-card-link]").forEach((model) => {
+      const link = document.querySelector(
+        `[data-card-link="${model.dataset.cardLink}"]`
+      );
+      if (link) link.setAttribute("href", model.getAttribute("href"));
+    });
+  }
   /* The control shows the choice at once, and `f` and `w` advance from it. */
   function markChosen(control) {
     if (!control) return;
@@ -744,6 +754,7 @@
     wireLiveStale = true;
     reconnectStream(page.body.getAttribute("sse-connect"));
     replaceControls(page);
+    updateCardLinks(page);
     swapPanels(page);
     Monitor.switchers.forEach((refresh) => refresh());
   }

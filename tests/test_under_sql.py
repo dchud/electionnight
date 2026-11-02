@@ -27,6 +27,7 @@ from monitor.web.under import (
     run_worker,
     sandbox_profile,
 )
+from monitor.web.under_worker import check_console_sql
 
 needs_sandbox = pytest.mark.skipif(
     not console_available(), reason="needs the macOS sandbox"
@@ -309,6 +310,19 @@ def test_no_route_reads_the_dotenv_file(scratch):
         assert "rows" not in record, sql
         assert CANARY not in json.dumps(record), sql
         assert fingerprint(scratch) == before, sql
+
+
+def test_the_console_check_reads_a_sample_clause(scratch):
+    settings = scratch[0] if isinstance(scratch, tuple) else scratch
+    conn = connect(settings, read_only=True)
+    try:
+        check_console_sql(
+            conn,
+            "SELECT item_id FROM lake.raw.items "
+            "USING SAMPLE reservoir(25 ROWS) REPEATABLE (7)",
+        )
+    finally:
+        conn.close()
 
 
 @needs_sandbox

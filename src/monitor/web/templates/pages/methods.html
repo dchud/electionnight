@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Methods · Election Night Monitor{% endblock %}
+{% block head %}{% if document.has_math %}{% include "partials/math_assets.html" %}{% endif %}{% endblock %}
 {% block content %}
 <div class="page doc-page">
   <nav class="doc-nav" aria-label="Sections of this page" data-doc-nav>

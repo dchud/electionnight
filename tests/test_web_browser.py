@@ -1035,3 +1035,378 @@ def test_a_copied_echo_parses_the_same_as_what_was_typed(scratch, browser):
         }"""
     )
     assert copied == typed
+
+
+def rows_scratch(settings, count=60):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    writer.add(
+        "raw.items",
+        [
+            {
+                "item_id": f"row-{n:03}",
+                "source_id": "wire",
+                "title": f"Headline {n}",
+                "summary": "s" * 200 + "PASTTHECUT",
+                "url": f"https://example.com/{n}",
+                "first_seen_at": datetime.now(UTC),
+            }
+            for n in range(count)
+        ],
+    )
+    writer.flush()
+    conn.close()
+
+
+def projector_page(browser, width=1280, height=720, permissions=(), script=""):
+    context = browser.new_context(
+        viewport={"width": width, "height": height},
+        permissions=list(permissions),
+    )
+    context.route(
+        "**/*",
+        lambda route: (
+            route.continue_()
+            if route.request.url.startswith((BASE, "data:"))
+            else route.abort()
+        ),
+    )
+    context.add_init_script(
+        "try { localStorage.setItem('projector', '1'); } catch (error) {}"
+        + script
+    )
+    return context, context.new_page()
+
+
+def test_rows_expand_page_collapse_and_survive_a_refresh(scratch, browser):
+    settings, server = scratch
+    rows_scratch(settings)
+    server.start()
+    _, page = projector_page(browser)
+    page.goto(f"{BASE}/under/data-model?table=raw.items")
+    recent = page.locator(
+        '[data-rows-open="recent"][data-rows-table="raw.items"]'
+    )
+    body = page.locator('[data-rows-body="raw.items"]')
+    assert not body.is_visible()
+    url = page.url
+    recent.click()
+    body.locator("table").wait_for()
+    assert page.url == url
+    assert recent.get_attribute("aria-expanded") == "true"
+    assert "Rows 1 to 25 of 60" in body.inner_text()
+    assert body.locator("button", has_text="Newer").is_disabled()
+    # A wide table scrolls in the panel, so its last columns can be reached.
+    assert (
+        body.locator(".u-scroll").evaluate(
+            "(box) => getComputedStyle(box).overflowX"
+        )
+        == "auto"
+    )
+    assert "_file" in body.locator("thead").inner_text()
+    assert "PASTTHECUT" not in body.inner_text()
+    assert "cut" in body.locator("table").inner_text()
+
+    body.locator("button", has_text="Older").click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-rows-body]')"
+        ".innerText.includes('Rows 26 to 50')"
+    )
+    page.locator("[data-under-refresh]").first.click()
+    page.wait_for_timeout(1500)
+    body = page.locator('[data-rows-body="raw.items"]')
+    assert "Rows 26 to 50 of 60" in body.inner_text()
+    recent = page.locator(
+        '[data-rows-open="recent"][data-rows-table="raw.items"]'
+    )
+    assert recent.get_attribute("aria-expanded") == "true"
+
+    body.locator("button", has_text="Older").click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-rows-body]')"
+        ".innerText.includes('Rows 51 to 60')"
+    )
+    assert body.locator("button", has_text="Older").is_disabled()
+    assert page.evaluate(
+        "() => document.documentElement.scrollWidth"
+        " <= document.documentElement.clientWidth"
+    )
+
+    recent.click()
+    page.wait_for_timeout(100)
+    assert not body.is_visible()
+    assert recent.get_attribute("aria-expanded") == "false"
+    assert body.inner_text() == ""
+
+    sample = page.locator(
+        '[data-rows-open="sample"][data-rows-table="raw.items"]'
+    )
+    sample.click()
+    body.locator("table").wait_for()
+    first = body.locator("table").inner_text()
+    assert "Sample 1:" in body.inner_text()
+    body.locator("button", has_text="Another sample").click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-rows-body]')"
+        ".innerText.includes('Sample 2:')"
+    )
+    assert body.locator("table").inner_text() != first
+    body.locator("button", has_text="Previous sample").click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-rows-body]')"
+        ".innerText.includes('Sample 1:')"
+    )
+    assert body.locator("table").inner_text() == first
+    body.locator("button", has_text="Close").click()
+    page.wait_for_timeout(100)
+    assert not body.is_visible()
+
+
+def test_rows_open_inside_the_inventory_table(scratch, browser):
+    settings, server = scratch
+    rows_scratch(settings)
+    server.start()
+    _, page = projector_page(browser)
+    page.goto(f"{BASE}/under/inventory")
+    page.locator(
+        '[data-rows-open="recent"][data-rows-table="raw.items"]'
+    ).click()
+    body = page.locator('[data-rows-body="raw.items"]')
+    body.locator("table").wait_for()
+    assert "Rows 1 to 25 of 60" in body.inner_text()
+    assert page.evaluate(
+        "() => document.documentElement.scrollWidth"
+        " <= document.documentElement.clientWidth"
+    )
+
+
+def copied_block(page):
+    return page.evaluate(
+        """() => document.querySelector('pre.u-sql').textContent"""
+    ).strip()
+
+
+def serialized(sql):
+    text = (
+        duckdb.connect()
+        .execute("SELECT json_serialize_sql(?)", [sql])
+        .fetchone()[0]
+    )
+    tree = json.loads(text)
+
+    def clean(value):
+        if isinstance(value, dict):
+            return {
+                key: clean(item)
+                for key, item in value.items()
+                if not key.startswith("query_location")
+            }
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        return value
+
+    return clean(tree)
+
+
+def test_the_copy_button_copies_the_query_text_only(scratch, browser):
+    settings, server = scratch
+    rows_scratch(settings)
+    server.start()
+    _, page = projector_page(
+        browser, permissions=("clipboard-read", "clipboard-write")
+    )
+    page.goto(f"{BASE}/under/data-model?table=raw.items")
+    page.locator(
+        '[data-rows-open="recent"][data-rows-table="raw.items"]'
+    ).click()
+    body = page.locator('[data-rows-body="raw.items"]')
+    body.locator("table").wait_for()
+    button = body.locator("[data-copy-sql]")
+    shown = body.locator("pre.u-sql").evaluate("(pre) => pre.textContent")
+    button.click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-rows-body] [data-copy-sql]')"
+        ".textContent === 'Copied'"
+    )
+    pasted = page.evaluate("() => navigator.clipboard.readText()")
+    assert pasted == shown.strip()
+    assert "Copy" not in pasted
+    assert pasted.startswith("SELECT")
+    assert serialized(pasted) == serialized(shown)
+    assert serialized(pasted)["error"] is False
+    page.wait_for_function(
+        "() => document.querySelector('[data-rows-body] [data-copy-sql]')"
+        ".textContent === 'Copy'"
+    )
+
+
+def test_the_copy_button_falls_back_without_the_clipboard_api(
+    scratch, browser
+):
+    _, server = scratch
+    server.start()
+    _, page = projector_page(
+        browser,
+        script="""
+        Object.defineProperty(navigator, 'clipboard', {value: undefined});
+        document.addEventListener('copy', () => {
+          const box = document.activeElement;
+          window.copiedText = box.value;
+        });
+        """,
+    )
+    page.goto(f"{BASE}/under/queries")
+    page.locator("details.u-query[open] [data-copy-sql]").first.click()
+    page.wait_for_function("() => window.copiedText !== undefined")
+    copied = page.evaluate("() => window.copiedText")
+    assert copied == copied_block(page)
+    assert (
+        "Copied"
+        in page.locator(
+            "details.u-query[open] [data-copy-sql]"
+        ).first.inner_text()
+    )
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "projector"),
+    [(1280, 720, True), (1920, 1080, False)],
+)
+def test_a_card_link_stays_clear_of_its_header(
+    scratch, browser, width, height, projector
+):
+    settings, server = scratch
+    add_item(settings, "linked", entity="ind")
+    server.start()
+    context = browser.new_context(viewport={"width": width, "height": height})
+    context.route(
+        "**/*",
+        lambda route: (
+            route.continue_()
+            if route.request.url.startswith((BASE, "data:"))
+            else route.abort()
+        ),
+    )
+    if projector:
+        context.add_init_script(
+            "try { localStorage.setItem('projector', '1'); } catch (e) {}"
+        )
+    page = context.new_page()
+    page.goto(f"{BASE}/?window=3h")
+    page.wait_for_function("() => window.Monitor && window.Monitor.mapData")
+    found = page.evaluate(
+        """() => [...document.querySelectorAll('[data-card-link]')].map(
+          (link) => {
+            const box = link.getBoundingClientRect();
+            const head = link.closest('.panel-head');
+            const room = head.getBoundingClientRect();
+            const hits = [...head.children].filter((other) => {
+              if (other === link) return false;
+              const b = other.getBoundingClientRect();
+              return b.left < box.right && box.left < b.right
+                && b.top < box.bottom && box.top < b.bottom;
+            }).map((other) => other.className);
+            return {
+              key: link.dataset.cardLink,
+              width: box.width,
+              height: box.height,
+              inside: box.left >= room.left && box.right <= room.right
+                && box.top >= room.top && box.bottom <= room.bottom,
+              hits,
+              text: link.textContent,
+              size: parseFloat(getComputedStyle(link).fontSize),
+            };
+          })"""
+    )
+    assert len(found) == 11
+    for link in found:
+        assert link["hits"] == [], link
+        assert link["inside"], link
+        assert link["height"] >= 22, link
+        assert link["width"] >= 28, link
+        assert link["text"] in {"SQL", "Code"}
+        assert link["size"] >= 11, link
+    assert page.evaluate(
+        "() => document.documentElement.scrollWidth"
+        " <= document.documentElement.clientWidth"
+    )
+
+
+def test_a_card_link_keeps_up_with_an_in_place_switch(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "linked")
+    server.start()
+    context, page = open_page(browser, "/?window=3h")
+    marked = page.evaluate("() => { window.samePage = true; return true; }")
+    assert marked
+    link = page.locator('[data-card-link="stream"]')
+    assert "window=3h" in link.get_attribute("href")
+    page.locator('a[data-filter="window:24h"]').click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-card-link=stream]')"
+        ".getAttribute('href').includes('window=24h')"
+    )
+    assert page.evaluate("() => window.samePage") is True
+    page.locator('a[data-filter="level:state"]').first.click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-card-link=brief]')"
+        ".getAttribute('href').includes('level=state')"
+    )
+    assert page.evaluate("() => window.samePage") is True
+    brief = page.locator('[data-card-link="brief"]').get_attribute("href")
+    assert brief.endswith("#code")
+    link.click()
+    page.wait_for_url("**/under/panels/stream?**")
+    assert "window=24h" in page.url
+    assert "level=state" in page.url
+    back = page.locator("a", has_text="Back to the dashboard").first
+    href = back.get_attribute("href")
+    assert "window=24h" in href
+    assert "level=state" in href
+    context.close()
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("path", ["/methods", "/under/panels/tone"])
+def test_math_draws_and_fits_at_1280_in_projector_mode(
+    scratch, browser, path, theme
+):
+    _, server = scratch
+    server.start()
+    _, page = projector_page(
+        browser,
+        script=f"localStorage.setItem('theme', '{theme}');",
+    )
+    page.goto(f"{BASE}{path}")
+    page.wait_for_selector(".katex")
+    found = page.evaluate(
+        """() => {
+          const text = getComputedStyle(document.body).color;
+          const shown = [...document.querySelectorAll('.katex')];
+          const boxes = [...document.querySelectorAll('.math-display')];
+          return {
+            drawn: shown.length,
+            raw: document.querySelector('.math-display, .math-inline')
+              ? [...document.querySelectorAll('.math-display, .math-inline')]
+                .filter((box) => !box.querySelector('.katex')).length
+              : 0,
+            wide: boxes.filter(
+              (box) => box.scrollWidth > box.clientWidth + 1
+            ).length,
+            pageWide: document.documentElement.scrollWidth
+              > document.documentElement.clientWidth,
+            sameColor: getComputedStyle(
+              document.querySelector('.katex-html')).color,
+            bodyColor: text,
+            size: parseFloat(
+              getComputedStyle(document.querySelector('.katex')).fontSize),
+            images: document.querySelectorAll('.doc img').length,
+          };
+        }"""
+    )
+    assert found["drawn"] > 0
+    assert found["raw"] == 0
+    assert found["wide"] == 0
+    assert not found["pageWide"]
+    assert found["size"] >= 14
+    assert found["images"] == 0

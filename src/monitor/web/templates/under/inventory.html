@@ -23,7 +23,7 @@
     {% endcall %}
     <div class="u-scroll">
     <table class="table u-table">
-      <thead><tr><th>Table</th><th class="num">Rows, catalog</th><th class="num">Rows, scan</th><th class="num">Distinct keys</th><th class="num">Extra rows</th><th class="num">Rows per key</th><th class="u-hide-projector">Key</th><th class="u-hide-projector">A row is, and why rows repeat</th></tr></thead>
+      <thead><tr><th>Table</th><th class="num">Rows, catalog</th><th class="num">Rows, scan</th><th class="num">Distinct keys</th><th class="num">Extra rows</th><th class="num">Rows per key</th><th class="u-hide-projector">Key</th><th class="u-hide-projector">A row is, and why rows repeat</th><th>See rows</th></tr></thead>
       <tbody>
       {% for row in table_rows %}
       <tr class="{{ 'u-row-flag' if row.extra else '' }}">
@@ -35,7 +35,9 @@
         <td class="num">{{ '%.2f' % row.per_key if row.per_key else '—' }}</td>
         <td class="u-hide-projector">{{ row.key or '—' }}</td>
         <td class="u-hide-projector">{{ row.meaning }}{% if row.extra and row.why %} {{ row.why }}{% endif %}</td>
+        <td class="nowrap">{{ u.rows_controls(row.table) }}</td>
       </tr>
+      <tr data-rows-wrap hidden><td colspan="9">{{ u.rows_body(row.table) }}</td></tr>
       {% endfor %}
       </tbody>
     </table>

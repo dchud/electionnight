@@ -269,7 +269,12 @@ class Reference:
         try:
             changed = METHODS_PATH.stat().st_mtime
         except OSError:
-            return {"html": Markup(""), "headings": [], "drifted": []}
+            return {
+                "html": Markup(""),
+                "headings": [],
+                "has_math": False,
+                "drifted": [],
+            }
         if self._methods is None or self._methods[0] != changed:
             text = METHODS_PATH.read_text(encoding="utf-8")
             document = render_methods(text)
@@ -278,6 +283,7 @@ class Reference:
                 {
                     "html": document.html,
                     "headings": document.headings,
+                    "has_math": document.has_math,
                     "drifted": drifted(text, self.settings),
                 },
             )

@@ -234,8 +234,9 @@ def walk_ast(node: Any, seen: dict[str, set[str]]) -> None:
         return
     if not isinstance(node, dict):
         return
-    kind = node.get("type")
-    if isinstance(kind, str) and kind.endswith("_NODE"):
+    # A typed value, as in a `USING SAMPLE` size, holds an object under `type`.
+    kind = node.get("type") if isinstance(node.get("type"), str) else None
+    if kind and kind.endswith("_NODE"):
         seen["query_nodes"].add(kind)
     if kind == "TABLE_FUNCTION":
         function = node.get("function") or {}
