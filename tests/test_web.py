@@ -6,7 +6,19 @@ from conftest import clone_lake
 from fastapi.testclient import TestClient
 
 from monitor.lake import BatchWriter, connect
-from monitor.web.app import create_app, first_sentence, render_cited
+from monitor.web.app import (
+    create_app,
+    create_templates,
+    first_sentence,
+    render_cited,
+)
+from monitor.web.chip_titles import (
+    language_name,
+    lean_title,
+    level_title,
+    state_name,
+    tone_title,
+)
 from monitor.web.filters import Filters, FocusSets, race_state_pair, since_4pm
 from monitor.web.panels import (
     bin_series,
@@ -414,3 +426,51 @@ def test_oldest_topic_bin_is_counted_whole():
     assert whole_bin(moment) == datetime(2026, 11, 3, 21, 30, tzinfo=UTC)
     on_edge = datetime(2026, 11, 3, 21, 45, tzinfo=UTC)
     assert whole_bin(on_edge) == on_edge
+
+
+def test_wire_chips_spell_out_their_codes():
+    env = create_templates().env
+    html = env.get_template("fragments/wire_rows.html").render(
+        items=[
+            {
+                "item_id": "a",
+                "first_seen_at": datetime(2026, 11, 3, 23, 0, tzinfo=UTC),
+                "headline": "Polls close",
+                "outlet": "Wire",
+                "glyph": "○●○○○",
+                "lean": "LL",
+                "language": "ar",
+                "primary_level": "national",
+                "states": ["MI", "DC"],
+                "tone": -1.0,
+                "copies": 1,
+            }
+        ],
+        fresh=False,
+    )
+    assert 'title="National story">N<' in html
+    assert 'title="Arabic">AR<' in html
+    assert 'title="Michigan">MI<' in html
+    assert 'title="District of Columbia">DC<' in html
+    assert 'title="Outlet lean: Lean left"' in html
+    assert 'title="Tone -1.0, negative, on a scale of -2 to +2"' in html
+
+
+@pytest.mark.parametrize(
+    ("function", "value", "expected"),
+    [
+        (state_name, "NY", "New York"),
+        (state_name, "ZZ", "ZZ"),
+        (language_name, "ES", "Spanish"),
+        (language_name, "th", "TH"),
+        (language_name, None, ""),
+        (level_title, "state", "State story"),
+        (lean_title, "R", "Outlet lean: Right"),
+        (lean_title, "Unrated", "Unrated"),
+        (lean_title, "Non-US outlet", "Non-US outlet"),
+        (tone_title, None, ""),
+        (tone_title, 0, "Tone +0.0, neutral, on a scale of -2 to +2"),
+    ],
+)
+def test_chip_words(function, value, expected):
+    assert function(value) == expected

@@ -14,7 +14,7 @@
       {% for seg in card.lean_segments %}<span class="lean-seg" style="opacity:{{ '%.2f' % (0.12 + seg.intensity * 0.88) }}" title="{{ seg.bucket }}: {% if seg.share is none %}no data{% else %}{{ '%.1f' % (seg.share * 100) }}%{% endif %}"></span>{% endfor %}
     </span>
     {% endif %}
-    {% for state in (card.states or [])[:5] %}<span class="chip">{{ state }}</span>{% endfor %}
+    {% for state in (card.states or [])[:5] %}<span class="chip" title="{{ state|state_name }}">{{ state }}</span>{% endfor %}
   </div>
   {% if card.summary %}<div class="card-summary">{{ card.summary|first_sentence|cited(card.citations) }}</div>{% endif %}
 </div>

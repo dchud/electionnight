@@ -23,6 +23,13 @@ from monitor.llm.citations import split_sentences
 from monitor.logs import configure, get
 from monitor.settings import Settings, get_settings
 from monitor.web.access import AccessControl, is_loopback
+from monitor.web.chip_titles import (
+    language_name,
+    lean_title,
+    level_title,
+    state_name,
+    tone_title,
+)
 from monitor.web.drilldown import Drill
 from monitor.web.filters import (
     FOCUSES,
@@ -102,6 +109,11 @@ def create_templates() -> Jinja2Templates:
     env.filters["et_datetime"] = et_datetime
     env.filters["glyph"] = lean_glyph
     env.filters["lean_text"] = lean_text
+    env.filters["state_name"] = state_name
+    env.filters["language_name"] = language_name
+    env.filters["level_title"] = level_title
+    env.filters["lean_title"] = lean_title
+    env.filters["tone_title"] = tone_title
     env.filters["cited"] = render_cited
     env.filters["first_sentence"] = first_sentence
     env.globals.update(

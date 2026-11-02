@@ -786,4 +786,50 @@
     }
   });
   document.addEventListener("DOMContentLoaded", () => paintDots(document));
+
+  /* A story chip says what it means at once, above the chip, where a large
+     cursor does not cover it. A title stays in the page until first use, so
+     it still works without this. */
+  const CHIPS =
+    ".badge[title], .chip[title], .glyph[title], .tone-dot[title], [data-tip]";
+
+  function placeChipTip(tip, chip) {
+    const box = chip.getBoundingClientRect();
+    const gap = 6;
+    const left = box.left + box.width / 2 - tip.offsetWidth / 2;
+    const above = box.top - gap - tip.offsetHeight;
+    tip.style.left =
+      Math.max(4, Math.min(left, window.innerWidth - tip.offsetWidth - 4)) +
+      "px";
+    tip.style.top = (above >= 4 ? above : box.bottom + gap) + "px";
+  }
+
+  function hideChipTip() {
+    const tip = document.getElementById("tip");
+    if (tip && tip.dataset.chip) {
+      tip.hidden = true;
+      delete tip.dataset.chip;
+    }
+  }
+
+  document.addEventListener("pointerover", (event) => {
+    const chip = event.target.closest && event.target.closest(CHIPS);
+    const tip = document.getElementById("tip");
+    if (!chip || !tip) return;
+    if (chip.title) {
+      chip.dataset.tip = chip.title;
+      chip.setAttribute("aria-label", chip.title);
+      chip.removeAttribute("title");
+    }
+    tip.textContent = chip.dataset.tip;
+    tip.dataset.chip = "1";
+    tip.hidden = false;
+    placeChipTip(tip, chip);
+  });
+  document.addEventListener("pointerout", (event) => {
+    const chip = event.target.closest && event.target.closest("[data-tip]");
+    if (chip && !chip.contains(event.relatedTarget)) hideChipTip();
+  });
+  document.addEventListener("htmx:beforeSwap", hideChipTip);
+  document.addEventListener("scroll", hideChipTip, true);
 })();

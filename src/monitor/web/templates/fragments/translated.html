@@ -1,6 +1,6 @@
 {% for item in items %}
 <div class="wire-row" data-article="{{ item.item_id }}" title="{{ item.title }}">
-  <span class="badge">{{ item.language|upper }}</span>
+  <span class="badge" title="{{ item.language|language_name }}">{{ item.language|upper }}</span>
   <span class="wire-head">{{ item.headline }}<span class="wire-meta">{{ item.outlet }} · {{ item.first_seen_at|et_time }}</span></span>
 </div>
 {% else %}

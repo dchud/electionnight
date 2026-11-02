@@ -70,7 +70,7 @@
           <td>{{ row.language or '—' }}</td>
           <td data-value="{{ row.lean_sort }}">
             {% if row.lean_url %}
-            <span class="glyph">{{ row.lean_glyph }}</span> {{ row.lean_shown }}
+            <span class="glyph" title="{{ row.lean_shown|lean_title }}">{{ row.lean_glyph }}</span> {{ row.lean_shown }}
             <div class="panel-note"><a class="text-link" href="{{ row.lean_url }}" target="_blank" rel="noopener noreferrer">{{ row.lean_source or 'Rating' }}</a>{% if row.lean_retrieved_on %}, retrieved {{ row.lean_retrieved_on }}{% endif %}</div>
             {% else %}
             <span class="lean-neutral">{{ row.lean_shown }}</span>

@@ -1,2 +1,2 @@
 <strong>{{ item.headline }}</strong>
-<div class="wire-meta">{{ item.outlet }} {% if item.glyph %}<span class="glyph">{{ item.glyph }}</span>{% endif %} · {{ item.first_seen_at|et_time }}</div>
+<div class="wire-meta">{{ item.outlet }} {% if item.glyph %}<span class="glyph" title="{{ item.lean|lean_title }}">{{ item.glyph }}</span>{% endif %} · {{ item.first_seen_at|et_time }}</div>

@@ -343,8 +343,70 @@ def test_map_tooltip_gives_the_toned_count_and_flags_low_n(scratch, browser):
     page.locator('#map-metric button[data-metric="tone"]').click()
     page.wait_for_timeout(600)
     page.locator('path.map-state[data-usps="GA"]').hover(force=True)
-    tip = page.locator("#tip").inner_text()
-    assert re.search(r"Mean tone 1\.00 · n=6 · low n", tip), tip
+    page.wait_for_timeout(250)
+    tip = page.locator("#map-readout").inner_text()
+    assert re.search(
+        r"Georgia · Mean tone 1\.00 · 6 toned stories · low n", tip
+    )
+    context.close()
+
+
+def test_map_readout_stays_in_place_and_says_what_attention_means(
+    scratch, browser
+):
+    settings, server = scratch
+    add_item(settings, "ga", states=["GA"])
+    add_item(settings, "oh", states=["OH"])
+    server.start()
+    context, page = open_page(browser)
+    readout = page.locator("#map-readout")
+    page.wait_for_selector("path.map-state")
+    assert "1.00 is normal" in readout.inner_text()
+    start = readout.bounding_box()
+    page.locator('path.map-state[data-usps="GA"]').hover(force=True)
+    page.wait_for_timeout(250)
+    assert "Georgia · Attention" in readout.inner_text()
+    assert re.search(r"(above|below) normal|normal", readout.inner_text())
+    first = readout.bounding_box()
+    page.locator('path.map-state[data-usps="OH"]').hover(force=True)
+    page.wait_for_timeout(250)
+    assert "Ohio" in readout.inner_text()
+    assert readout.bounding_box() == first == start
+    assert not page.locator("#tip").is_visible()
+    page.mouse.move(5, 5)
+    page.wait_for_timeout(500)
+    assert "1.00 is normal" in readout.inner_text()
+    bar = page.locator(".map-legend-bar").bounding_box()
+    words = page.locator(".map-legend-row").nth(1).locator("span")
+    assert words.nth(0).inner_text() == "below normal"
+    assert words.nth(1).inner_text() == "above normal"
+    right = words.nth(1).bounding_box()
+    assert abs(right["x"] + right["width"] - (bar["x"] + bar["width"])) < 2
+    context.close()
+
+
+def test_county_map_uses_a_fixed_readout(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "ga", states=["GA"])
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    writer.add(
+        "ref.states",
+        [{"usps": "GA", "fips": "13", "name": "Georgia"}],
+    )
+    writer.flush()
+    conn.close()
+    server.start()
+    context = browser.new_context(viewport={"width": 1920, "height": 1080})
+    page = context.new_page()
+    page.goto(f"{BASE}/state/GA?window=24h")
+    page.wait_for_selector("path.map-county")
+    readout = page.locator(".map-readout").first
+    page.locator("path.map-county").first.hover(force=True)
+    page.wait_for_timeout(250)
+    assert " · " in readout.inner_text()
+    assert "stor" in readout.inner_text()
+    assert not page.locator("#tip").is_visible()
     context.close()
 
 
@@ -505,4 +567,30 @@ def test_county_map_is_never_black(scratch, browser):
     page.goto(f"{BASE}/state/GA")
     page.wait_for_selector("svg.map-painted path.map-county", state="attached")
     assert page.evaluate("() => window.__black") is False
+    context.close()
+
+
+def test_chips_explain_themselves_at_once(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "chip", states=["GA"])
+    server.start()
+    context, page = open_page(browser)
+    wait_for_row(page, "Headline chip")
+    chip = page.locator('#wire-panel .chip:has-text("GA")').first
+    tip = page.locator("#tip")
+    assert chip.evaluate("el => getComputedStyle(el).cursor") != "help"
+    chip.hover()
+    page.wait_for_timeout(50)
+    assert tip.is_visible()
+    assert tip.inner_text() == "Georgia"
+    # Above the chip, not under the pointer.
+    box, shown = chip.bounding_box(), tip.bounding_box()
+    assert shown["y"] + shown["height"] <= box["y"]
+    page.locator("#wire-panel .wire-head").first.hover()
+    page.wait_for_timeout(50)
+    assert not tip.is_visible()
+    chip.hover()
+    page.wait_for_timeout(50)
+    assert tip.is_visible()
+    assert tip.inner_text() == "Georgia"
     context.close()

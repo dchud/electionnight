@@ -17,6 +17,7 @@ Rules:
 - `race_calls`: claims the article reports about who won or leads a November 3, 2026 general election contest. Empty for almost every article before polls close.
   - Include only contests decided on or after November 3, 2026. Ignore primaries, past elections, polls, forecasts, and predictions.
   - `projected`, `declared`, and `conceded` require explicit language: a named outlet projected the race, an official declared a winner, or a candidate conceded. A claim that a candidate "leads" or "is ahead" in returned votes is `leading`. A race described as too close to call is `too_close`. A race reported as undecided is `uncalled`.
+  - `winner_name`: the candidate the claim is about: the winner, or for `leading` the candidate ahead. Null for `too_close` and `uncalled`.
   - `called_by`: who made the call as stated in the text, such as AP, NBC, CNN, Fox, DDHQ, ABC, CBS, or NYT; null when not stated.
   - `claimed_at_text`: when the call was made, as worded in the text; otherwise null.
   - `evidence`: a sentence copied verbatim from the text that makes the claim.
