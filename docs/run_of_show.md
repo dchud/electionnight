@@ -8,13 +8,13 @@ Keep the Mac on power with the lid open until you leave for class. The pipeline
 runs under `caffeinate`, which prevents idle sleep. Closing the lid still
 sleeps the machine and pauses collection; see "Moving to the classroom".
 
-| When | Do |
-|---|---|
-| 12:00 pm | `uv run monitor ref build-races`, then `uv run monitor sources check`. Review `/status`. |
-| 12:30 pm | Press `r` for replay, set 20×, and watch the last 6 hours. Check every panel at 1280×720 and 1920×1080. |
-| 2:30 pm | `scripts/restart_pipeline.sh`, restart the dashboard, and run `uv run monitor backup --now`. |
-| 2:30 pm | Confirm spend and caps with `uv run monitor cost`. Connect the projector and press `p`. |
-| 3:00 pm | `git tag known-good` on the running commit. Rollback goes to this tag. |
+Before you leave:
+
+1. Run `uv run monitor ref build-races --dry-run`. Compare the battleground
+   states it prints with `battleground_states` in `config/races.yaml`. If they
+   differ and you accept the new list, run the command without `--dry-run`. The
+   file loads within a minute, with no restart.
+2. Run `git tag known-good` on the running commit. Rollback goes to this tag.
 
 ## Starting the system
 
@@ -42,6 +42,7 @@ or restarting, and nothing already collected is at risk.
    a browser.
 3. Watch the strip. It reads "Offline since" until the network is confirmed,
    then names the gap for 30 minutes.
+4. Connect the projector and press `p`.
 
 When the network returns, every feed polls within 35 seconds. Stories published
 during the gap are placed at their published time, and time charts mark the gap
