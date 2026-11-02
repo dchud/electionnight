@@ -244,6 +244,16 @@
       await pushData(chart, data);
     }
     showEmpty(chart, data);
+    chart.shownQs = qs;
+    Monitor.staleNote(chart.el.parentElement, false);
+  }
+
+  /* A chart that kept an earlier filter's data says so. */
+  function noteIfStale(chart) {
+    const qs = document.body.dataset.qs;
+    if (chart.shownQs !== undefined && chart.shownQs !== qs) {
+      Monitor.staleNote(chart.el.parentElement, true);
+    }
   }
 
   /* A refresh asked for during another runs after it. */
@@ -259,6 +269,7 @@
           await refreshOnce(chart);
         } catch (error) {
           console.warn("chart refresh failed", chart.name, error);
+          noteIfStale(chart);
         }
       } while (chart.again);
       chart.running = null;
@@ -354,7 +365,9 @@
     }
     Monitor.charts = charts;
     Monitor.switchers.push(() =>
-      charts.forEach((chart) => Monitor.dimWhile(chart.el, refresh(chart)))
+      charts.forEach((chart) =>
+        Monitor.dimWhile(chart.el, refresh(chart), () => noteIfStale(chart))
+      )
     );
     let last = 0;
     Monitor.bus.addEventListener("refresh", () => {

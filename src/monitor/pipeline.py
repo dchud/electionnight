@@ -69,6 +69,8 @@ CLASSIFY_LINGER_SECONDS = 5.0
 # Lag at which the pipeline sheds background work, and at which it resumes.
 LAG_HIGH_SECONDS = 120.0
 LAG_LOW_SECONDS = 60.0
+# How long a network return waits for its gap's commit before collecting.
+GAP_COMMIT_WAIT_SECONDS = 5.0
 # Full-text fetching is paced per domain on purpose, so waiting there is not
 # the pipeline falling behind.
 CORE_STAGES = {"lang", "classify_a", "embed", "dedupe", "storylines"}
@@ -77,6 +79,11 @@ CORE_STAGES = {"lang", "classify_a", "embed", "dedupe", "storylines"}
 def _log_catch_up_failure(task: asyncio.Task[None]) -> None:
     if not task.cancelled() and task.exception() is not None:
         log.error("catch_up_failed", error=repr(task.exception())[:300])
+
+
+def _log_gap_commit_failure(task: asyncio.Task[Any]) -> None:
+    if not task.cancelled() and task.exception() is not None:
+        log.error("gap_flush_failed", error=repr(task.exception())[:300])
 
 
 def running_commit() -> str:
@@ -109,6 +116,7 @@ class Pipeline:
         self.conn: duckdb.DuckDBPyConnection = connect(settings)
         self.db = Database(self.conn)
         self.catch_up_task: asyncio.Task[None] | None = None
+        self.gap_commit: asyncio.Task[Any] | None = None
         self.stop = asyncio.Event()
         self.exit_code = 0
         self.gate = NetworkGate(
@@ -557,27 +565,59 @@ class Pipeline:
             self.llm.clear_failures()
         await self._record_gap(gap)
 
-    async def _record_gap(self, gap: dict[str, Any]) -> None:
-        """Commit a gap before any item from after it can be read.
-
-        The row stays in the writer's buffer if the commit fails, and a long
-        gap still starts catch-up.
-        """
-        seconds = (gap["gap_end"] - gap["gap_start"]).total_seconds()
-        if seconds >= self.settings.poll.min_gap_seconds:
-            self.writer.add("raw.collection_gaps", [gap])
-            try:
-                await self.db.run(self.writer.flush)
-            except Exception:
-                log.exception("gap_flush_failed", reason=gap["reason"])
-        if (
-            self.poller is not None
-            and seconds >= self.settings.poll.catch_up_min_gap_seconds
-        ):
+    def _start_catch_up(
+        self, gap: dict[str, Any], seconds: float, restarting: bool
+    ) -> None:
+        """A long gap starts catch-up. Any return resumes one already owed."""
+        poller = self.poller
+        if poller is None:
+            return
+        long_gap = seconds >= self.settings.poll.catch_up_min_gap_seconds
+        if not long_gap and poller.catch_up_since is None:
+            return
+        since = gap["gap_start"]
+        if self.catch_up_task is None or self.catch_up_task.done():
             self.catch_up_task = asyncio.create_task(
-                self.poller.catch_up(gap["gap_start"])
+                poller.catch_up(since, after_first_polls=restarting)
             )
             self.catch_up_task.add_done_callback(_log_catch_up_failure)
+        else:
+            poller.owe_catch_up(since)
+
+    async def _commit_gap(self, reason: str) -> None:
+        """Commit the gap row, for a bounded time.
+
+        Collection does not wait longer. The row stays in the writer's buffer
+        ahead of any story read after the return, and the commit carries them
+        together, so the dashboard still places those stories at their
+        published time. A slow commit only delays them and the gap's mark.
+        """
+        self.gap_commit = asyncio.create_task(self.db.run(self.writer.flush))
+        self.gap_commit.add_done_callback(_log_gap_commit_failure)
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(self.gap_commit), GAP_COMMIT_WAIT_SECONDS
+            )
+        except TimeoutError:
+            log.warning("gap_commit_slow", reason=reason)
+        except Exception:
+            # The done callback logged it, and the row is still buffered.
+            return
+
+    async def _record_gap(
+        self, gap: dict[str, Any], restarting: bool = False
+    ) -> None:
+        """Record a gap and start reading back over it.
+
+        The row stays in the writer's buffer if the commit fails or is slow.
+        """
+        seconds = (gap["gap_end"] - gap["gap_start"]).total_seconds()
+        recorded = seconds >= self.settings.poll.min_gap_seconds
+        if recorded:
+            self.writer.add("raw.collection_gaps", [gap])
+        self._start_catch_up(gap, seconds, restarting)
+        if recorded:
+            await self._commit_gap(gap["reason"])
 
     async def note_downtime(self) -> None:
         """Treat the time since the last fetch like a network gap."""
@@ -591,7 +631,8 @@ class Pipeline:
                     "gap_start": last,
                     "gap_end": datetime.now(UTC),
                     "reason": "pipeline",
-                }
+                },
+                restarting=True,
             )
 
     def _task_ended(self, task: asyncio.Task[Any]) -> None:
@@ -646,6 +687,8 @@ class Pipeline:
         log.info("pipeline_stopping")
         if self.catch_up_task is not None:
             tasks.append(self.catch_up_task)
+        if self.gap_commit is not None:
+            tasks.append(self.gap_commit)
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

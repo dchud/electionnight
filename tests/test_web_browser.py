@@ -291,6 +291,181 @@ def test_hidden_tabs_free_their_connections(scratch, browser):
     context.close()
 
 
+def wait_settled(page):
+    page.wait_for_function(
+        """
+        () => !document.querySelector(".panel-dim")
+          && window.Monitor.mapData
+          && window.Monitor.charts.every((chart) => !chart.running)
+        """
+    )
+    page.wait_for_timeout(200)
+
+
+def shown_filters(page):
+    return page.evaluate(
+        """
+        () => ({
+          search: location.search,
+          qs: document.body.dataset.qs,
+          wire: document.getElementById("wire").getAttribute("hx-get"),
+          stream: document.body.getAttribute("sse-connect"),
+          level: document
+            .querySelector('[data-filter="level:state"]')
+            .getAttribute("aria-current"),
+        })
+        """
+    )
+
+
+def test_back_then_forward_during_a_switch_shows_the_url(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "seed")
+    server.start()
+    context, page = open_page(browser)
+    wait_settled(page)
+    page.locator('[data-filter="level:state"]').click()
+    page.wait_for_url(lambda url: "level=state" in url)
+    wait_settled(page)
+
+    def slow(route):
+        if route.request.resource_type == "fetch":
+            time.sleep(0.8)
+        route.continue_()
+
+    page.route("**/?*", slow)
+    page.evaluate(
+        "() => { history.back(); setTimeout(() => history.forward(), 150); }"
+    )
+    page.wait_for_timeout(2500)
+    page.unroute("**/?*")
+    wait_settled(page)
+    shown = shown_filters(page)
+    assert shown["search"] == "?window=3h&level=state"
+    assert shown["qs"] == "window=3h&level=state"
+    assert "level=state" in shown["wire"]
+    assert "level=state" in shown["stream"]
+    assert shown["level"] == "true"
+    context.close()
+
+
+HIDDEN = """
+(hidden) => {
+  Object.defineProperty(document, "hidden", {
+    value: hidden, configurable: true,
+  });
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+"""
+
+
+def test_a_switch_landing_in_a_hidden_tab_still_refreshes_on_return(
+    scratch, browser
+):
+    settings, server = scratch
+    add_item(settings, "seed")
+    server.start()
+    context, page = open_page(browser)
+    wait_settled(page)
+
+    def slow(route):
+        if route.request.resource_type == "fetch":
+            time.sleep(0.5)
+        route.continue_()
+
+    page.route("**/?*", slow)
+    page.locator('[data-filter="level:state"]').click()
+    page.evaluate(HIDDEN, True)
+    page.wait_for_url(lambda url: "level=state" in url)
+    page.unroute("**/?*")
+    wait_settled(page)
+    asked = []
+    page.on("request", lambda request: asked.append(request.url))
+    page.evaluate(HIDDEN, False)
+    page.wait_for_timeout(1500)
+    assert any("/frag/kpis" in url for url in asked), asked
+    context.close()
+
+
+STALE = """
+(selector) => {
+  const panel = document.querySelector(selector);
+  const note = panel && panel.querySelector(":scope > .stale-note");
+  return note ? note.innerText : null;
+}
+"""
+
+
+def test_a_panel_that_fails_after_a_switch_says_so(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "seed")
+    server.start()
+    context, page = open_page(browser)
+    wait_settled(page)
+    panel = "#panel-rising .panel-body"
+    page.route("**/frag/rising*", lambda route: route.fulfill(status=500))
+    page.locator('[data-filter="level:national"]').click()
+    page.wait_for_url(lambda url: "level=national" in url)
+    page.wait_for_function(f"{STALE}", arg=panel)
+    assert "previous filters" in page.evaluate(STALE, panel)
+    assert not page.evaluate(
+        f"() => document.querySelector('{panel}')"
+        ".classList.contains('panel-dim')"
+    )
+    page.unroute("**/frag/rising*")
+    page.evaluate(
+        f"() => window.htmx.trigger(document.querySelector('{panel}'), "
+        '"sse:snapshot")'
+    )
+    page.wait_for_function(f"(s) => !({STALE})(s)", arg=panel)
+    context.close()
+
+
+def test_a_panel_with_no_answer_after_a_switch_says_so(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "seed")
+    server.start()
+    context, page = open_page(browser)
+    wait_settled(page)
+    panel = "#panel-rising .panel-body"
+    held = []
+    page.route("**/frag/rising*", lambda route: held.append(route))
+    page.locator('[data-filter="level:national"]').click()
+    page.wait_for_url(lambda url: "level=national" in url)
+    page.wait_for_function(f"{STALE}", arg=panel, timeout=12000)
+    for route in held:
+        route.continue_()
+    page.wait_for_function(f"(s) => !({STALE})(s)", arg=panel)
+    page.unroute("**/frag/rising*")
+    context.close()
+
+
+def test_a_chart_and_the_map_that_fail_after_a_switch_say_so(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "seed")
+    server.start()
+    context, page = open_page(browser)
+    wait_settled(page)
+    page.route(
+        "**/api/data/**",
+        lambda route: (
+            route.fulfill(status=500)
+            if "level=national" in route.request.url
+            else route.continue_()
+        ),
+    )
+    page.locator('[data-filter="level:national"]').click()
+    page.wait_for_url(lambda url: "level=national" in url)
+    chart = "#panel-heat .panel-chart"
+    page.wait_for_function(f"{STALE}", arg=chart)
+    page.wait_for_function(f"{STALE}", arg="#us-map")
+    page.unroute("**/api/data/**")
+    page.locator("[data-toggle-theme]").click()
+    page.wait_for_function(f"(s) => !({STALE})(s)", arg=chart)
+    page.wait_for_function(f"(s) => !({STALE})(s)", arg="#us-map")
+    context.close()
+
+
 def test_race_call_and_heat_clicks_open_their_counts(scratch, browser):
     settings, server = scratch
     add_item(settings, "claim", call=True)

@@ -38,7 +38,7 @@ or restarting, and nothing already collected is at risk.
 3. Watch the strip. It reads "Offline since" until the network is confirmed,
    then names the gap for 30 minutes.
 
-When the network returns, every feed polls within 30 seconds. Stories published
+When the network returns, every feed polls within 35 seconds. Stories published
 during the gap are placed at their published time, and time charts mark the gap
 with "Offline" and "Back online". `/status` lists every gap.
 
@@ -47,9 +47,16 @@ waits, no feed is penalized, and articles and model calls wait instead of being
 skipped or falling back to keywords.
 
 A feed lists only its newest stories. After a gap of 5 minutes or more, the
-news sitemaps of the outlets in `config/news_sitemaps.csv` are read once to
-recover stories that left a feed. These stories have a title and date but no
-feed summary. A story that left a feed at any other outlet is not recovered.
+news sitemaps of the outlets in `config/news_sitemaps.csv` are read to recover
+stories that left a feed. These stories have a title and date but no feed
+summary. A story that left a feed at any other outlet is not recovered.
+
+This reading finishes only when every sitemap has answered. If the network
+drops during it, it continues when the network returns, however short the drop.
+A sitemap that fails 3 times with the network up is given up, and
+`logs/pipeline.jsonl` has a `catch_up_gave_up` line for it. One read takes at
+most 500 new stories from one sitemap file, and a `feed_entries_capped` line
+gives the number cut.
 
 With no network at all, the dashboard still runs from local data, including
 replay. A phone hotspot works; collection reads about 650 MB per hour before
@@ -115,7 +122,7 @@ remain readable.
 
 | Symptom | What happens | What to do |
 |---|---|---|
-| The network drops, or a Wi-Fi login page appears | Polling waits and no feed is penalized. The strip says "Offline since". Every feed polls within 30 seconds of the network's return | Finish any login page. Otherwise nothing |
+| The network drops, or a Wi-Fi login page appears | Polling waits and no feed is penalized. The strip says "Offline since". Every feed polls within 35 seconds of the network's return | Finish any login page. Otherwise nothing |
 | LLM errors while the network is up | After 2 minutes, classification uses keywords and extraction waits. The strip says "LLM degraded" | Nothing. It recovers by itself and catches up |
 | Lag over 2 minutes | The pipeline slows embedding and pauses backfills until lag falls under 1 minute | Check `/status` for the slow stage |
 | Free disk under 10 GB | A yellow banner | `uv run monitor prune --dry-run --thin 15m --older-than 2h`, then run it without `--dry-run` |
@@ -125,7 +132,7 @@ remain readable.
 | The dashboard feels slow | When uncached queries pass `WEB__SLOW_QUERY_MS` at p95, panels refresh at most every 20 seconds until p95 falls below half of it | Projector mode shows fewer panels |
 | The dashboard is down after an edit | Collection continues. A file with an error stops the dashboard until the file is saved again | Fix the file, or `git checkout` it |
 | The dashboard is down | Collection continues | `uv run monitor web --reload` |
-| The pipeline is down | Polling stops, and the strip reports it. On restart, time since the last fetch is recorded as a gap, and a gap of 5 minutes or more reads the news sitemaps once | `scripts/restart_pipeline.sh` |
+| The pipeline is down | Polling stops, and the strip reports it. On restart, time since the last fetch is recorded as a gap, and a gap of 5 minutes or more reads the news sitemaps after the first feed polls | `scripts/restart_pipeline.sh` |
 | The strip says rows are held back | Commits are failing. The rows stay in memory and every commit retries them | Check free disk, and look for `flush_failed` in `logs/pipeline.jsonl` |
 | The strip says rows are rejected | Rows the lake refused repeatedly are in `data/control/rejected-*.jsonl`, not in the lake. Later rows are unaffected | Look for `rows_rejected` in `logs/pipeline.jsonl`. The warning clears after the file is moved out of `data/control/` and the pipeline restarts |
 | The strip says the archive writer stopped | Original feed and page bodies are not saved. Collection continues | Check free disk, then `scripts/restart_pipeline.sh` |
@@ -145,8 +152,10 @@ scripts/restart_pipeline.sh
 Parquet files all exist, and names each newer backup it skipped and why.
 Maintenance deletes replaced Parquet files after 2 hours and a prune deletes
 them at once, so an older backup can be unusable. `uv run monitor restore
---dry-run` names the backup and changes nothing. With no usable backup, the
-command exits with an error and changes nothing.
+--dry-run` names the backup and changes nothing. The backup is decompressed and
+checked before the catalog moves. With no usable backup, or a failure along the
+way, the command exits with an error that names the problem, and the catalog
+stays as it was.
 
 The replaced catalog and its WAL stay beside it as
 `data/catalog.sqlite.damaged-<time>`. Items committed after the backup are

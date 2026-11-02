@@ -1,7 +1,11 @@
 """Feed and sitemap parsing with hostile bodies and hostile field values."""
 
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from datetime import date as calendar_day
+
+import httpx
+import pytest
 
 from monitor.ingest.feeds import (
     RAW_ENTRY_MAX_CHARS,
@@ -161,3 +165,178 @@ def test_sitemap_dates_outside_the_range_do_not_raise():
     for date in ("0001-01-01T00:00:00+05:00", "9999-12-31T23:59:59-05:00"):
         entry = parse_news_sitemap(news_sitemap(LINK, "T", date)).entries[0]
         assert entry.published_at is None, date
+
+
+@pytest.mark.parametrize(
+    ("text", "day"),
+    [
+        ("2026-11-04", calendar_day(2026, 11, 4)),
+        ("2026-11-03T20:30:00", calendar_day(2026, 11, 3)),
+        ("Tue, 03 Nov 2026 20:30:00 -0000", calendar_day(2026, 11, 3)),
+        ("Tue, 03 Nov 2026 20:30:00", calendar_day(2026, 11, 3)),
+    ],
+)
+def test_a_date_with_no_zone_gets_no_invented_time(text, day):
+    entry = parse_news_sitemap(news_sitemap(LINK, "T", text)).entries[0]
+    assert entry.published_at is None
+    assert entry.rough_date == day
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2026-11-04T01:30:00Z",
+        "2026-11-03T20:30:00-05:00",
+        "Tue, 03 Nov 2026 20:30:00 -0500",
+        "Wed, 04 Nov 2026 01:30:00 GMT",
+    ],
+)
+def test_a_date_with_a_zone_is_exact(text):
+    entry = parse_news_sitemap(news_sitemap(LINK, "T", text)).entries[0]
+    assert entry.published_at == datetime(2026, 11, 4, 1, 30, tzinfo=UTC)
+    assert entry.rough_date is None
+
+
+def test_a_date_that_cannot_be_read_is_undated():
+    entry = parse_news_sitemap(news_sitemap(LINK, "T", "soon")).entries[0]
+    assert entry.published_at is None
+    assert entry.rough_date is None
+
+
+@pytest.mark.parametrize(
+    ("text", "kept"),
+    [
+        ("2026-11-04T01:30:00Z", True),
+        ("2026-11-03T20:00:00Z", False),
+        ("2026-11-04", True),
+        ("2026-11-03", True),
+        ("2026-11-02", False),
+        ("2026-11-03T20:30:00", True),
+        ("2026-11-01T20:30:00", False),
+        ("Tue, 03 Nov 2026 20:30:00 -0500", True),
+        ("Tue, 03 Nov 2026 12:00:00 -0500", False),
+        ("soon", False),
+    ],
+)
+def test_the_time_filter_keeps_rough_dates_within_a_day(text, kept):
+    from monitor.ingest.feeds import published_since
+
+    since = datetime(2026, 11, 4, 1, 0, tzinfo=UTC)
+    entry = parse_news_sitemap(news_sitemap(LINK, "T", text)).entries[0]
+    assert published_since(entry, since) is kept
+
+
+async def test_a_rough_date_reaches_the_lake_with_no_published_time(settings):
+    from monitor.ingest.network import NetworkGate
+    from monitor.ingest.poller import FeedState, Poller
+    from monitor.ingest.sources import Source
+    from monitor.lake import BatchWriter, connect
+
+    since = datetime(2026, 11, 4, 1, 0, tzinfo=UTC)
+    body = news_sitemap(LINK, "T", "2026-11-04")
+    delivered = []
+    conn = connect(settings)
+    source = Source("s", "S", "https://example.com/", ["u"])
+    poller = Poller(
+        settings,
+        BatchWriter(conn, settings),
+        [source],
+        set(),
+        client=httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, content=body)
+            )
+        ),
+        gate=NetworkGate(settings),
+        on_new_items=delivered.extend,
+    )
+    new = await poller.poll_once(
+        FeedState(source, "https://example.com/n.xml"),
+        parse_news_sitemap,
+        since - timedelta(minutes=20),
+    )
+    conn.close()
+    assert new == 1
+    assert delivered[0]["published_at"] is None
+
+
+NEWS_NS = "http://www.google.com/schemas/sitemap-news/0.9"
+IMAGE_NS = "http://www.google.com/schemas/sitemap-image/1.1"
+VIDEO_NS = "http://www.google.com/schemas/sitemap-video/1.1"
+
+
+def sitemap_url(inner: str, news_ns: str = NEWS_NS) -> bytes:
+    return (
+        '<?xml version="1.0"?><urlset '
+        'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+        f'xmlns:news="{news_ns}" xmlns:image="{IMAGE_NS}" '
+        f'xmlns:video="{VIDEO_NS}"><url>{inner}</url></urlset>'
+    ).encode()
+
+
+NEWS_BLOCK = (
+    "<news:news><news:publication><news:language>es</news:language>"
+    "</news:publication><news:publication_date>2026-11-04T01:30:00Z"
+    "</news:publication_date><news:title>Polls close</news:title></news:news>"
+)
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "<image:title>Photo credit AP</image:title>",
+        "<image:title></image:title>",
+    ],
+)
+def test_an_image_title_is_not_the_story_title(caption):
+    inner = (
+        f"<loc>{LINK}</loc><image:image>"
+        f"<image:loc>https://example.com/a.jpg</image:loc>{caption}"
+        f"</image:image>{NEWS_BLOCK}"
+    )
+    entry = parse_news_sitemap(sitemap_url(inner)).entries[0]
+    assert entry.title == "Polls close"
+    assert entry.url == LINK
+
+
+def test_an_image_address_is_not_the_story_address():
+    inner = (
+        "<image:image><image:loc>https://example.com/a.jpg</image:loc>"
+        f"</image:image><loc>{LINK}</loc>{NEWS_BLOCK}"
+    )
+    assert parse_news_sitemap(sitemap_url(inner)).entries[0].url == LINK
+
+
+def test_a_video_date_and_language_are_not_the_story_date_and_language():
+    inner = (
+        f"<loc>{LINK}</loc><video:video><video:title>A clip</video:title>"
+        "<video:publication_date>2020-01-01T00:00:00Z"
+        "</video:publication_date><video:language>de</video:language>"
+        f"</video:video>{NEWS_BLOCK}"
+    )
+    entry = parse_news_sitemap(sitemap_url(inner)).entries[0]
+    assert entry.title == "Polls close"
+    assert entry.language == "es"
+    assert entry.published_at == datetime(2026, 11, 4, 1, 30, tzinfo=UTC)
+
+
+def test_a_url_with_only_an_image_title_has_no_story():
+    inner = (
+        f"<loc>{LINK}</loc><image:image>"
+        "<image:title>A photo</image:title></image:image>"
+    )
+    assert parse_news_sitemap(sitemap_url(inner)).entries == []
+
+
+@pytest.mark.parametrize(
+    "news_ns",
+    [
+        NEWS_NS,
+        "https://www.google.com/schemas/sitemap-news/0.9",
+        "http://www.google.com/schemas/sitemap-news/0.9/",
+    ],
+)
+def test_the_news_namespace_is_read_in_its_common_spellings(news_ns):
+    inner = f"<loc>{LINK}</loc>{NEWS_BLOCK}"
+    entry = parse_news_sitemap(sitemap_url(inner, news_ns)).entries[0]
+    assert entry.title == "Polls close"

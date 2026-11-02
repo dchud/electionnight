@@ -1,8 +1,8 @@
 # Outage drill
 
-Run 2026-11-01 22:04 UTC on a scratch lake.
+Run 2026-11-02 00:34 UTC on a scratch lake.
 200 feeds on a local server, 20 s offline, poll cadence shortened to 3 s.
-13 of 13 checks passed.
+20 of 20 checks passed.
 
 The local server stopped and refused connections for the outage.
 Sleep was simulated with a clock difference and has not been
@@ -23,3 +23,10 @@ exercised here by closing the lid.
 | a clock difference reads as sleep | sleep | pass |
 | every feed catches up after sleep | 6 s | pass |
 | the sleep gap has its true length | ('sleep', 45.0) | pass |
+| a slow failing probe leaves the outage's start at the sleep | 2026-11-01 23:48:50.886088+00:00 | pass |
+| catch-up is still owed during a short drop | 2026-11-01 23:48:50.886088+00:00 | pass |
+| catch-up finishes after a drop under the catch-up minimum | 12 s | pass |
+| one run lasted through the drop | same task | pass |
+| every story from the sleep is read | 5000 of 5000 | pass |
+| the gap row starts at the sleep | [('sleep', 45.0)] | pass |
+| no feed is penalized by the sequence | {'healthy': 200, 'total': 200} | pass |
