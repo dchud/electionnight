@@ -41,9 +41,9 @@ from monitor.parsers.fetch_text import (
 )
 from monitor.parsers.geo import Gazetteer, GeoEntry, normalize_cd
 from monitor.parsers.race_calls import (
-    accept_call,
     appears_in,
     call_confidence,
+    call_problem,
     normalize_caller,
 )
 from monitor.web.panels import PollClose
@@ -320,23 +320,19 @@ def test_locate_finds_character_offsets():
     assert locate(["Nobody"], ARTICLE) == (None, -1, -1)
 
 
-def test_leading_claim_stays_leading_and_needs_no_win_language():
+def test_a_leading_claim_passes_when_its_evidence_is_in_the_article():
     leading = race_call(
         status="leading",
         winner_name="Tom Cole",
         evidence="Tom Cole leads in early returns in Hamilton County.",
     )
-    assert accept_call(leading, ARTICLE)
+    assert call_problem(leading, ARTICLE) is None
 
 
-def test_win_claim_without_explicit_language_is_rejected():
-    assert accept_call(race_call(), ARTICLE)
-    vague = race_call(
-        evidence="Tom Cole leads in early returns in Hamilton County."
-    )
-    assert not accept_call(vague, ARTICLE)
+def test_a_claim_whose_evidence_is_not_in_the_article_is_rejected():
+    assert call_problem(race_call(), ARTICLE) is None
     invented = race_call(evidence="Rivera won the race, officials said.")
-    assert not accept_call(invented, ARTICLE)
+    assert call_problem(invented, ARTICLE) == "not verbatim"
 
 
 def test_appears_in_ignores_spacing_quotes_and_case():

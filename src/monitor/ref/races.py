@@ -457,7 +457,8 @@ def parse_district(value: object) -> tuple[str | None, str | None]:
     Accepts forms such as `TX-35`, `35`, `35th`, `CD-35`, `District 35`,
     `Texas 35`, `Texas's 35th congressional district`, `AK-AL`, and `at-large`.
     Text naming anything else, such as `City Council District 5`, is not a
-    congressional district and gives (None, None).
+    congressional district and gives (None, None). `AL` alone is the at-large
+    token and names no state; Alabama's districts carry a number.
     """
     if value is None or isinstance(value, bool):
         return None, None
@@ -474,7 +475,9 @@ def parse_district(value: object) -> tuple[str | None, str | None]:
             return None, token
         return (prefix, token) if prefix in USPS_CODES else (None, None)
     lowered = _plain(text).replace(",", " ").replace("-", " ")
-    if re.search(r"\bat ?large\b", lowered) or lowered in {"al", "a l"}:
+    if lowered in {"al", "a l"}:
+        return None, "AL"
+    if re.search(r"\bat ?large\b", lowered):
         token = "AL"
     else:
         number = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)?\b", lowered)

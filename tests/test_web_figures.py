@@ -484,6 +484,93 @@ def test_race_calls_group_one_winner_under_any_spelling(lake):
         assert rows[0]["outlets"] == 2
 
 
+def race_rows(client, **filters):
+    panels = client.app.state.web.panels
+    return panels.race_calls(
+        Filters.parse({"as_of": NOW.isoformat(), **filters})
+    )
+
+
+def test_a_final_claim_replaces_the_leads_in_its_race(lake):
+    for name in ("a", "b", "c", "d"):
+        lake.source(name)
+    leads = [
+        lake.item(NOW - timedelta(minutes=90), source=name, states=["GA"])
+        for name in ("a", "b", "c")
+    ]
+    called = NOW - timedelta(minutes=30)
+    finals = [
+        lake.item(called, source=name, states=["GA"]) for name in ("c", "d")
+    ]
+    for item in leads:
+        lake.call(item, status="leading", called_by="unspecified")
+    for item in finals:
+        lake.call(item)
+    closer = lake.item(NOW - timedelta(minutes=60), source="a", states=["GA"])
+    lake.call(closer, status="too_close", winner_name=None)
+    with client_for(lake) as client:
+        rows = race_rows(client)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "projected"
+    assert rows[0]["outlets"] == 2
+    assert rows[0]["called_by"] == ["AP"]
+    assert sorted(rows[0]["item_ids"]) == sorted(finals)
+    assert rows[0]["first_reported"].timestamp() == called.timestamp()
+
+
+def test_a_race_with_no_final_claim_keeps_its_leads_and_close_reports(lake):
+    first = lake.item(NOW - timedelta(minutes=90), states=["GA"])
+    second = lake.item(NOW - timedelta(minutes=60), states=["GA"])
+    lake.call(first, status="leading", winner_name="Jon Doe")
+    lake.call(second, status="too_close", winner_name=None)
+    with client_for(lake) as client:
+        rows = race_rows(client)
+    assert {row["status"] for row in rows} == {"leading", "too_close"}
+
+
+def test_conflicting_final_claims_both_show(lake):
+    lake.source("other")
+    first = lake.item(states=["GA"])
+    second = lake.item(source="other", states=["GA"])
+    lake.call(first, winner_name="Jon Doe")
+    lake.call(second, winner_name="Ann Roe")
+    with client_for(lake) as client:
+        rows = race_rows(client)
+    assert {row["winner_name"] for row in rows} == {"Jon Doe", "Ann Roe"}
+
+
+def test_race_calls_list_final_claims_before_newer_leads(lake):
+    older = lake.item(NOW - timedelta(minutes=90), states=["GA"])
+    newer = lake.item(NOW - timedelta(minutes=5), states=["OH"])
+    lake.call(older)
+    lake.call(
+        newer, race_key="2026-OH-SEN", status="leading", winner_name="Ann Roe"
+    )
+    with client_for(lake) as client:
+        rows = race_rows(client)
+    assert [row["status"] for row in rows] == ["projected", "leading"]
+
+
+def test_the_race_card_says_when_rows_are_left_out(lake):
+    for number in range(32):
+        item = lake.item(NOW - timedelta(minutes=number), states=["GA"])
+        lake.call(item, race_key=f"2026-GA-{number:02d}")
+    with client_for(lake) as client:
+        page = client.get(
+            "/frag/race-calls", params={"as_of": NOW.isoformat()}
+        ).text
+    assert "30 of 32 shown" in page
+
+
+def test_the_race_card_says_nothing_when_all_rows_fit(lake):
+    lake.call(lake.item(states=["GA"]))
+    with client_for(lake) as client:
+        page = client.get(
+            "/frag/race-calls", params={"as_of": NOW.isoformat()}
+        ).text
+    assert " shown:" not in page
+
+
 def test_every_topic_heat_cell_opens_its_count(lake):
     for _ in range(5):
         lake.item(NOW - timedelta(hours=2, minutes=20))
@@ -743,6 +830,75 @@ def test_states_rising_ranks_by_change_in_share_and_opens_its_count(lake):
 
 
 # Coverage by lean
+
+
+def test_a_copy_counts_in_its_canonicals_storyline_share(lake):
+    lake.source("left", lean="LL")
+    lake.story("s1")
+    lake.item(source="left", group="g", storyline="s1")
+    for _ in range(4):
+        lake.item(source="left", canonical=False, group="g")
+    with client_for(lake) as client:
+        rows = client.get(f"/api/data/coverage_matrix?{AS_OF}").json()["table"]
+    cells = {(row["storyline_id"], row["bucket"]): row for row in rows}
+    assert cells["s1", "LL"]["share"] == 1.0
+
+
+def test_rising_outlets_include_a_copys_outlet(lake):
+    lake.source("left", lean="L")
+    lake.story("s1")
+    for number in range(3):
+        at = NOW - timedelta(minutes=2)
+        lake.item(at, group=f"g{number}", storyline="s1")
+        lake.item(at, source="left", canonical=False, group=f"g{number}")
+    with client_for(lake) as client:
+        rows = client.app.state.web.panels.rising(
+            Filters.parse({"as_of": NOW.isoformat()})
+        )
+    assert rows[0]["observed"] == 3
+    assert rows[0]["outlets"] == 2
+
+
+def test_the_copies_control_changes_a_storylines_count(lake):
+    lake.story("s1")
+    lake.item(group="g", storyline="s1")
+    for _ in range(4):
+        lake.item(canonical=False, group="g")
+    with client_for(lake) as client:
+        unique = drawer(client, "kind=storyline&key=s1&span=all")
+        every = drawer(client, "kind=storyline&key=s1&span=all&copies=all")
+    assert unique.stories == 1
+    assert every.stories == 5
+
+
+def test_a_copy_follows_when_its_canonical_is_assigned_later(lake):
+    lake.story("s1")
+    canonical = lake.item(group="g")
+    copy = lake.item(canonical=False, group="g")
+    with client_for(lake) as client:
+        model = client.app.state.web.model
+        storyline = (
+            "SELECT item_id, storyline_id FROM facts WHERE item_id IN "
+            "($canonical, $copy)"
+        )
+        ids = {"canonical": canonical, "copy": copy}
+        before = model.query("story", storyline, ids)
+        assert {row["storyline_id"] for row in before} == {None}
+        lake.writer.add(
+            "nlp.storyline_assign",
+            [
+                {
+                    "item_id": canonical,
+                    "storyline_id": "s1",
+                    "similarity": 0.95,
+                    "assigned_at": NOW,
+                }
+            ],
+        )
+        lake.commit()
+        model.refresh()
+        after = model.query("story", storyline + " AND TRUE", ids)
+    assert {row["storyline_id"] for row in after} == {"s1"}
 
 
 def test_bucket_with_no_coverage_reads_as_no_data(lake):

@@ -4,6 +4,7 @@ Run on prompt changes: `uv run pytest -m llm --force-enable-socket`
 """
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,13 @@ pytestmark = pytest.mark.llm
 GOLDEN = Path(__file__).parent / "fixtures" / "golden.jsonl"
 MIN_RELEVANCE_ACCURACY = 0.90
 MIN_LEVEL_AGREEMENT = 0.80
+# Invented articles with invented candidates. After every poll close.
+RACE_CLAIMS = Path(__file__).parent / "fixtures" / "race_claims.jsonl"
+AFTER_THE_LAST_CLOSE = datetime(2026, 11, 4, 12, tzinfo=UTC)
+FINAL = {"projected", "declared", "conceded"}
+SHOWN = FINAL | {"leading", "too_close"}
+MIN_TRUE_CLAIMS_FOUND = 0.90
+MIN_FALSE_CLAIMS_AVOIDED = 0.90
 
 
 def load_golden():
@@ -160,3 +168,68 @@ async def test_stage_b_holds_the_schema_and_claims_only_what_it_read():
         if evidence:
             item = next(i for i in items if i.item_id == row["item_id"])
             assert evidence in item.text
+
+
+def claim_matches(case, row):
+    want = case["status"]
+    if want in FINAL and row["status"] not in FINAL:
+        return False
+    if want not in FINAL and row["status"] != want:
+        return False
+    winner = case.get("winner")
+    return (
+        not winner
+        or winner.casefold() in (row["winner_name"] or "").casefold()
+    )
+
+
+async def test_race_claims_are_found_and_false_ones_are_not():
+    settings = load_settings(".env")
+    cases = [
+        json.loads(line)
+        for line in RACE_CLAIMS.read_text(encoding="utf-8").splitlines()
+    ]
+    llm = LlmClient(settings, None, Budget(settings))
+    parser = ExtractParser(
+        settings,
+        llm,
+        None,
+        {},
+        EntityResolver(settings),
+        Gazetteer.load(settings.paths.ref),
+    )
+    output = await parser.run(
+        [
+            Item(
+                case["id"],
+                title=case["title"],
+                summary="",
+                text=case["text"],
+                language=case["lang"],
+                first_seen_at=AFTER_THE_LAST_CLOSE,
+                published_at=AFTER_THE_LAST_CLOSE,
+            )
+            for case in cases
+        ]
+    )
+    assert output.statuses == {}
+    claims = {case["id"]: [] for case in cases}
+    for row in output.rows.get("nlp.race_calls", []):
+        if row["status"] in SHOWN:
+            claims[row["item_id"]].append(row)
+    true_cases = [case for case in cases if case["call"]]
+    false_cases = [case for case in cases if not case["call"]]
+    missed = [
+        case["id"]
+        for case in true_cases
+        if not any(claim_matches(case, row) for row in claims[case["id"]])
+    ]
+    invented = {
+        case["id"]: [row["evidence"] for row in claims[case["id"]]]
+        for case in false_cases
+        if claims[case["id"]]
+    }
+    found = 1 - len(missed) / len(true_cases)
+    avoided = 1 - len(invented) / len(false_cases)
+    assert found >= MIN_TRUE_CLAIMS_FOUND, missed
+    assert avoided >= MIN_FALSE_CLAIMS_AVOIDED, invented

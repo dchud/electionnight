@@ -277,7 +277,8 @@ class ExtractParser:
             entity_id, how = self.resolver.resolve(
                 [entity.name, *entity.surface_forms],
                 entity.ent_type,
-                [state] if state else states,
+                states,
+                state,
             )
             if (
                 entity_id is None
@@ -433,9 +434,7 @@ class ExtractParser:
             if call.winner_name:
                 state = normalize_state(call.state) or call.state
                 winner_id, _ = self.resolver.resolve(
-                    [call.winner_name],
-                    "PERSON",
-                    [state] if state else states,
+                    [call.winner_name], "PERSON", states, state
                 )
             names = self.resolver.names_of(winner_id)
             reason = call_problem(call, checked, names)

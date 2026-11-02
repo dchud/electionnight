@@ -22,6 +22,7 @@ log = get(__name__)
 
 UNRESOLVED_PER_PASS = 30
 HAND_ORIGIN = "hand"
+PERSON = "PERSON"
 SUFFIX_RE = re.compile(r"\b(jr|sr|ii|iii|iv)\b")
 TITLES = re.compile(
     r"^(?:(?:u\.?s\.?\s+)?(?:sen|senator|rep|representative|gov|governor|"
@@ -84,9 +85,13 @@ class Known:
 class EntityResolver:
     """Exact, then normalized, then fuzzy within the state context.
 
-    Wrong attribution is worse than none. A sole candidate from another state
-    is rejected unless the candidate is national, and a surname alone or a
-    missing generational suffix never overrides a full name that disagrees.
+    Wrong attribution is worse than none. A full name that one person on the
+    roster holds resolves to that person whatever states the item was
+    classified under. A surname alone from another state is rejected unless
+    the person is national. A state the text gives for this person binds a full
+    name too. A surname alone or a missing generational suffix never overrides
+    a full name that disagrees, and fuzzy matching never decides among people
+    who hold the same name.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -132,14 +137,29 @@ class EntityResolver:
         """Every name known for an entity."""
         return list(self.names.get(entity_id, [])) if entity_id else []
 
+    def holds_full_name(self, name: str) -> bool:
+        """True when the roster has this name and it is more than one word."""
+        key = normalize_name(name)
+        return len(key.split()) > 1 and key in self.normalized
+
+    def _held_by_several(self, name: str, ent_type: str) -> bool:
+        found = self.normalized.get(normalize_name(name), [])
+        return len({k.entity_id for k in found if k.ent_type == ent_type}) > 1
+
     @staticmethod
-    def _pick(candidates: list[Known], states: list[str]) -> Known | None:
-        """One candidate, using state context to choose among several."""
+    def _pick(
+        candidates: list[Known], states: list[str], anywhere: bool = False
+    ) -> Known | None:
+        """One candidate, using state context to choose among several.
+
+        With `anywhere`, a sole person needs no state context.
+        """
         unique = {c.entity_id: c for c in candidates}
         if len(unique) == 1:
             sole = next(iter(unique.values()))
             elsewhere = states and sole.state not in states
-            return None if elsewhere and not sole.national else sole
+            placed = sole.national or (anywhere and sole.ent_type == PERSON)
+            return None if elsewhere and not placed else sole
         in_context = [c for c in unique.values() if c.state in states]
         return in_context[0] if len(in_context) == 1 else None
 
@@ -175,17 +195,32 @@ class EntityResolver:
         return not suffixes or suffixes == {own}
 
     def resolve(
-        self, names: list[str], ent_type: str, states: list[str]
+        self,
+        names: list[str],
+        ent_type: str,
+        states: list[str],
+        stated: str | None = None,
     ) -> tuple[str | None, str | None]:
-        """Returns (entity id, how it matched)."""
+        """Returns (entity id, how it matched).
+
+        `states` are the states the item was classified under. `stated` is the
+        state the text gives for this person, and it replaces them.
+        """
         candidates = [n for n in names if n]
         words = [normalize_name(name).split() for name in candidates]
         full = next((w for w in words if len(w) > 1), None)
         suffixes = {
             suffix for suffix in map(generational_suffix, candidates) if suffix
         }
+        context = [stated] if stated else states
+
+        def anywhere(name: str) -> bool:
+            return not stated and len(normalize_name(name).split()) > 1
+
         for name in candidates:
-            known = self._pick(self.exact.get(name.casefold(), []), states)
+            known = self._pick(
+                self.exact.get(name.casefold(), []), context, anywhere(name)
+            )
             if (
                 known
                 and known.ent_type == ent_type
@@ -194,7 +229,7 @@ class EntityResolver:
                 return known.entity_id, "exact"
         for name in candidates:
             found = self.normalized.get(normalize_name(name), [])
-            known = self._pick(found, states)
+            known = self._pick(found, context, anywhere(name))
             if (
                 known
                 and known.ent_type == ent_type
@@ -203,8 +238,11 @@ class EntityResolver:
                 return known.entity_id, "normalized"
         best: Known | None = None
         best_score = 0.0
+        tied = False
         compared = [" ".join(full)] if full else candidates
-        for state in states:
+        if any(self._held_by_several(name, ent_type) for name in compared):
+            return None, None
+        for state in context:
             for key, known in self.by_state.get(state, []):
                 if known.ent_type != ent_type:
                     continue
@@ -213,8 +251,14 @@ class EntityResolver:
                 for name in compared:
                     score = fuzz.WRatio(normalize_name(name), key)
                     if score > best_score:
-                        best, best_score = known, score
-        if best is not None and best_score >= self.threshold:
+                        best, best_score, tied = known, score, False
+                    elif (
+                        score == best_score
+                        and best is not None
+                        and known.entity_id != best.entity_id
+                    ):
+                        tied = True
+        if best is not None and not tied and best_score >= self.threshold:
             return best.entity_id, "fuzzy"
         return None, None
 
@@ -261,7 +305,7 @@ class EntityPass:
         )
 
     async def _unresolved(self) -> list[dict[str, Any]]:
-        """Frequent unresolved names, one row per surface and state."""
+        """Unresolved names, most frequent first, per surface and state."""
         rows = await self.db.fetch(
             """
             SELECT surface, state, any_value(party), any_value(office),
@@ -276,7 +320,7 @@ class EntityPass:
             ORDER BY n DESC
             """
         )
-        fresh = [
+        return [
             {
                 "surface": row[0],
                 "state": row[1],
@@ -287,7 +331,6 @@ class EntityPass:
             for row in rows
             if (row[0], row[1]) not in self.attempted
         ]
-        return fresh[:UNRESOLVED_PER_PASS]
 
     async def _apply(
         self, surface: str, state: str | None, entity_id: str, how: str
@@ -336,22 +379,34 @@ class EntityPass:
         self.writer.add("nlp.mentions", copies)
         return len(copies)
 
+    async def _resolve_from_roster(
+        self, entry: dict[str, Any], counts: dict[str, int]
+    ) -> None:
+        entity_id, how = self.resolver.resolve(
+            [entry["surface"]], PERSON, [], entry["state"]
+        )
+        if entity_id:
+            entry["entity_id"] = entity_id
+            counts["mentions"] += await self._apply(
+                entry["surface"], entry["state"], entity_id, how or "alias"
+            )
+
     async def run(self) -> dict[str, int]:
-        """Resolve frequent unknown names; append entities and mentions."""
+        """Resolve unknown names; append entities and mentions.
+
+        A full name on the roster costs no call, so it has no limit. Other
+        names are limited per pass, most frequent first.
+        """
         counts = {"sent": 0, "new_entities": 0, "mentions": 0}
         await self.reload()
-        batch = await self._unresolved()
-        if not batch:
-            return counts
+        fresh = await self._unresolved()
+        for entry in fresh:
+            if self.resolver.holds_full_name(entry["surface"]):
+                await self._resolve_from_roster(entry, counts)
+        batch = [e for e in fresh if "entity_id" not in e]
+        batch = batch[:UNRESOLVED_PER_PASS]
         for entry in batch:
-            names = [entry["surface"]]
-            states = [entry["state"]] if entry["state"] else []
-            entity_id, how = self.resolver.resolve(names, "PERSON", states)
-            if entity_id:
-                entry["entity_id"] = entity_id
-                counts["mentions"] += await self._apply(
-                    entry["surface"], entry["state"], entity_id, how or "alias"
-                )
+            await self._resolve_from_roster(entry, counts)
         unknown = [e for e in batch if "entity_id" not in e]
         if not unknown or self.llm is None or not self.llm.should_attempt():
             return counts
@@ -375,9 +430,8 @@ class EntityPass:
             asked = self._entry_for(unknown, resolution)
             if asked is None:
                 continue
-            states = [resolution.state] if resolution.state else []
             entity_id, _ = self.resolver.resolve(
-                [resolution.canonical_name], "PERSON", states
+                [resolution.canonical_name], PERSON, [], resolution.state
             )
             if entity_id is None and resolution.is_new_entity:
                 name = resolution.canonical_name

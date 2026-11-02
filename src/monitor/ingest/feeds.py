@@ -134,7 +134,7 @@ def _clip(value: Any, limit: int) -> Any:
 
 
 def raw_entry(entry: Any) -> dict[str, Any]:
-    """The entry as the feed sent it, up to a size cap."""
+    """Selected fields of the parsed entry, up to a size cap."""
     contents = entry.get("content") or []
     raw: dict[str, Any] = {
         "id": entry.get("id"),
