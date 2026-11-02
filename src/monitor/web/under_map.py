@@ -1093,22 +1093,24 @@ def table_map() -> Markup:
 
 STYLE = """<style>
 .tm-bg { fill: var(--surface-1, #fcfcfb); }
-.tm-card { fill: var(--surface-2, #efefec); stroke: var(--text-3, #6f6e69);
-  stroke-width: 1.5; }
-.tm-gold { fill: var(--surface-2, #efefec); stroke: var(--text-3, #6f6e69);
-  stroke-width: 1.5; stroke-dasharray: 7 4; }
-.tm-alone { fill: none; stroke: var(--text-3, #6f6e69); stroke-width: 1.5;
+.tm-card { fill: var(--surface-2, #efefec);
+  stroke: var(--line-strong, #8f8e87); }
+.tm-gold { fill: var(--surface-2, #efefec);
+  stroke: var(--line-strong, #8f8e87); stroke-dasharray: 7 4; }
+.tm-alone { fill: none; stroke: var(--line-strong, #8f8e87);
   stroke-dasharray: 2 4; }
 .tm-row { fill: var(--surface-1, #fcfcfb); stroke: var(--line, #a9a9a3); }
 .tm-hub { stroke: var(--accent, #6250d6); stroke-width: 2.5; }
 a:hover .tm-row, a:focus .tm-row { stroke: var(--text-1, #0b0b0b);
   stroke-width: 2.5; }
 .tm-schema { fill: var(--text-1, #0b0b0b);
-  font: 700 17px ui-sans-serif, system-ui, sans-serif; }
+  font: var(--weight-heading, 550) 17px ui-sans-serif, system-ui,
+    sans-serif; }
 .tm-head { fill: var(--text-1, #0b0b0b);
-  font: 650 13.5px ui-monospace, Menlo, monospace; }
+  font: var(--weight-label, 500) 13.5px ui-monospace, Menlo, monospace; }
 .tm-name { fill: var(--text-1, #0b0b0b);
-  font: 600 15px ui-sans-serif, system-ui, sans-serif; }
+  font: var(--weight-label, 500) 15px ui-sans-serif, system-ui,
+    sans-serif; }
 .tm-keys { fill: var(--text-2, #52514e);
   font: 400 13.5px ui-sans-serif, system-ui, sans-serif; }
 .tm-label, .tm-legend { fill: var(--text-2, #52514e);

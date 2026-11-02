@@ -85,6 +85,13 @@
 
   /* Replay state, read by chart and fragment requests. */
   const Monitor = (window.Monitor = {
+    /* The five stops of the heat scale, low to high. */
+    heatStops() {
+      const styles = getComputedStyle(document.documentElement);
+      return [1, 2, 3, 4, 5].map((step) =>
+        styles.getPropertyValue(`--heat-${step}`).trim()
+      );
+    },
     replay: { active: false, asOf: null, speed: 5, start: null, end: null },
     params() {
       const params = new URLSearchParams(body.dataset.qs || "");
@@ -473,6 +480,7 @@
     }
     store.set("projector", on ? "1" : "0");
     Monitor.bus.dispatchEvent(new Event("theme"));
+    paintDots(document);
   }
   function toggleProjector() {
     setProjector(root.dataset.projector !== "1");

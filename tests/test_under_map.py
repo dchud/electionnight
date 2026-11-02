@@ -1190,7 +1190,8 @@ def test_the_key_text_meets_the_projector_floor_at_1280():
     sizes = {
         css: float(size)
         for css, size in re.findall(
-            r"\.(tm-\w+) \{[^}]*?font: \d+ ([\d.]+)px", under_map.STYLE
+            r"\.(tm-\w+) \{[^}]*?font: (?:\d+|var\([^)]*\)) ([\d.]+)px",
+            under_map.STYLE,
         )
     }
     assert sizes["tm-keys"] >= 13.5

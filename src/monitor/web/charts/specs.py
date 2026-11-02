@@ -23,6 +23,8 @@ TIME_AXIS = alt.Axis(
 )
 RULE_LABEL_ROWS = 5
 RULE_LABEL_ROW_PX = 20
+# The drawn dots are small; a larger clear dot takes the hover and click.
+BUMP_HIT_AREA = 220
 
 
 def _named(name: str = "table") -> alt.Chart:
@@ -116,7 +118,6 @@ def topic_heat() -> dict[str, Any]:
             ),
             color=alt.Color(
                 "n:Q",
-                scale=alt.Scale(scheme="viridis"),
                 legend=alt.Legend(title="Stories", orient="bottom"),
             ),
             tooltip=[
@@ -159,8 +160,11 @@ def bump() -> dict[str, Any]:
             alt.Tooltip("bin_start:T", title="Bin", format="%-I:%M %p"),
         ],
     )
-    lines = base.mark_line(strokeWidth=2, interpolate="linear")
-    points = base.mark_circle(size=48, opacity=1)
+    lines = base.mark_line(interpolate="linear", opacity=0.85)
+    points = base.mark_circle(opacity=1)
+    hits = base.encode(color=alt.value("transparent")).mark_circle(
+        size=BUMP_HIT_AREA
+    )
     labels = (
         _named()
         .transform_window(
@@ -183,7 +187,7 @@ def bump() -> dict[str, Any]:
             text="entity:N",
         )
     )
-    chart = alt.layer(lines, points, labels).properties(
+    chart = alt.layer(lines, points, hits, labels).properties(
         width="container",
         height="container",
         padding={"left": 5, "top": 5, "bottom": 5, "right": 140},
@@ -269,7 +273,6 @@ def coverage_matrix() -> dict[str, Any]:
             ),
             color=alt.Color(
                 "share:Q",
-                scale=alt.Scale(scheme="viridis"),
                 legend=alt.Legend(
                     title="Share of bucket", orient="bottom", format=".0%"
                 ),
@@ -398,7 +401,7 @@ def entity_tone() -> dict[str, Any]:
     )
     line = (
         _named()
-        .mark_line(color=alt.expr("toneAccent"), strokeWidth=2)
+        .mark_line(color=alt.expr("toneAccent"))
         .encode(x=time, y=alt.Y("mean:Q", scale=tone_scale))
     )
     solid = (
@@ -479,7 +482,7 @@ def state_attention() -> dict[str, Any]:
     time = alt.X("bin_start:T", axis=TIME_AXIS)
     line = (
         _named()
-        .mark_line(color=alt.expr("toneAccent"), strokeWidth=2)
+        .mark_line(color=alt.expr("toneAccent"))
         .encode(
             x=time,
             y=alt.Y(

@@ -5,9 +5,9 @@
     .fd-area { fill: none; stroke: var(--line, #a9a9a3); stroke-width: 1.5; stroke-dasharray: 7 5; }
     .fd-box { fill: var(--surface-2, #efefec); stroke: var(--text-3, #6f6e69); stroke-width: 1.5; }
     .fd-llm { fill: var(--surface-2, #efefec); stroke: var(--accent, #6250d6); stroke-width: 3; }
-    .fd-name { fill: var(--text-1, #0b0b0b); font: 650 17px ui-sans-serif, system-ui, sans-serif; }
+    .fd-name { fill: var(--text-1, #0b0b0b); font: var(--weight-heading, 550) 17px ui-sans-serif, system-ui, sans-serif; }
     .fd-note { fill: var(--text-2, #52514e); font: 400 14px ui-sans-serif, system-ui, sans-serif; }
-    .fd-area-name { fill: var(--text-2, #52514e); font: 650 14px ui-sans-serif, system-ui, sans-serif; }
+    .fd-area-name { fill: var(--text-2, #52514e); font: var(--weight-heading, 550) 14px ui-sans-serif, system-ui, sans-serif; }
     .fd-line { fill: none; stroke: var(--text-2, #52514e); stroke-width: 2; }
     .fd-ask { stroke-dasharray: 6 4; }
     .fd-head { fill: var(--text-2, #52514e); }

@@ -18,7 +18,6 @@
       "#b08245", "#2a9fc0", "#c565bb", "#93ae2c",
     ],
   };
-  const OTHER = { light: "#b9b8b2", dark: "#55554f" };
 
   function css(name) {
     return getComputedStyle(document.documentElement)
@@ -31,6 +30,8 @@
     const strong = css("--text-1");
     const soft = css("--text-2");
     const line = css("--line");
+    const titleWeight = parseInt(css("--weight-label"), 10) || 500;
+    const strokeScale = parseFloat(css("--stroke-scale")) || 1;
     return {
       background: null,
       font: "Inter Variable, ui-sans-serif, system-ui, sans-serif",
@@ -40,6 +41,7 @@
         titleFontSize: label,
         labelColor: soft,
         titleColor: soft,
+        titleFontWeight: titleWeight,
         gridColor: line,
         domainColor: line,
         tickColor: line,
@@ -49,9 +51,13 @@
         titleFontSize: label,
         labelColor: soft,
         titleColor: soft,
+        titleFontWeight: titleWeight,
       },
       header: { labelFontSize: label, labelColor: soft, titleColor: soft },
       text: { fontSize: label, color: strong },
+      range: { heatmap: Monitor.heatStops() },
+      line: { strokeWidth: 1.5 * strokeScale },
+      circle: { size: 20 * strokeScale * strokeScale },
       rule: { color: soft },
       bar: { fill: soft },
       signals: [],
@@ -65,7 +71,7 @@
   /* Each storyline keeps its color for the life of the page. */
   const assigned = new Map();
   function colorFor(label) {
-    if (label === "Other") return OTHER[themeName()];
+    if (label === "Other") return css("--series-other");
     if (!assigned.has(label)) assigned.set(label, assigned.size);
     const palette = SERIES[themeName()];
     return palette[assigned.get(label) % palette.length];
