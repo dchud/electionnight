@@ -895,10 +895,13 @@ def test_the_back_button_moves_the_mark_with_the_hash(scratch, browser):
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
 @pytest.mark.parametrize("projector", [False, True])
-def test_the_table_map_reads_at_a_glance(scratch, browser, theme, projector):
+@pytest.mark.parametrize("width,height", [(1280, 720), (1920, 1080)])
+def test_the_table_map_reads_at_a_glance(
+    scratch, browser, theme, projector, width, height
+):
     _, server = scratch
     server.start()
-    page = browser.new_page(viewport={"width": 1280, "height": 720})
+    page = browser.new_page(viewport={"width": width, "height": height})
     page.goto(f"{BASE}/under")
     page.evaluate(
         """([theme, projector]) => {
@@ -912,11 +915,15 @@ def test_the_table_map_reads_at_a_glance(scratch, browser, theme, projector):
         """() => {
           const svg = document.querySelector('.tm-wrap svg');
           const box = svg.getBoundingClientRect();
-          const scale = box.width / svg.viewBox.baseVal.width;
-          const texts = [...svg.querySelectorAll('text')].map((t) => ({
-            text: t.textContent, box: t.getBBox(),
-            size: parseFloat(getComputedStyle(t).fontSize) * scale,
-          }));
+          const view = svg.viewBox.baseVal;
+          const scale = Math.min(
+            box.width / view.width, box.height / view.height);
+          const texts = [...svg.querySelectorAll('text')]
+            .filter((t) => t.textContent)
+            .map((t) => ({
+              text: t.textContent, box: t.getBBox(),
+              size: parseFloat(getComputedStyle(t).fontSize) * scale,
+            }));
           const overlaps = [];
           for (let i = 0; i < texts.length; i++) {
             for (let j = i + 1; j < texts.length; j++) {
@@ -927,10 +934,31 @@ def test_the_table_map_reads_at_a_glance(scratch, browser, theme, projector):
               }
             }
           }
-          const names = texts.filter((t) => !t.text.includes(' '));
+          const outside = texts.filter((t) => (
+            t.box.x < 0 || t.box.y < 0
+            || t.box.x + t.box.width > view.width
+            || t.box.y + t.box.height > view.height
+          )).map((t) => t.text);
+          const rows = [...svg.querySelectorAll('a')].map((a) => {
+            const row = a.querySelector('rect').getBBox();
+            const inRow = [...a.querySelectorAll('text')]
+              .filter((t) => t.textContent)
+              .map((t) => t.getBBox());
+            return {
+              name: a.getAttribute('aria-label'),
+              fits: inRow.every((t) => (
+                t.x >= row.x && t.x + t.width <= row.x + row.width
+                && t.y >= row.y - 1 && t.y + t.height <= row.y + row.height + 1
+              )),
+            };
+          });
           return {
             overlaps,
+            outside,
+            tooWide: rows.filter((row) => !row.fits).map((row) => row.name),
             height: box.height,
+            header: document.querySelector('.u-header')
+              .getBoundingClientRect().height,
             viewport: innerHeight,
             smallest: Math.min(...texts.map((t) => t.size)),
             tableName: Math.min(...[...svg.querySelectorAll('.tm-name')]
@@ -938,13 +966,15 @@ def test_the_table_map_reads_at_a_glance(scratch, browser, theme, projector):
             pageWide: document.documentElement.scrollWidth
               <= document.documentElement.clientWidth,
             links: svg.querySelectorAll('a').length,
-            names: names.length,
           };
         }"""
     )
     assert found["overlaps"] == []
-    assert found["height"] <= found["viewport"]
+    assert found["outside"] == []
+    assert found["tooWide"] == []
+    assert found["height"] + found["header"] <= found["viewport"]
     assert found["tableName"] >= 14
+    assert found["smallest"] >= 12.8
     assert found["pageWide"]
     assert found["links"] == len(TABLES)
 
@@ -980,3 +1010,28 @@ def test_a_copied_sql_block_is_the_statement_that_ran(scratch, browser):
     )
     assert copied.strip().startswith("SELECT")
     assert len(duckdb.connect().extract_statements(copied)) == 1
+
+
+def test_a_copied_echo_parses_the_same_as_what_was_typed(scratch, browser):
+    _, server = scratch
+    server.start()
+    typed = (
+        "SELECT $q$ one FROM two WHERE three $q$ AS kept, E'it\\'s FROM x' AS "
+        "also_kept, 1 AS padding -- ' FROM comment WHERE x = 0"
+    )
+    page = browser.new_page(viewport={"width": 1280, "height": 720})
+    page.goto(f"{BASE}/under/sql")
+    page.fill("textarea[name=sql]", typed)
+    page.click("button[type=submit]")
+    page.wait_for_load_state()
+    copied = page.evaluate(
+        """() => {
+          const range = document.createRange();
+          range.selectNodeContents(document.querySelector('pre.u-sql'));
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          return selection.toString();
+        }"""
+    )
+    assert copied == typed

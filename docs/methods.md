@@ -513,7 +513,8 @@ are read unless the table-wide range in `ducklake_table_column_stats` rules out
 the whole table.
 
 [The table map](/under/lake#map) shows how the tables relate. DuckLake has no
-foreign keys, so these are shared keys the code maintains.
+foreign keys, so its solid lines are values the code keeps equal. Its dashed
+lines show what the rollups read.
 
 ## The read model
 

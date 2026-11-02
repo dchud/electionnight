@@ -10,15 +10,17 @@
   <div class="u-section-head"><h2 class="u-section-title">The table map: how the tables relate</h2><span class="panel-note">each table links to its entry below</span></div>
   <div class="u-section-body">
     {% call u.caveat("These relations are not enforced") %}
-    <p>DuckLake has no foreign keys. A line here is a shared key that the code writing each table maintains, and nothing checks it. In an append-only table one key has many rows, so a join takes the latest row per key first.</p>
+    <p>DuckLake has no foreign keys, primary keys, or unique constraints. A line between two tables is a value the code keeps equal in both, and nothing checks it. A dashed line ending at gold is different: rollups read that table.</p>
+    <p>Tables are append-only, so a reader takes the newest row per record key. The record key differs by table, and it can differ from the key on the line. <code>nlp.mentions</code> joins <code>raw.items</code> on <code>item_id</code>, but its record key is <code>mention_id</code>: one item has many mentions, and each mention keeps its own newest row.</p>
     {% endcall %}
     <div class="tm-wrap">{{ table_map }}</div>
     <details class="u-query" data-key="lake-relations">
       <summary>Every relation, as declared in code</summary>
       <p class="u-query-meta">Declared by hand and checked against the code that writes each table, not inferred from names. <code>call_id</code> on <code>nlp.race_calls</code> identifies a race call, and on <code>nlp.llm_calls</code> and <code>nlp.llm_traces</code> it identifies a model call.</p>
+      <p class="u-query-meta">This list covers every key between lake tables, including keys held in a list or in JSON and keys that hold only under a condition. The map draws the main ones. Kind counts records, the newest row per record key, not rows. The list leaves out three things: a gold table's <code>bin_start</code>, which is a time bucket; the state text the model writes on <code>nlp.mentions</code> and <code>nlp.race_calls</code>, which nothing keeps equal to <code>ref.states</code>; and labels such as <code>parser</code>, <code>model</code>, <code>purpose</code>, and <code>language</code>, which identify no record.</p>
       <div class="u-scroll"><table class="table u-table">
-        <thead><tr><th>Column</th><th>Holds values of</th><th>Kind</th><th>Only when</th><th>Note</th></tr></thead>
-        <tbody>{% for row in relations %}<tr><td><code>{{ row.source }}</code></td><td><code>{{ row.target }}</code></td><td>{{ row.kind }}</td><td>{% if row.condition %}<code>{{ row.condition }}</code>{% endif %}</td><td>{{ row.note }}</td></tr>{% endfor %}</tbody>
+        <thead><tr><th>Column</th><th>Holds values of</th><th>Kind</th><th>Held as</th><th>Only when</th><th>On the map</th><th>Note</th></tr></thead>
+        <tbody>{% for row in relations %}<tr><td><code>{{ row.source }}</code></td><td><code>{{ row.target }}</code></td><td>{{ row.kind }}</td><td>{{ row.held_as }}</td><td>{% if row.condition %}<code>{{ row.condition }}</code>{% endif %}</td><td>{{ row.on_map }}</td><td>{{ row.note }}</td></tr>{% endfor %}</tbody>
       </table></div>
     </details>
   </div>

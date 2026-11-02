@@ -77,8 +77,9 @@ a test compares them.
 ### DuckLake
 
 Open `/under/lake`. Start at the table map: it shows the overall shape, and the
-lines are shared keys the code maintains, because DuckLake has no foreign keys.
-The catalog is plain SQL, so read a row count aloud and open its query. Choose
+solid lines are values the code keeps equal, because DuckLake has no foreign
+keys. The dashed lines show what the rollups read to derive gold tables. The
+catalog is plain SQL, so read a row count aloud and open its query. Choose
 `nlp.embeddings` in the table browser. `ducklake_column` holds `vec` as a list
 with a child `element`, and the statistics sit on the child. On that row, Nulls
 counts NULL lists, empty lists, and null elements. This table never inlines, so

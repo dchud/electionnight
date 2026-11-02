@@ -5,8 +5,9 @@ that writes each table keeps them. They are declared here and not inferred from
 column names, because a name match can be false: `call_id` on `nlp.race_calls`
 identifies a race call, and on `nlp.llm_calls` it identifies a model call.
 
-A table in `lake.TABLES` with no relation here still appears on the map, in its
-schema's list of tables that stand alone.
+`RELATIONS` covers every key between lake tables. The map draws the ones marked
+`on_map`, and the list on the page shows all of them. A table with no relation
+on the map still appears, in its schema's box of other tables.
 """
 
 from __future__ import annotations
@@ -19,8 +20,22 @@ from html import escape
 from markupsafe import Markup
 
 from monitor.lake import TABLES
+from monitor.rollups import FACTS_SQL, LATE_SQL, MENTIONS_SQL, ROLLUPS
 
 COLUMN_RE = re.compile(r"(\w+)\s+[A-Z]+(?:\[\])?")
+LAKE_TABLE_RE = re.compile(r"\blake\.(\w+\.\w+)")
+
+# How many records on each side, counting the newest row per record key.
+ONE_TO_ONE = "one to one"
+MANY_TO_ONE = "many to one"
+ONE_TO_MANY = "one to many"
+MANY_TO_MANY = "many to many"
+
+# How `table.column` holds the key.
+VALUE = "value"
+LIST = "list"
+JSON_OBJECT = "JSON"
+TIME_RANGE = "time range"
 
 
 def columns_of(table: str) -> set[str]:
@@ -28,17 +43,35 @@ def columns_of(table: str) -> set[str]:
     return {*COLUMN_RE.findall(TABLES[table]), "created_at"}
 
 
+def rollup_inputs() -> set[str]:
+    """The tables outside gold that the rollups' SQL reads."""
+    statements = [LATE_SQL, FACTS_SQL, MENTIONS_SQL]
+    statements += [rollup.sql for rollup in ROLLUPS]
+    named = {
+        table
+        for statement in statements
+        for table in LAKE_TABLE_RE.findall(statement)
+    }
+    return {table for table in named if not table.startswith("gold.")}
+
+
 @dataclass(frozen=True)
 class Relation:
-    """`table.column` holds values of `target.target_column`."""
+    """`table.column` holds values of `target.target_column`.
+
+    A `TIME_RANGE` relation compares times instead, and `condition` gives the
+    comparison.
+    """
 
     table: str
     column: str
     target: str
     target_column: str
+    kind: str
     condition: str = ""
     note: str = ""
-    many_to_many: bool = False
+    held_as: str = VALUE
+    on_map: bool = True
 
     @property
     def source_text(self) -> str:
@@ -50,17 +83,35 @@ class Relation:
 
 
 def _to_item(
-    table: str, column: str = "item_id", condition: str = "", note: str = ""
+    table: str,
+    kind: str,
+    column: str = "item_id",
+    condition: str = "",
+    note: str = "",
+    held_as: str = VALUE,
+    on_map: bool = True,
 ) -> Relation:
-    return Relation(table, column, "raw.items", "item_id", condition, note)
+    return Relation(
+        table,
+        column,
+        "raw.items",
+        "item_id",
+        kind,
+        condition,
+        note,
+        held_as,
+        on_map,
+    )
 
 
 def _to_source(table: str) -> Relation:
-    return Relation(table, "source_id", "ref.sources", "source_id")
+    return Relation(
+        table, "source_id", "ref.sources", "source_id", MANY_TO_ONE
+    )
 
 
 def _to_entity(table: str, column: str = "entity_id") -> Relation:
-    return Relation(table, column, "ref.entities", "entity_id")
+    return Relation(table, column, "ref.entities", "entity_id", MANY_TO_ONE)
 
 
 def _to_storyline(
@@ -68,49 +119,128 @@ def _to_storyline(
     column: str = "storyline_id",
     condition: str = "",
     note: str = "",
+    on_map: bool = True,
 ) -> Relation:
     return Relation(
-        table, column, "nlp.storylines", "storyline_id", condition, note
+        table,
+        column,
+        "nlp.storylines",
+        "storyline_id",
+        MANY_TO_ONE,
+        condition,
+        note,
+        VALUE,
+        on_map,
     )
 
 
-def _to_state(table: str) -> Relation:
-    return Relation(table, "state_usps", "ref.states", "usps")
+def _to_state(
+    table: str,
+    column: str = "state_usps",
+    kind: str = MANY_TO_ONE,
+    condition: str = "",
+    note: str = "",
+    held_as: str = VALUE,
+    on_map: bool = True,
+) -> Relation:
+    return Relation(
+        table,
+        column,
+        "ref.states",
+        "usps",
+        kind,
+        condition,
+        note,
+        held_as,
+        on_map,
+    )
 
 
 def _to_county(table: str) -> Relation:
-    return Relation(table, "county_fips", "ref.counties", "fips")
+    return Relation(table, "county_fips", "ref.counties", "fips", MANY_TO_ONE)
 
+
+def _to_feed(
+    table: str, column: str = "feed_url", condition: str = ""
+) -> Relation:
+    return Relation(
+        table,
+        column,
+        "raw.fetches",
+        "feed_url",
+        MANY_TO_MANY,
+        condition,
+        on_map=False,
+    )
+
+
+CITATIONS_NOTE = "A JSON object from reference number to item id."
 
 RELATIONS: tuple[Relation, ...] = (
-    _to_item("raw.sightings"),
-    _to_item("raw.article_text"),
+    _to_item("raw.sightings", MANY_TO_ONE),
+    _to_item("raw.article_text", ONE_TO_ONE),
     _to_item(
         "raw.archive_index",
+        MANY_TO_ONE,
         "key",
         condition="kind = 'pages'",
-        note="A row of kind `feeds` holds a feed URL in `key`.",
+        note="A row of kind feeds holds a feed URL in key.",
     ),
-    _to_item("nlp.race_calls"),
-    _to_item("nlp.mentions"),
-    _to_item("nlp.places"),
-    _to_item("nlp.storyline_assign"),
-    _to_item("nlp.cluster_decisions"),
-    _to_item("nlp.dup_groups"),
-    _to_item("nlp.classify_a"),
-    _to_item("nlp.lang"),
-    _to_item("nlp.embeddings"),
-    _to_item("nlp.extract_b"),
-    _to_item("nlp.rejected_quotes"),
-    _to_item("nlp.parser_runs"),
-    Relation(
+    _to_item("nlp.race_calls", MANY_TO_ONE),
+    _to_item("nlp.mentions", MANY_TO_ONE),
+    _to_item("nlp.places", MANY_TO_ONE),
+    _to_item("nlp.storyline_assign", ONE_TO_ONE),
+    _to_item("nlp.cluster_decisions", MANY_TO_ONE),
+    _to_item("nlp.dup_groups", ONE_TO_ONE),
+    _to_item("nlp.classify_a", ONE_TO_ONE),
+    _to_item("nlp.lang", ONE_TO_ONE),
+    _to_item("nlp.embeddings", ONE_TO_ONE),
+    _to_item("nlp.extract_b", ONE_TO_ONE),
+    _to_item("nlp.rejected_quotes", MANY_TO_ONE),
+    _to_item("nlp.parser_runs", MANY_TO_ONE),
+    _to_item(
         "nlp.llm_traces",
+        MANY_TO_MANY,
         "item_ids",
+        note="One call covers many items, and an item can be in many calls.",
+        held_as=LIST,
+    ),
+    _to_item(
+        "nlp.llm_traces",
+        MANY_TO_ONE,
+        "batch_id",
+        condition="purpose = 'extract_b'",
+        note="A retried call repeats the batch_id.",
+        on_map=False,
+    ),
+    _to_item(
+        "nlp.briefs",
+        MANY_TO_MANY,
+        "citations",
+        note=CITATIONS_NOTE,
+        held_as=JSON_OBJECT,
+        on_map=False,
+    ),
+    _to_item(
+        "nlp.storylines",
+        MANY_TO_MANY,
+        "citations",
+        note=CITATIONS_NOTE,
+        held_as=JSON_OBJECT,
+        on_map=False,
+    ),
+    Relation(
+        "raw.collection_gaps",
+        "gap_end",
         "raw.items",
-        "item_id",
-        note="A list: one call covers many items, and an item can be in many "
-        "calls.",
-        many_to_many=True,
+        "first_seen_at",
+        MANY_TO_MANY,
+        condition="first_seen_at BETWEEN gap_end "
+        "AND gap_end + INTERVAL 15 MINUTE",
+        note="The read model dates an item seen just after a gap by when it "
+        "was published.",
+        held_as=TIME_RANGE,
+        on_map=False,
     ),
     _to_source("raw.items"),
     _to_source("raw.fetches"),
@@ -118,12 +248,35 @@ RELATIONS: tuple[Relation, ...] = (
     _to_source("raw.archive_index"),
     _to_source("nlp.storyline_assign"),
     _to_source("gold.source_bins"),
+    _to_feed("raw.items"),
+    _to_feed("raw.sightings"),
+    _to_feed("raw.archive_index", "key", "kind = 'feeds'"),
+    Relation(
+        "ref.sources",
+        "feed_urls",
+        "raw.fetches",
+        "feed_url",
+        MANY_TO_MANY,
+        note="Text split on |. A sitemap's URL is only in raw.fetches.",
+        held_as=LIST,
+        on_map=False,
+    ),
     _to_entity("nlp.mentions"),
     _to_entity("nlp.race_calls", "winner_entity_id"),
     _to_entity("gold.entity_bins"),
     _to_entity("gold.entity_lean_bins"),
     _to_entity("gold.comention_edges", "entity_a"),
     _to_entity("gold.comention_edges", "entity_b"),
+    Relation(
+        "ref.races",
+        "candidates",
+        "ref.entities",
+        "entity_id",
+        ONE_TO_MANY,
+        note="The entities whose race_key names this race.",
+        held_as=LIST,
+        on_map=False,
+    ),
     _to_storyline("nlp.storyline_assign"),
     _to_storyline(
         "nlp.storylines",
@@ -141,27 +294,157 @@ RELATIONS: tuple[Relation, ...] = (
         "nearest_id",
         "nlp.dup_groups",
         "dup_group_id",
+        MANY_TO_MANY,
         condition="stage = 'dedupe'",
-        note="The nearest item's duplicate group, not the item.",
+        note="The nearest item's duplicate group, not the item. A group has "
+        "one record per item in it.",
     ),
     _to_storyline("gold.storyline_bins"),
     _to_storyline("gold.lean_storyline_bins"),
-    Relation("nlp.race_calls", "race_key", "ref.races", "race_key"),
-    Relation("ref.entities", "race_key", "ref.races", "race_key"),
-    Relation("raw.fetch_details", "fetch_id", "raw.fetches", "fetch_id"),
-    Relation("nlp.brief_stats", "brief_id", "nlp.briefs", "brief_id"),
-    Relation("nlp.llm_traces", "call_id", "nlp.llm_calls", "call_id"),
-    Relation(
-        "nlp.llm_traces", "prompt_hash", "nlp.llm_prompts", "prompt_hash"
+    _to_storyline(
+        "nlp.llm_traces",
+        "batch_id",
+        condition="purpose = 'storylines'",
+        note="A relabeled storyline repeats the batch_id.",
+        on_map=False,
     ),
-    Relation("nlp.classify_a", "batch_id", "nlp.llm_traces", "batch_id"),
+    Relation(
+        "nlp.race_calls",
+        "race_key",
+        "ref.races",
+        "race_key",
+        MANY_TO_ONE,
+        condition="race_key NOT LIKE '%-M-%'",
+        note="A ballot measure's key is built from the model's wording and "
+        "is not looked up.",
+    ),
+    Relation("ref.entities", "race_key", "ref.races", "race_key", MANY_TO_ONE),
+    Relation(
+        "nlp.extract_b",
+        "raw",
+        "ref.races",
+        "race_key",
+        MANY_TO_MANY,
+        note="The race_keys list inside raw. A ballot measure's key is not "
+        "looked up.",
+        held_as=JSON_OBJECT,
+        on_map=False,
+    ),
+    Relation(
+        "raw.fetch_details", "fetch_id", "raw.fetches", "fetch_id", ONE_TO_ONE
+    ),
+    Relation(
+        "nlp.brief_stats",
+        "brief_id",
+        "nlp.briefs",
+        "brief_id",
+        ONE_TO_ONE,
+        condition="sentences_kept > 0",
+        note="A brief with no sentence left writes statistics and no brief.",
+    ),
+    Relation(
+        "nlp.llm_traces",
+        "batch_id",
+        "nlp.briefs",
+        "brief_id",
+        MANY_TO_ONE,
+        condition="purpose = 'briefs'",
+        note="A failed brief leaves a trace and no brief.",
+        on_map=False,
+    ),
+    Relation(
+        "nlp.llm_traces", "call_id", "nlp.llm_calls", "call_id", ONE_TO_ONE
+    ),
+    Relation(
+        "nlp.llm_traces",
+        "prompt_hash",
+        "nlp.llm_prompts",
+        "prompt_hash",
+        MANY_TO_ONE,
+    ),
+    Relation(
+        "nlp.classify_a",
+        "batch_id",
+        "nlp.llm_traces",
+        "batch_id",
+        MANY_TO_MANY,
+        note="Empty on a keyword row. A retried call repeats the batch_id.",
+    ),
     _to_state("ref.counties"),
     _to_state("ref.places"),
-    _to_state("nlp.places"),
+    _to_state(
+        "nlp.places",
+        condition="method <> 'llm'",
+        note="A row of method llm holds the model's text, unchecked.",
+    ),
     _to_state("gold.state_bins"),
+    _to_state(
+        "nlp.classify_a",
+        "states",
+        MANY_TO_MANY,
+        note="Checked against the state list when written.",
+        held_as=LIST,
+        on_map=False,
+    ),
+    _to_state(
+        "nlp.storylines",
+        "states",
+        MANY_TO_MANY,
+        note="The most frequent states of the storyline's items.",
+        held_as=LIST,
+        on_map=False,
+    ),
+    _to_state("ref.sources", "home_state", on_map=False),
+    _to_state(
+        "ref.races",
+        "state",
+        note="A territory's race can name a state with no row in ref.states.",
+        on_map=False,
+    ),
+    _to_state(
+        "ref.entities",
+        "state",
+        condition="origin <> 'llm'",
+        note="An entity the model named holds the model's text.",
+        on_map=False,
+    ),
     _to_county("nlp.places"),
     _to_county("gold.county_bins"),
-    Relation("nlp.places", "place_geoid", "ref.places", "geoid"),
+    Relation("nlp.places", "place_geoid", "ref.places", "geoid", MANY_TO_ONE),
+    Relation(
+        "gold.entity_lean_bins",
+        "lean_label",
+        "ref.sources",
+        "lean_label",
+        MANY_TO_MANY,
+        on_map=False,
+    ),
+    Relation(
+        "gold.lean_storyline_bins",
+        "lean_label",
+        "ref.sources",
+        "lean_label",
+        MANY_TO_MANY,
+        on_map=False,
+    ),
+    Relation(
+        "gold.topic_bins",
+        "topic",
+        "nlp.classify_a",
+        "topics",
+        MANY_TO_MANY,
+        note="One element of the list.",
+        on_map=False,
+    ),
+    Relation(
+        "gold.bin_counts",
+        "level",
+        "nlp.classify_a",
+        "primary_level",
+        MANY_TO_MANY,
+        note="none when an item has no classification.",
+        on_map=False,
+    ),
 )
 
 
@@ -169,9 +452,11 @@ RELATIONS: tuple[Relation, ...] = (
 class Card:
     """Tables in one schema that share a key, under one heading.
 
-    `targets` decides membership: a table is in the card if it is a target or
-    has a relation to one. `hubs` are outlined. `keys` are the columns the
-    heading already names, so rows do not repeat them.
+    `targets` decides membership: a table is in the card if it is a target, or
+    holds a target's column under the same name. `hubs` are outlined. `keys`
+    are the columns the heading names, so rows do not repeat them, and each
+    table in the card holds at least one of them. A line leaving a card through
+    its bottom edge needs its hub there, which `hub_last` gives.
     """
 
     name: str
@@ -180,6 +465,8 @@ class Card:
     targets: tuple[str, ...]
     hubs: tuple[str, ...] = ()
     keys: tuple[str, ...] = ()
+    note: str = ""
+    hub_last: bool = False
 
 
 CARDS = (
@@ -190,6 +477,7 @@ CARDS = (
         ("ref.sources",),
         ("ref.sources",),
         ("source_id",),
+        hub_last=True,
     ),
     Card(
         "people",
@@ -197,13 +485,15 @@ CARDS = (
         "entity_id and race_key",
         ("ref.entities", "ref.races"),
         ("ref.entities", "ref.races"),
+        ("entity_id", "race_key"),
     ),
     Card(
         "geography",
         "ref",
-        "usps and fips",
+        "usps = state_usps",
         ("ref.states", "ref.counties", "ref.places"),
         ("ref.states",),
+        ("usps", "state_usps"),
     ),
     Card(
         "raw_items",
@@ -212,6 +502,15 @@ CARDS = (
         ("raw.items",),
         ("raw.items",),
         ("item_id",),
+    ),
+    Card(
+        "archive",
+        "raw",
+        "key, when kind = 'pages'",
+        ("raw.archive_index",),
+        (),
+        ("key",),
+        "key holds an item_id.",
     ),
     Card(
         "fetches",
@@ -260,19 +559,23 @@ HEADINGS = {
     "nlp": "nlp: what the stages produced",
     "gold": "gold: 5-minute bins",
 }
+SIDE_HEADING = "nlp, continued"
 ALONE_HEADING = "stands alone: no shared key"
+NO_KEY_HEADING = "no shared key"
+OTHER_HEADING = "other tables"
 DERIVED_HEADING = "derived by rollups"
 
 
-def _own_relations(table: str) -> list[Relation]:
-    return [r for r in RELATIONS if r.table == table]
+def _map_relations(table: str) -> list[Relation]:
+    return [r for r in RELATIONS if r.table == table and r.on_map]
 
 
 def card_members() -> dict[str, list[str]]:
     """Tables per card, in `RELATIONS` order, with the hub tables first."""
     order = {table: n for n, table in enumerate(TABLES)}
     for number, relation in enumerate(reversed(RELATIONS)):
-        order[relation.table] = -number - 1
+        if relation.on_map:
+            order[relation.table] = -number - 1
     members: dict[str, list[str]] = {card.name: [] for card in CARDS}
     for table in sorted(TABLES, key=lambda name: order[name]):
         card = _card_for(table)
@@ -281,13 +584,17 @@ def card_members() -> dict[str, list[str]]:
     for card in CARDS:
         hubs = [t for t in card.targets if t in members[card.name]]
         rest = [t for t in members[card.name] if t not in hubs]
-        members[card.name] = hubs + rest
+        members[card.name] = rest + hubs if card.hub_last else hubs + rest
     return members
 
 
 def _card_for(table: str) -> Card | None:
     schema = table.split(".")[0]
-    targets = {r.target for r in _own_relations(table) if not r.many_to_many}
+    targets = {
+        r.target
+        for r in _map_relations(table)
+        if r.held_as == VALUE and r.column == r.target_column
+    }
     for card in CARDS:
         if card.schema != schema:
             continue
@@ -296,7 +603,7 @@ def _card_for(table: str) -> Card | None:
     return None
 
 
-def alone_tables(schema: str) -> list[str]:
+def other_tables(schema: str) -> list[str]:
     """A schema's tables with no card. Every gold table is derived instead.
 
     A table in a schema with no column of its own stands with nlp's.
@@ -314,6 +621,25 @@ def alone_tables(schema: str) -> list[str]:
     ]
 
 
+def other_heading(tables: list[str]) -> str:
+    """What is true of every table in a box of tables with no card."""
+    related = [r for r in RELATIONS if {r.table, r.target} & set(tables)]
+    if any(r.held_as != TIME_RANGE for r in related):
+        return OTHER_HEADING
+    return NO_KEY_HEADING if related else ALONE_HEADING
+
+
+def other_notes(tables: list[str]) -> tuple[str, ...]:
+    """A line for each table in the box that joins another by time range."""
+    notes = []
+    for relation in RELATIONS:
+        if relation.table in tables and relation.held_as == TIME_RANGE:
+            note = f"joined to {relation.target} by time range"
+            prefix = f"{_short(relation.table)} " if len(tables) > 1 else ""
+            notes.append(prefix + note)
+    return tuple(notes)
+
+
 def gold_tables() -> list[str]:
     return [table for table in TABLES if table.startswith("gold.")]
 
@@ -323,11 +649,11 @@ def row_keys(table: str, keys: tuple[str, ...] = ()) -> str:
     columns = [
         r.target_column
         for r in RELATIONS
-        if r.target == table and not r.many_to_many
+        if r.target == table and r.on_map and r.held_as == VALUE
     ]
     columns += [
-        f"{r.column} (list)" if r.many_to_many else r.column
-        for r in _own_relations(table)
+        f"{r.column} (list)" if r.held_as == LIST else r.column
+        for r in _map_relations(table)
     ]
     return ", ".join(c for c in dict.fromkeys(columns) if c not in keys)
 
@@ -335,18 +661,42 @@ def row_keys(table: str, keys: tuple[str, ...] = ()) -> str:
 # The map's geometry, in the units of its viewBox.
 WIDTH = 1240
 ROW = 25
+ROW_WRAPPED = 41
 HEAD = 24
 PAD = 6
 GAP = 10
-RAW_X, RAW_W = 12, 240
-NLP_X, NLP_W = 312, 330
+NOTE_LINE = 18
+RAW_X, RAW_W = 22, 236
+NLP_X, NLP_W = 326, 316
 SIDE_X, SIDE_W = 692, 240
 GOLD_X, GOLD_W = 962, 266
+PEOPLE_INSET = 60
 BAND_Y = 28
-MAIN_Y = 172
-BELOW_BAND = 39
+SCHEMA_ROOM = 23
+BELOW_BAND = 41
+BELOW_CARDS = 24
+BELOW_LIST = 18
+BELOW_DERIVED = 28
 CHANNEL_RACE, CHANNEL_ENTITY, CHANNEL_GEO = 651, 665, 679
 CHANNEL_LIST = 672
+CHANNEL_LEFT = 10
+CHANNEL_RIGHT = 947
+LIST_X = RAW_X + RAW_W + 18
+TRUNK_X = RAW_X + RAW_W + 40
+COMB_X = NLP_X - 10
+TRUNK_RISE = 5
+LIST_DROP = 7
+ABOVE_TRUNK = 15
+# Estimates for one character of a table name and of a row's keys.
+NAME_CHAR = 8.2
+KEYS_CHAR = 6.6
+ROW_TEXT_PAD = 24
+
+
+def _keys_fit(table: str, keys: tuple[str, ...], width: int) -> bool:
+    used = len(_short(table)) * NAME_CHAR
+    used += len(row_keys(table, keys)) * KEYS_CHAR
+    return used + ROW_TEXT_PAD <= width
 
 
 @dataclass
@@ -359,10 +709,24 @@ class Box:
     keys: tuple[str, ...] = ()
     hubs: tuple[str, ...] = ()
     css: str = "tm-card"
+    notes: tuple[str, ...] = ()
+
+    def row_h(self, table: str) -> int:
+        """A row's height. Keys that do not fit beside the name go below it."""
+        return ROW if _keys_fit(table, self.keys, self.w) else ROW_WRAPPED
+
+    def row_top(self, table: str) -> int:
+        top = self.y + HEAD
+        for row in self.rows:
+            if row == table:
+                return top
+            top += self.row_h(row)
+        raise KeyError(table)
 
     @property
     def h(self) -> int:
-        return HEAD + ROW * len(self.rows) + PAD
+        rows = sum(self.row_h(row) for row in self.rows)
+        return HEAD + rows + NOTE_LINE * len(self.notes) + PAD
 
     @property
     def bottom(self) -> int:
@@ -373,8 +737,8 @@ class Box:
         return self.x + self.w
 
     def row_y(self, table: str) -> float:
-        """The middle of a table's row."""
-        return self.y + HEAD + ROW * self.rows.index(table) + ROW / 2
+        """The middle of a table's row, or of its first line if wrapped."""
+        return self.row_top(table) + ROW / 2
 
 
 def _short(table: str) -> str:
@@ -389,19 +753,28 @@ def _box_svg(box: Box) -> list[str]:
         f'<text class="tm-head" x="{box.x + 8}" y="{box.y + 17}">'
         f"{escape(box.heading)}</text>",
     ]
-    for number, table in enumerate(box.rows):
-        y = box.y + HEAD + ROW * number
+    for table in box.rows:
+        y = box.row_top(table)
+        height = box.row_h(table)
         css = "tm-row tm-hub" if table in box.hubs else "tm-row"
         keys = escape(row_keys(table, box.keys))
+        wrapped = height != ROW
+        keys_y = y + height - 8 if wrapped else y + 17
         parts.append(
             f'<a href="?table={escape(table)}#detail" '
             f'aria-label="{escape(table)}">'
             f'<rect class="{css}" x="{box.x + 4}" y="{y + 1}" '
-            f'width="{box.w - 8}" height="{ROW - 2}" rx="3"/>'
+            f'width="{box.w - 8}" height="{height - 2}" rx="3"/>'
             f'<text class="tm-name" x="{box.x + 10}" y="{y + 18}">'
             f"{escape(_short(table))}</text>"
-            f'<text class="tm-keys" x="{box.right - 10}" y="{y + 17}" '
+            f'<text class="tm-keys" x="{box.right - 10}" y="{keys_y}" '
             f'text-anchor="end">{keys}</text></a>'
+        )
+    notes_y = box.y + HEAD + sum(box.row_h(row) for row in box.rows)
+    for number, note in enumerate(box.notes):
+        parts.append(
+            f'<text class="tm-keys" x="{box.x + 10}" '
+            f'y="{notes_y + NOTE_LINE * number + 14}">{escape(note)}</text>'
         )
     return parts
 
@@ -421,125 +794,211 @@ def _label(x: float, y: float, text: str, anchor: str = "start") -> str:
     )
 
 
+LEGEND_ROWS = (
+    ("tm-trunk", "the item_id trunk"),
+    ("tm-key", "a value the code keeps equal"),
+    ("tm-many", "many to many, through a list"),
+    ("tm-derived", "rollups read it to derive gold"),
+)
+LEGEND_NOTE = "Small text: more keys. The list has all."
+LEGEND_ROW = 24
+
+
+def _legend_bottom(y: int) -> int:
+    return y + 10 + len(LEGEND_ROWS) * LEGEND_ROW + 6
+
+
 def _legend(x: int, y: int) -> list[str]:
     """What each line style means, in words on the map."""
-    rows = (
-        ("tm-trunk", "the item_id trunk"),
-        ("tm-key", "a shared key the code keeps"),
-        ("tm-many", "many to many, through a list"),
-        ("tm-derived", "derived, not joined"),
-    )
-    parts = []
-    for number, (css, text) in enumerate(rows):
-        row_y = y + 10 + number * 24
+    parts = ['<g class="tm-legend">']
+    for number, (css, text) in enumerate(LEGEND_ROWS):
+        row_y = y + 10 + number * LEGEND_ROW
         parts.append(f'<path class="{css}" d="M{x} {row_y} H{x + 46}"/>')
         parts.append(_label(x + 56, row_y + 5, text))
     parts.append(
-        _label(
-            x, y + 10 + len(rows) * 24 + 2, "Small text: a table's other keys."
-        )
+        _label(x, y + 10 + len(LEGEND_ROWS) * LEGEND_ROW + 2, LEGEND_NOTE)
     )
+    parts.append("</g>")
     return parts
 
 
-def _stack(x: int, y: int, w: int, boxes: list[Box]) -> int:
+def _stack(y: int, boxes: list[Box]) -> int:
     """Place boxes top to bottom. Returns the bottom of the last one."""
     for box in boxes:
-        box.x, box.y, box.w = x, y, w
+        box.y = y
         y = box.bottom + GAP
     return y - GAP
 
 
+def _bus_paths(
+    rows: list[tuple[Box, str]], edge: str, channel: int, bottom: float
+) -> list[str]:
+    """A tooth from each row to a channel, and the channel down to `bottom`."""
+    paths = [
+        f"M{getattr(box, edge)} {box.row_y(table)} H{channel}"
+        for box, table in rows
+    ]
+    if rows:
+        top = min(box.row_y(table) for box, table in rows)
+        paths.append(f"M{channel} {top} V{bottom}")
+    return paths
+
+
+def _derived_lines(
+    boxes: list[Box], gold: Box, derived_y: float, ends_x: int
+) -> list[str]:
+    """A line from each table the rollups read, ending on the gold box."""
+    read = rollup_inputs()
+    inputs = [
+        (box, table) for box in boxes for table in box.rows if table in read
+    ]
+    left = [(b, t) for b, t in inputs if b.x == RAW_X]
+    side = [(b, t) for b, t in inputs if b.x == SIDE_X]
+    middle = [(b, t) for b, t in inputs if b.x not in {RAW_X, SIDE_X}]
+    lines = []
+    if left or middle:
+        start = CHANNEL_LEFT if left else COMB_X
+        paths = _bus_paths(left, "x", CHANNEL_LEFT, derived_y)
+        paths += _bus_paths(middle, "x", COMB_X, derived_y)
+        paths.append(f"M{start} {derived_y} H{ends_x} V{gold.bottom}")
+        lines.append(_line("tm-derived", " ".join(paths), "derived"))
+    if side:
+        head_y = gold.y + HEAD / 2
+        paths = [
+            f"M{box.right} {box.row_y(table)} H{CHANNEL_RIGHT}"
+            for box, table in side
+        ]
+        top = min(head_y, *(box.row_y(table) for box, table in side))
+        bottom = max(box.row_y(table) for box, table in side)
+        if top < head_y:
+            paths.append(f"M{CHANNEL_RIGHT} {top} V{head_y}")
+        paths.append(f"M{CHANNEL_RIGHT} {bottom} V{head_y} H{GOLD_X}")
+        lines.append(_line("tm-derived", " ".join(paths), "derived"))
+    return lines
+
+
 @lru_cache(maxsize=1)
 def table_map() -> Markup:
-    """The whole map as one SVG, sized by how many tables each card holds."""
+    """The whole map as one SVG, sized by what each box holds."""
     members = card_members()
-    cards = {
-        card.name: Box(
-            0, 0, 0, members[card.name], card.heading, card.keys, card.hubs
-        )
-        for card in CARDS
-    }
 
-    def alone_box(schema: str) -> Box:
+    def card_box(name: str, x: int, w: int) -> Box:
+        card = next(card for card in CARDS if card.name == name)
+        notes = (card.note,) if card.note else ()
         return Box(
-            0, 0, 0, alone_tables(schema), ALONE_HEADING, css="tm-alone"
+            x,
+            0,
+            w,
+            members[name],
+            card.heading,
+            card.keys,
+            card.hubs,
+            notes=notes,
         )
 
-    cards["sources"].x, cards["sources"].y = RAW_X, BAND_Y
-    cards["sources"].w = RAW_W
-    cards["people"].x, cards["people"].y = NLP_X + 60, BAND_Y
-    cards["people"].w = NLP_W - 60
-    cards["geography"].x, cards["geography"].y = SIDE_X, BAND_Y
-    cards["geography"].w = SIDE_W
+    def others_box(schema: str, x: int, w: int) -> Box:
+        tables = other_tables(schema)
+        return Box(
+            x,
+            0,
+            w,
+            tables,
+            other_heading(tables),
+            css="tm-alone",
+            notes=other_notes(tables),
+        )
 
-    ref_alone = alone_box("ref")
-    ref_alone.x, ref_alone.w = cards["people"].x, cards["people"].w
-    ref_alone.y = cards["people"].bottom + GAP
+    sources = card_box("sources", RAW_X, RAW_W)
+    people = card_box("people", NLP_X + PEOPLE_INSET, NLP_W - PEOPLE_INSET)
+    geography = card_box("geography", SIDE_X, SIDE_W)
+    ref_others = others_box("ref", people.x, people.w)
+    for box in (sources, people, geography):
+        box.y = BAND_Y
+    ref_others.y = people.bottom + GAP
     band_bottom = max(
-        cards["geography"].bottom,
-        ref_alone.bottom if ref_alone.rows else 0,
+        sources.bottom,
+        people.bottom,
+        geography.bottom,
+        ref_others.bottom if ref_others.rows else 0,
+        _legend_bottom(BAND_Y),
     )
-    main_y = max(MAIN_Y, band_bottom + BELOW_BAND)
+    main_y = band_bottom + BELOW_BAND
 
-    raw_alone = alone_box("raw")
-    raw_bottom = _stack(
-        RAW_X, main_y, RAW_W, [cards["raw_items"], cards["fetches"], raw_alone]
-    )
-    nlp = cards["nlp_items"]
-    nlp.x, nlp.y, nlp.w = NLP_X, main_y, NLP_W
+    raw_items = card_box("raw_items", RAW_X, RAW_W)
+    raw_others = others_box("raw", RAW_X, RAW_W)
+    raw_boxes = [
+        raw_items,
+        card_box("archive", RAW_X, RAW_W),
+        card_box("fetches", RAW_X, RAW_W),
+        raw_others,
+    ]
+    raw_boxes = [box for box in raw_boxes if box.rows]
+    raw_bottom = _stack(main_y, raw_boxes)
+    nlp = card_box("nlp_items", NLP_X, NLP_W)
+    nlp.y = main_y
     # The storyline card sits so its hub row lines up with the row joined.
-    stories = cards["stories"]
-    stories.x, stories.w = SIDE_X, SIDE_W
-    stories.y = int(nlp.row_y("nlp.storyline_assign") - HEAD - ROW / 2)
-    nlp_alone = alone_box("nlp")
-    nlp_alone.x, nlp_alone.w = SIDE_X, SIDE_W
-    nlp_alone.y = stories.y - GAP - nlp_alone.h
-    below = [cards["calls"], cards["briefs"]]
+    assign_y = nlp.row_y("nlp.storyline_assign")
+    stories = card_box("stories", SIDE_X, SIDE_W)
+    stories.y = int(assign_y - HEAD - ROW / 2)
+    nlp_others = others_box("nlp", SIDE_X, SIDE_W)
+    nlp_others.y = stories.y - GAP - nlp_others.h
+    below = [
+        card_box("calls", SIDE_X, SIDE_W),
+        card_box("briefs", SIDE_X, SIDE_W),
+    ]
     # With too many to fit above the storyline card, they go below the rest.
-    if nlp_alone.y < band_bottom + GAP:
-        below.append(nlp_alone)
-    side_bottom = _stack(SIDE_X, stories.bottom + GAP, SIDE_W, below)
-    side_top = min(stories.y, nlp_alone.y)
+    if nlp_others.y < geography.bottom + GAP + SCHEMA_ROOM:
+        below.append(nlp_others)
+    side_bottom = _stack(stories.bottom + GAP, below)
+    side_top = stories.y
+    if nlp_others.rows:
+        side_top = min(side_top, nlp_others.y)
     gold = Box(
         GOLD_X, main_y, GOLD_W, gold_tables(), DERIVED_HEADING, css="tm-gold"
     )
 
-    list_y = max(nlp.bottom, side_bottom, gold.bottom) + 16
-    derived_y = list_y + 18
-    height = derived_y + 28
-    bracket_x = SIDE_X + SIDE_W + 10
+    list_y = max(nlp.bottom, side_bottom, gold.bottom) + BELOW_CARDS
+    derived_y = max(list_y, raw_bottom) + BELOW_LIST
+    height = derived_y + BELOW_DERIVED
 
+    calls = below[0]
     boxes = [
-        *cards.values(),
+        sources,
+        people,
+        geography,
+        *raw_boxes,
+        nlp,
+        stories,
+        *below,
         gold,
-        *([ref_alone] if ref_alone.rows else []),
-        *([raw_alone] if raw_alone.rows else []),
-        *([nlp_alone] if nlp_alone.rows else []),
     ]
-    people = cards["people"]
-    geography = cards["geography"]
-    raw_items = cards["raw_items"]
-    calls = cards["calls"]
+    if ref_others.rows:
+        boxes.append(ref_others)
+    if nlp_others.rows and not any(box is nlp_others for box in below):
+        boxes.append(nlp_others)
+
     sources_x = RAW_X + RAW_W - 26
-    trunk_y = raw_items.row_y("raw.items")
+    sources_row_bottom = sources.bottom - PAD - 1
+    items_y = raw_items.row_y("raw.items")
     calls_y = nlp.row_y("nlp.race_calls")
     mentions_y = nlp.row_y("nlp.mentions")
     places_y = nlp.row_y("nlp.places")
-    assign_y = nlp.row_y("nlp.storyline_assign")
     entity_y = people.row_y("ref.entities")
     race_y = people.row_y("ref.races")
     state_y = geography.row_y("ref.states")
     traces_y = calls.row_y("nlp.llm_traces")
+    head_y = nlp.y + HEAD / 2
     lines = [
         _line(
             "tm-trunk",
-            f"M{RAW_X + RAW_W} {trunk_y} H{NLP_X}",
+            f"M{raw_items.right} {items_y - TRUNK_RISE} H{TRUNK_X} "
+            f"V{head_y} H{NLP_X}",
             "trunk",
         ),
         _line(
             "tm-key",
-            f"M{sources_x} {cards['sources'].bottom} V{raw_items.y}",
+            f"M{sources_x} {sources_row_bottom} "
+            f"V{raw_items.row_top('raw.items') + 1}",
             "key",
         ),
         _line(
@@ -550,7 +1009,8 @@ def table_map() -> Markup:
         ),
         _line(
             "tm-key",
-            f"M{CHANNEL_ENTITY} {calls_y + 5} H{nlp.right}",
+            f"M{people.right} {entity_y} H{CHANNEL_ENTITY} "
+            f"V{calls_y + 5} H{nlp.right}",
             "key",
         ),
         _line(
@@ -573,31 +1033,28 @@ def table_map() -> Markup:
         _line(
             "tm-many",
             f"M{SIDE_X} {traces_y} H{CHANNEL_LIST} V{list_y} "
-            f"H{RAW_X + RAW_W + 30} V{raw_items.bottom - 20} "
-            f"H{RAW_X + RAW_W}",
+            f"H{LIST_X} V{items_y + LIST_DROP} H{raw_items.right}",
             "key",
             "key",
         ),
-        f'<path class="tm-derived" d="M{SIDE_X + SIDE_W} {side_top} '
-        f'H{bracket_x} V{side_bottom} H{SIDE_X + SIDE_W}"/>',
-        _line(
-            "tm-derived",
-            f"M{bracket_x} {gold.y + 110} H{GOLD_X}",
-            "derived",
-        ),
-        _line(
-            "tm-derived",
-            f"M{RAW_X + 110} {raw_bottom} V{derived_y} "
-            f"H{GOLD_X + 110} V{gold.bottom}",
-            "derived",
-        ),
+        *_derived_lines(boxes, gold, derived_y, GOLD_X + 110),
     ]
     labels = [
-        _label(sources_x - 8, BAND_Y + 100, "source_id", "end"),
-        _label(RAW_X + RAW_W + 6, trunk_y - 8, "item_id"),
+        _label(
+            sources_x - 8,
+            (sources.bottom + main_y - SCHEMA_ROOM) / 2 + 5,
+            "source_id",
+            "end",
+        ),
+        _label(
+            (raw_items.right + NLP_X) / 2,
+            head_y - ABOVE_TRUNK,
+            "item_id",
+            "middle",
+        ),
         _label(
             NLP_X + 8,
-            list_y - 3,
+            list_y - LIST_DROP,
             "nlp.llm_traces.item_ids is a list: many to many",
         ),
         _label(
@@ -609,10 +1066,11 @@ def table_map() -> Markup:
     ]
     legend = _legend(GOLD_X, BAND_Y)
     headings = [
-        ("ref", RAW_X, BAND_Y - 9),
-        ("raw", RAW_X, main_y - 9),
-        ("nlp", NLP_X, main_y - 9),
-        ("gold", GOLD_X, main_y - 9),
+        (HEADINGS["ref"], RAW_X, BAND_Y - 9),
+        (HEADINGS["raw"], RAW_X, main_y - 9),
+        (HEADINGS["nlp"], NLP_X, main_y - 9),
+        (SIDE_HEADING, SIDE_X, side_top - 9),
+        (HEADINGS["gold"], GOLD_X, main_y - 9),
     ]
     parts = [
         f'<svg class="tm" xmlns="http://www.w3.org/2000/svg" '
@@ -622,14 +1080,14 @@ def table_map() -> Markup:
         DEFS,
         f'<rect class="tm-bg" width="{WIDTH}" height="{height}"/>',
     ]
-    for schema, x, y in headings:
+    for text, x, y in headings:
         parts.append(
-            f'<text class="tm-schema" x="{x}" y="{y}">'
-            f"{escape(HEADINGS[schema])}</text>"
+            f'<text class="tm-schema" x="{x}" y="{y}">{escape(text)}</text>'
         )
     for box in boxes:
         parts += _box_svg(box)
-    parts += [*lines, *labels, *legend, "</svg>"]
+    parts += ['<g class="tm-lines">', *lines, "</g>", *labels, *legend]
+    parts.append("</svg>")
     return Markup("".join(parts))
 
 
@@ -648,11 +1106,11 @@ a:hover .tm-row, a:focus .tm-row { stroke: var(--text-1, #0b0b0b);
 .tm-schema { fill: var(--text-1, #0b0b0b);
   font: 700 17px ui-sans-serif, system-ui, sans-serif; }
 .tm-head { fill: var(--text-1, #0b0b0b);
-  font: 650 13px ui-monospace, Menlo, monospace; }
+  font: 650 13.5px ui-monospace, Menlo, monospace; }
 .tm-name { fill: var(--text-1, #0b0b0b);
   font: 600 15px ui-sans-serif, system-ui, sans-serif; }
 .tm-keys { fill: var(--text-2, #52514e);
-  font: 400 12px ui-sans-serif, system-ui, sans-serif; }
+  font: 400 13.5px ui-sans-serif, system-ui, sans-serif; }
 .tm-label, .tm-legend { fill: var(--text-2, #52514e);
   font: 400 14px ui-sans-serif, system-ui, sans-serif; }
 .tm-trunk { fill: none; stroke: var(--accent, #6250d6); stroke-width: 7; }
@@ -679,14 +1137,16 @@ DEFS = """<defs>
 
 
 def relation_rows() -> list[dict[str, str]]:
-    """Every relation as text, for the list beside the map."""
+    """Every relation as text, for the list below the map."""
     return [
         {
             "source": r.source_text,
             "target": r.target_text,
-            "kind": "many to many" if r.many_to_many else "many to one",
+            "kind": r.kind,
+            "held_as": r.held_as,
             "condition": r.condition,
             "note": r.note,
+            "on_map": "yes" if r.on_map else "no",
         }
         for r in RELATIONS
     ]
