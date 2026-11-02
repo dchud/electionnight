@@ -96,3 +96,7 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
   left a full copy behind: 228 MB on disk against 38 MB live after 2 hours.
 - **Local NER fallback.** spaCy is not installed. Spec section 17.2 has Stage B
   queue during an API outage and catch up, so the fallback would not run.
+- **Entity Rank labels.** Spec section 14.3 puts a label at each line end.
+  Lines that end at one rank in different bins can overlap, so each rank names
+  only the line that ended last. Hover names the other lines, even when their
+  ends are far apart.
