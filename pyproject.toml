@@ -2,6 +2,8 @@
 name = "monitor"
 version = "0.1.0"
 description = "Election night news monitor: feeds, parsers, DuckLake, dashboard"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "altair>=6.3.0",
