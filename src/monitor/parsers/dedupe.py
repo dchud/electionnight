@@ -254,9 +254,12 @@ class DedupeIndex:
             in_window &= (self.times[: self.size] < now) | same_poll
         place = frozenset(states)
         if title_hash is not None:
-            # An identical title is one story syndicated to two places, even
-            # when each copy was tagged with its own state. A near-identical
-            # title can be a template with only the state changed.
+            # A near-identical title can be a template with only the state
+            # changed, so it needs a shared place. An identical title from
+            # places that share no state also needs matching text: a copy of
+            # one story matches, and a generic title used by two outlets does
+            # not. A story with no state names no other place, so the title
+            # alone settles it, even when one copy has no summary to embed.
             close = [
                 index
                 for index in np.flatnonzero(
@@ -264,7 +267,8 @@ class DedupeIndex:
                     & self.titled[: self.size]
                     & (distances <= self.max_distance)
                 )
-                if distances[index] == 0 or self._same_place(int(index), place)
+                if self._same_place(int(index), place)
+                or (distances[index] == 0 and scores[index] >= self.min_cosine)
             ]
             if close:
                 best = min(close, key=lambda index: distances[index])

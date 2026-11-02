@@ -31,6 +31,9 @@ PROBE_SECONDS = 30.0
 REQUEST_TIMEOUT_SECONDS = 120.0
 # The API refused this request, so sending it again cannot help.
 INVALID_STATUSES = {400, 413}
+# A 400 with these words refuses the account, not the request, so it lasts only
+# as long as the account's problem does.
+ACCOUNT_REFUSAL = "credit balance"
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
@@ -90,6 +93,13 @@ def build_message_params(
         ],
         "messages": [{"role": "user", "content": user}],
     }
+
+
+def request_is_at_fault(error: anthropic.APIStatusError) -> bool:
+    """True when this request is refused, not the account or the service."""
+    if error.status_code not in INVALID_STATUSES:
+        return False
+    return ACCOUNT_REFUSAL not in error.message.casefold()
 
 
 def first_text(response: Any) -> str:
@@ -189,9 +199,14 @@ class LlmClient:
         self.last_error = None
 
     def _note_failure(self, error: str, since: float | None = None) -> None:
+        """Start the failing period, no earlier than the last answer."""
         self.last_error = error
         if self.failing_since is None and self.network_up():
-            self.failing_since = since or time.monotonic()
+            self.failing_since = (
+                time.monotonic()
+                if since is None
+                else max(since, self.last_answer)
+            )
 
     def _ledger(
         self,
@@ -371,7 +386,7 @@ class LlmClient:
                 status = f"HTTP {error.status_code}"
                 self.last_answer = time.monotonic()
                 failed(status)
-                if error.status_code in INVALID_STATUSES:
+                if request_is_at_fault(error):
                     raise LlmInvalid(status) from error
                 raise LlmUnavailable(status) from error
             except anthropic.APIConnectionError as error:

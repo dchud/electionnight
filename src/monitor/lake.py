@@ -424,7 +424,7 @@ class BatchWriter:
             counts = self._flush_each(batch)
         if counts:
             self.last_commit_at = utcnow()
-            # The rows are committed. Readers notice them on the next signal.
+            # The rows are committed, so a failed signal must not raise.
             try:
                 self._write_signal(counts)
             except OSError as error:

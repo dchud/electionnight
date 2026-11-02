@@ -69,7 +69,7 @@ from monitor.parsers.fetch_text import FetchTextParser
 from monitor.parsers.geo import Gazetteer, GeoEntry, normalize_cd
 from monitor.parsers.lang import LangParser, resolve_language
 from monitor.parsers.race_calls import (
-    accept_call,
+    call_problem,
     call_row,
     normalize_caller,
 )
@@ -188,114 +188,110 @@ async def _noop():
 
 
 @pytest.mark.parametrize(
-    ("status", "winner", "evidence"),
+    ("status", "winner", "evidence", "reason"),
     [
-        (
-            "projected",
-            "Tammy Baldwin",
-            "Tammy Baldwin leads by 3 points with 40% of the vote counted.",
-        ),
-        (
-            "declared",
-            "Victor Ramos",
-            "Victor Ramos leads with 40% of the vote counted.",
-        ),
-        ("projected", "Jones", "The AP has not called the race."),
-        ("declared", "Jones", "No winner has been declared."),
-        ("projected", "Smith", "Smith could win if turnout holds."),
-        ("projected", "Smith", "Polls project Smith will win next week."),
-        ("declared", "Smith", "Smith was first elected in 2018."),
-        ("conceded", "Jones", "Smith refused to concede."),
-        ("conceded", "Jones", "Smith declared victory."),
-        ("declared", "Smith", "Smith declared victory."),
-        ("projected", "Smith", "The AP called the race for Jones."),
-        ("projected", "Smith", "won"),
-        (
-            "declared",
-            "Smith",
-            "Election officials selected a new polling site.",
-        ),
-        ("declared", "Smith", "Smith won the Republican primary in August."),
-        ("conceded", "Cole", "Tom Cole conceded to Maria Rivera."),
-        ("projected", None, "The AP projected the winner of the race."),
-        ("projected", "Smith", "Smith is projected to win next week."),
-        ("declared", "Smith", "Smith would be declared the winner."),
-        ("projected", "Smith", "Smith won the seat in 2022."),
+        ("projected", "Smith", "The AP called it for Jones.", "winner"),
+        ("conceded", "Jones", "Smith conceded on Tuesday.", "winner"),
+        ("leading", "Jones", "Smith leads with 40% counted.", "winner"),
+        ("conceded", "Ривера", "Коул признал поражение.", "winner"),
+        ("projected", None, "The AP projected a winner.", "no winner named"),
+        ("leading", None, "One candidate leads.", "no winner named"),
     ],
 )
-def test_a_final_claim_needs_support_in_its_evidence(status, winner, evidence):
+def test_a_claim_must_name_its_candidate(status, winner, evidence, reason):
     call = race_call(status=status, winner_name=winner, evidence=evidence)
-    assert not accept_call(call, f"Before. {evidence} After.")
+    assert reason in call_problem(call, evidence)
 
 
 @pytest.mark.parametrize(
-    ("status", "winner", "evidence"),
+    ("evidence", "article"),
     [
-        (
-            "projected",
-            "Maria Rivera",
-            "The Associated Press projected Tuesday night that Maria Rivera, "
-            "a Democrat, won Ohio's U.S. Senate race.",
-        ),
-        ("projected", "Jones", "The AP called the race for Jones."),
-        ("projected", "Smith", "CNN projects Smith will win."),
-        ("declared", "Smith", "Officials declared Smith the winner."),
-        ("declared", "Smith", "Smith won the Senate race on Tuesday."),
-        ("conceded", "Maria Rivera", "Tom Cole conceded to Maria Rivera."),
-        (
-            "conceded",
-            "Rivera",
-            "Rivera wins Ohio Senate race as Cole concedes",
-        ),
+        ("Cole conceded defeat.", "Cole conceded defeat. Rivera will serve."),
+        ("The race was called.", "Rivera holds seat\n\nThe race was called."),
+        ("Die AP rief sie aus.", "Rivera gewinnt. Die AP rief sie aus."),
     ],
 )
-def test_a_supported_final_claim_is_kept(status, winner, evidence):
-    call = race_call(status=status, winner_name=winner, evidence=evidence)
-    assert accept_call(call, f"Before. {evidence} After.")
+def test_the_candidate_may_be_named_outside_the_evidence(evidence, article):
+    call = race_call(winner_name="Rivera", evidence=evidence)
+    assert call_problem(call, article) is None
+
+
+def test_a_contest_the_model_labels_a_primary_is_rejected():
+    evidence = "The AP called the race for Rivera."
+    labeled = race_call(
+        race_desc="Ohio Republican Senate primary", evidence=evidence
+    )
+    plain = race_call(race_desc="Ohio Senate", evidence=evidence)
+    article = f"Rivera won. {evidence}"
+    assert call_problem(labeled, article) == "labeled a primary"
+    assert call_problem(plain, article) is None
+
+
+def test_evidence_must_appear_in_the_article():
+    call = race_call(status="projected", winner_name="Smith", evidence="x")
+    call = call.model_copy(update={"evidence": "Smith won, officials said."})
+    assert call_problem(call, "Jones won, officials said.") == "not verbatim"
 
 
 @pytest.mark.parametrize(
-    ("status", "winner", "evidence"),
+    ("quote", "article"),
     [
-        ("projected", "Rivera", "L'AP a projeté que Rivera a gagné le siège."),
-        ("declared", "Rivera", "Rivera est élue sénatrice de l'Ohio."),
-        ("conceded", "Rivera", "Cole a reconnu sa défaite face à Rivera."),
-        ("declared", "Rivera", "Rivera fue elegida senadora."),
-        ("declared", "Rivera", "La AP proclamó vencedora a Rivera."),
-        ("conceded", "Rivera", "Cole reconoció su derrota ante Rivera."),
-        ("declared", "Ривера", "Ривера избрана сенатором."),
-        ("conceded", "Ривера", "Коул признал поражение, победила Ривера."),
-        ("declared", "ريفيرا", "ريفيرا تفوز بمقعد مجلس الشيوخ"),
-        ("declared", "里维拉", "里维拉赢得参议院席位"),
-        ("conceded", "里维拉", "科尔承认败选，里维拉当选"),
+        ("Rivera’s win - a first", "Rivera's win \u2014 a first."),
+        ("Rivera won  the\nrace", "RIVERA WON THE RACE."),
+        ('"Rivera won"', "\u201cRivera won\u201d"),
     ],
 )
-def test_explicit_language_is_recognized_outside_english(
-    status, winner, evidence
-):
-    call = race_call(status=status, winner_name=winner, evidence=evidence)
-    assert accept_call(call, f"{evidence} Fin.")
+def test_verbatim_ignores_spacing_case_and_typographic_marks(quote, article):
+    call = race_call(winner_name="Rivera", evidence=quote)
+    assert call_problem(call, article) is None
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        "Former Gov. Ann Cole won the Senate race, AP projected.",
+        "Ann Cole defeated former Rep. Bo Hart, AP projected.",
+        "Ann Cole won the state's open Senate seat, AP projected.",
+        "Ann Cole is projected to win re-election, according to NBC News.",
+        "Ann Cole, who was seeking a second term, won re-election Tuesday.",
+        "Ann Cole won, a result that could help Democrats.",
+        "AP called it for Ann Cole less than an hour after polls closed.",
+        "Ann Cole won outright, avoiding a Dec. 1 runoff, AP projected.",
+        "Ann Cole (I-NE) defeated Sen. Bo Hart.",
+        "Ann Cole won the seat, the first Democrat to do so since 1994.",
+        "Bo Hart called Ann Cole to concede the race.",
+        "Bo Hart conceded to Ann Cole.",
+    ],
+)
+def test_the_rules_leave_the_meaning_of_a_sentence_to_the_model(evidence):
+    call = race_call(winner_name="Ann Cole", evidence=evidence)
+    assert call_problem(call, f"Before. {evidence} After.") is None
 
 
 @pytest.mark.parametrize(
     ("winner", "evidence"),
     [
-        ("Rivera", "Rivera no ganó el escaño."),
-        ("Rivera", "Rivera ne gagne pas le siège."),
-        ("Rivera", "Rivera gagne la primaire."),
-        ("Ривера", "Ривера не избрана."),
+        ("Maria Rivera", "Según la AP, María Rivera derrotó a Cole."),
+        ("Maria Rivera", "Rivera est élue sénatrice de l'Ohio."),
+        ("Maria Rivera", "Коул признал поражение от Риверы."),
+        ("Maria Rivera", "أعلنت وكالة أسوشيتد برس فوز ريفيرا."),
+        ("Maria Rivera", "据AP预测,里维拉赢得参议院席位。"),
+        ("Ривера", "Ривера избрана сенатором."),
+        ("里维拉", "里维拉赢得参议院席位"),
     ],
 )
-def test_negation_and_primaries_are_rejected_outside_english(winner, evidence):
-    call = race_call(status="declared", winner_name=winner, evidence=evidence)
-    assert not accept_call(call, f"{evidence} Fin.")
+def test_a_name_in_another_script_is_not_compared(winner, evidence):
+    call = race_call(winner_name=winner, evidence=evidence)
+    assert call_problem(call, f"{evidence} Fin.") is None
 
 
-def test_an_alias_can_name_the_winner_in_another_script():
-    evidence = "Ривера избрана сенатором."
-    call = race_call(status="declared", evidence=evidence)
-    assert not accept_call(call, evidence)
-    assert accept_call(call, evidence, names=["Мария Ривера"])
+def test_an_alias_in_the_evidence_script_must_appear():
+    call = race_call(
+        winner_name="Maria Rivera", evidence="Ривера избрана сенатором."
+    )
+    text = call.evidence
+    assert call_problem(call, text, names=["Мария Ривера"]) is None
+    assert call_problem(call, text, names=["Иван Петров"]) is not None
 
 
 @pytest.mark.parametrize(
@@ -337,35 +333,6 @@ def test_a_caller_stays_only_if_the_article_names_it(
     row = call_row("i", call, "2026-OH-SEN", None, AFTER_CLOSE, "p", "1", text)
     assert row["called_by"] == caller
     assert row["confidence"] == confidence
-
-
-@pytest.mark.parametrize(
-    "evidence",
-    [
-        "Smith leads Jones 48-45 in a new poll.",
-        "Smith leads Jones in the latest survey of 800 voters.",
-        "Smith leads Jones by 3 points.",
-        "With 40% of the vote counted, Jones leads the race.",
-        "Smith no longer leads with 40% of the vote counted.",
-    ],
-)
-def test_a_lead_needs_counted_votes_and_the_leader_named(evidence):
-    call = race_call(status="leading", winner_name="Smith", evidence=evidence)
-    assert not accept_call(call, f"Before. {evidence} After.")
-
-
-@pytest.mark.parametrize(
-    "evidence",
-    [
-        "With 40% of the vote counted, Smith leads Jones.",
-        "Smith leads in early returns in Hamilton County.",
-        "As polls closed, Smith led with 12% of precincts reporting.",
-        "Smith leads with 1,200 votes counted.",
-    ],
-)
-def test_a_lead_on_counted_votes_is_kept(evidence):
-    call = race_call(status="leading", winner_name="Smith", evidence=evidence)
-    assert accept_call(call, f"Before. {evidence} After.")
 
 
 @pytest.mark.parametrize(
@@ -565,11 +532,11 @@ async def test_a_stored_paywall_flag_is_read_back(settings):
 # Entity attribution
 
 
-def test_a_sole_candidate_from_another_state_is_rejected(settings):
+def test_a_surname_from_another_state_is_rejected(settings):
     resolver = EntityResolver(settings)
     resolver.load(
         [
-            known("smith-tx", "John Smith", "TX"),
+            known("smith-tx", "John Smith", "TX", ["Smith"]),
             known(
                 "schumer",
                 "Chuck Schumer",
@@ -580,13 +547,153 @@ def test_a_sole_candidate_from_another_state_is_rejected(settings):
             known("trump", "Donald Trump", None, ["Trump"], origin="hand"),
         ]
     )
-    assert resolver.resolve(["John Smith"], "PERSON", ["OH"])[0] is None
-    assert resolver.resolve(["John Smith"], "PERSON", ["TX"])[0] == "smith-tx"
-    assert resolver.resolve(["John Smith"], "PERSON", [])[0] == "smith-tx"
-    assert resolver.resolve(["Chuck Schumer"], "PERSON", ["OH"])[0] == (
-        "schumer"
+    assert resolver.resolve(["Smith"], "PERSON", ["OH"]) == (None, None)
+    assert resolver.resolve(["Sen. Smith"], "PERSON", ["OH"]) == (None, None)
+    assert resolver.resolve(["Smith"], "PERSON", ["TX"])[0] == "smith-tx"
+    assert resolver.resolve(["Smith"], "PERSON", [])[0] == "smith-tx"
+    assert resolver.resolve(["Schumer"], "PERSON", ["OH"])[0] == "schumer"
+    assert resolver.resolve(["Trump"], "PERSON", ["OH"])[0] == "trump"
+
+
+def test_a_full_name_resolves_whatever_the_item_is_classified_under(settings):
+    resolver = EntityResolver(settings)
+    resolver.load([known("ossoff", "Jon Ossoff", "GA", ["Ossoff"])])
+    for names in (
+        ["Jon Ossoff"],
+        ["jon ossoff"],
+        ["Sen. Jon Ossoff"],
+        ["Jon Ossoff", "Ossoff"],
+    ):
+        assert resolver.resolve(names, "PERSON", ["NC"])[0] == "ossoff"
+        assert resolver.resolve(names, "PERSON", ["NC", "ME"])[0] == "ossoff"
+    assert resolver.resolve(["Ossoff"], "PERSON", ["NC"]) == (None, None)
+
+
+def test_a_state_the_text_gives_binds_a_full_name(settings):
+    resolver = EntityResolver(settings)
+    resolver.load(
+        [
+            known("smith-tx", "John Smith", "TX"),
+            known("trump", "Donald Trump", None, origin="hand"),
+        ]
     )
-    assert resolver.resolve(["Donald Trump"], "PERSON", ["OH"])[0] == "trump"
+    assert resolver.resolve(["John Smith"], "PERSON", ["TX"], "OH") == (
+        None,
+        None,
+    )
+    assert resolver.resolve(["John Smith"], "PERSON", ["OH"], "TX")[0] == (
+        "smith-tx"
+    )
+    assert resolver.resolve(["Donald Trump"], "PERSON", [], "FL")[0] == "trump"
+
+
+def test_a_full_name_two_people_hold_still_needs_a_state(settings):
+    resolver = EntityResolver(settings)
+    resolver.load(
+        [
+            known("rogers-mi", "Mike Rogers", "MI"),
+            known("rogers-al", "Mike Rogers", "AL"),
+        ]
+    )
+    assert resolver.resolve(["Mike Rogers"], "PERSON", ["MI"])[0] == (
+        "rogers-mi"
+    )
+    for states in ([], ["OH"], ["MI", "AL"]):
+        assert resolver.resolve(["Mike Rogers"], "PERSON", states) == (
+            None,
+            None,
+        )
+
+
+def test_a_full_name_exception_is_for_people_and_suffixes_still_bind(settings):
+    resolver = EntityResolver(settings)
+    resolver.load(
+        [
+            {
+                **known("gop-ga", "Georgia Republicans", "GA"),
+                "ent_type": "ORG",
+            },
+            known("cooper", "Roy Cooper", "NC"),
+        ]
+    )
+    assert resolver.resolve(["Georgia Republicans"], "ORG", ["OH"]) == (
+        None,
+        None,
+    )
+    assert resolver.resolve(["Roy Cooper Jr."], "PERSON", ["OH"]) == (
+        None,
+        None,
+    )
+
+
+async def test_extraction_reads_a_full_name_from_outside_the_item_states(
+    settings,
+):
+    conn = connect(settings)
+    resolver = EntityResolver(settings)
+    resolver.load(
+        [
+            known("ossoff", "Jon Ossoff", "GA", ["Ossoff"]),
+            known("smith-tx", "John Smith", "TX"),
+        ]
+    )
+    people = [
+        entity(name="Jon Ossoff", surface_forms=["Ossoff"]),
+        entity(name="John Smith", surface_forms=["Smith"], state="OH"),
+    ]
+    parser = extract_parser(
+        settings, conn, FakeLlm(item_b(entities=people)), resolver
+    )
+    item = Item(
+        "a", title="T", text="Ossoff met Smith.", states=["NC"], summary=""
+    )
+    output = await parser.run([item])
+    rows = {r["surface"]: r["entity_id"] for r in output.rows["nlp.mentions"]}
+    assert rows == {"Ossoff": "ossoff", "John Smith": None}
+    conn.close()
+
+
+def test_an_ambiguous_surname_is_not_given_to_either_holder(settings):
+    resolver = EntityResolver(settings)
+    resolver.load(
+        [
+            known("susan", "Susan Collins", "ME", ["Collins"]),
+            known("mike", "Mike Collins", "GA", ["Collins"]),
+        ]
+    )
+    for states in (["ME", "GA"], ["GA", "ME"]):
+        assert resolver.resolve(["Collins"], "PERSON", states) == (None, None)
+        assert resolver.resolve(["Sen. Collins"], "PERSON", states) == (
+            None,
+            None,
+        )
+    assert resolver.resolve(["Collins"], "PERSON", ["ME"])[0] == "susan"
+    assert resolver.resolve(["Collins"], "PERSON", ["GA", "OH"])[0] == "mike"
+    assert resolver.resolve(["Collins"], "PERSON", ["GA"], "ME")[0] == "susan"
+
+
+def test_an_ambiguous_surname_is_not_given_to_a_similar_name(settings):
+    resolver = EntityResolver(settings)
+    resolver.load(
+        [
+            known("mike", "Mike Johnson", "LA", ["Johnson"]),
+            known("ron", "Ron Johnson", "WI", ["Johnson"]),
+            known("johnston", "Ann Johnston", "GA", ["Johnston"]),
+        ]
+    )
+    assert resolver.resolve(["Johnson"], "PERSON", ["GA"]) == (None, None)
+
+
+def test_a_misspelled_surname_two_people_tie_on_is_no_match(settings):
+    resolver = EntityResolver(settings)
+    resolver.load(
+        [
+            known("susan", "Susan Collins", "ME", ["Collins"]),
+            known("mike", "Mike Collins", "GA", ["Collins"]),
+        ]
+    )
+    assert resolver.resolve(["Colins"], "PERSON", ["ME", "GA"]) == (None, None)
+    assert resolver.resolve(["Colins"], "PERSON", ["ME"])[0] == "susan"
 
 
 def test_a_surname_alias_does_not_beat_a_disagreeing_full_name(settings):
@@ -783,6 +890,86 @@ async def test_unresolvable_names_do_not_starve_the_rest(settings):
     conn.close()
 
 
+async def test_a_model_answer_in_another_state_is_a_new_person(settings):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    writer.add("nlp.mentions", [mention("m1", "J. Smith")])
+    writer.flush()
+    resolver = EntityResolver(settings)
+    resolver.load([known("smith-tx", "John Smith", "TX")])
+    answer = EntityResolution(
+        surface="J. Smith",
+        canonical_name="John Smith",
+        is_new_entity=True,
+        is_person=True,
+        party=None,
+        state="OH",
+        office=None,
+    )
+    llm = FakeLlm(EntityResolutionBatch(resolutions=[answer]))
+    entity_pass = EntityPass(settings, Database(conn), writer, llm, resolver)
+    entity_pass.reload = _noop
+    await entity_pass.run()
+    writer.flush()
+    entity_id = conn.execute(
+        """
+        SELECT entity_id FROM lake.nlp.mentions
+        QUALIFY row_number() OVER (
+            PARTITION BY mention_id ORDER BY created_at DESC) = 1
+        """
+    ).fetchone()[0]
+    assert entity_id not in {None, "smith-tx"}
+    conn.close()
+
+
+async def test_the_pass_resolves_every_full_name_on_the_roster(settings):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    full_names = [f"Person{n} Lastname{n}" for n in range(60)]
+    unknown_names = [f"Unknown{n}" for n in range(60)]
+    writer.add(
+        "nlp.mentions",
+        [mention(f"f{n}", name) for n, name in enumerate(full_names)]
+        + [mention(f"u{n}", name) for n, name in enumerate(unknown_names)]
+        + [mention("elsewhere", "Person0 Lastname0", "OH")],
+    )
+    writer.flush()
+    resolver = EntityResolver(settings)
+    resolver.load(
+        [known(name, name, "GA", [name.split()[1]]) for name in full_names]
+    )
+    sent = []
+
+    class Echo(FakeLlm):
+        async def structured(self, purpose, schema, system, user, **options):
+            sent.extend(entry["surface"] for entry in json.loads(user))
+            return EntityResolutionBatch(resolutions=[])
+
+    entity_pass = EntityPass(
+        settings, Database(conn), writer, Echo(), resolver
+    )
+    entity_pass.reload = _noop
+    counts = await entity_pass.run()
+    writer.flush()
+    assert counts["mentions"] == 60
+    assert len(sent) == 30
+    assert set(sent) <= {*unknown_names, "Person0 Lastname0"}
+    rows = dict(
+        conn.execute(
+            """
+            SELECT mention_id, entity_id FROM lake.nlp.mentions
+            QUALIFY row_number() OVER (
+                PARTITION BY mention_id ORDER BY created_at DESC) = 1
+            """
+        ).fetchall()
+    )
+    for n, name in enumerate(full_names):
+        assert rows[f"f{n}"] == name
+    # The text gave this mention another state, so it stays open.
+    assert rows["elsewhere"] is None
+    conn.close()
+
+
 # Dedupe
 
 
@@ -901,13 +1088,124 @@ async def test_titles_from_disjoint_states_are_not_duplicates(settings):
     conn.close()
 
 
-def test_one_title_in_two_states_is_one_syndicated_story(settings):
+def close_to(vector, seed, amount=0.1):
+    moved = vector + amount * noise(seed)
+    return moved / np.linalg.norm(moved)
+
+
+async def test_a_wire_copy_tagged_with_other_states_is_one_story(settings):
+    conn = connect(settings)
+    parser = DedupeParser(
+        settings, Database(conn), index=DedupeIndex(settings)
+    )
+    text = noise(1)
+    wire = "Voters to decide fate of state taxes this fall"
+    first = Item(
+        "a",
+        source_id="ap",
+        title=f"{wire} - AP News",
+        states=["MD"],
+        first_seen_at=AFTER_CLOSE,
+        vec=text,
+    )
+    copy = Item(
+        "b",
+        source_id="wtop",
+        title=wire,
+        states=["VA"],
+        first_seen_at=AFTER_CLOSE + timedelta(minutes=1),
+        vec=close_to(text, 2),
+    )
+    output = await parser.run([first, copy])
+    assert first.is_canonical is True
+    assert copy.is_canonical is False
+    groups = {r["item_id"]: r for r in output.rows["nlp.dup_groups"]}
+    assert groups["b"]["dup_group_id"] == groups["a"]["dup_group_id"]
+    assert groups["b"]["method"] == "title_hash"
+    conn.close()
+
+
+async def test_a_generic_title_in_two_states_is_two_stories(settings):
+    conn = connect(settings)
+    parser = DedupeParser(
+        settings, Database(conn), index=DedupeIndex(settings)
+    )
+    title = "Election results: live updates and what to know"
+    items = [
+        Item(
+            "a",
+            source_id="wsb",
+            title=title,
+            states=["GA"],
+            first_seen_at=AFTER_CLOSE,
+            vec=noise(1),
+        ),
+        Item(
+            "b",
+            source_id="kcra",
+            title=title,
+            states=["CA"],
+            first_seen_at=AFTER_CLOSE,
+            vec=noise(2),
+        ),
+    ]
+    await parser.run(items)
+    assert [item.is_canonical for item in items] == [True, True]
+    conn.close()
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        (["GA"], []),
+        ([], ["GA"]),
+        ([], []),
+        (["GA", "OH"], ["OH"]),
+    ],
+)
+def test_one_title_merges_when_no_state_conflicts_whatever_the_text(
+    settings, first, second
+):
+    # One copy may have only a title to embed, or a summary the other lacks,
+    # so their vectors say nothing. Only two state tags can show a conflict.
     index = DedupeIndex(settings)
     title = title_hash_of("Voters to decide fate of state taxes this fall")
-    index.add(title, noise(1), AFTER_CLOSE, "d", "first", "a", states=["MD"])
-    found = index.find(title, noise(2), AFTER_CLOSE, "d", "b", states=["VA"])
+    index.add(title, noise(1), AFTER_CLOSE, "d", "first", "a", states=first)
+    found = index.find(title, noise(2), AFTER_CLOSE, "d", "b", states=second)
     assert found is not None
+    assert found.group_id == "first"
     assert found.method == "title_hash"
+
+
+def test_one_title_in_two_states_needs_the_full_text_threshold(settings):
+    index = DedupeIndex(settings)
+    title = title_hash_of("Voters to decide fate of state taxes this fall")
+    text = noise(1)
+    index.add(title, text, AFTER_CLOSE, "d", "first", "a", states=["MD"])
+    near = close_to(text, 2)
+    assert float(near @ text) >= index.min_cosine
+    assert index.find(title, near, AFTER_CLOSE, "d", "b", states=["VA"])
+    far = close_to(text, 2, amount=1.0)
+    assert float(far @ text) < index.min_cosine
+    assert index.find(title, far, AFTER_CLOSE, "d", "c", states=["VA"]) is None
+
+
+def test_a_near_title_in_two_states_stays_apart_even_with_the_same_text(
+    settings,
+):
+    index = DedupeIndex(settings)
+    template = (
+        "Polls close in {} as voters decide who will represent the state "
+        "in the U.S. Senate next year"
+    )
+    first = title_hash_of(template.format("Georgia"))
+    second = title_hash_of(template.format("Ohio"))
+    assert first != second
+    text = noise(1)
+    index.add(first, text, AFTER_CLOSE, "d", "first", "a", states=["GA"])
+    assert index.find(second, text, AFTER_CLOSE, "d", "b", states=["OH"]) is (
+        None
+    )
 
 
 def test_a_near_match_on_text_needs_a_shared_state(settings):
@@ -1541,6 +1839,28 @@ async def test_a_rejected_extraction_marks_the_item(settings):
         parser.run([Item("a", title="T", text="Body.")]), 5
     )
     assert output.statuses["a"] == ("error", "LlmInvalid")
+    conn.close()
+
+
+async def test_a_credit_refusal_waits_and_does_not_mark_the_item(
+    settings, monkeypatch
+):
+    monkeypatch.setattr("monitor.parsers.extract_b.WAIT_SECONDS", 0.0)
+    conn = connect(settings)
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    refusal = anthropic.BadRequestError(
+        "Error code: 400 - Your credit balance is too low to access the "
+        "Anthropic API.",
+        response=httpx2.Response(400, request=request),
+        body=None,
+    )
+    llm = scripted_llm(settings, refusal, response(item_b().model_dump_json()))
+    parser = extract_parser(settings, conn, llm)
+    output = await asyncio.wait_for(
+        parser.run([Item("a", title="T", text="Body.")]), 5
+    )
+    assert output.statuses == {}
+    assert len(output.rows["nlp.extract_b"]) == 1
     conn.close()
 
 

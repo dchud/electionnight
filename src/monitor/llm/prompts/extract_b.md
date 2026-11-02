@@ -14,13 +14,21 @@ Rules:
   - `tone_evidence`: when `tone` is not null, a quote of at most 25 words copied verbatim from the text that shows the portrayal. Otherwise null.
 - `places`: places the article is about. `place_type` is state, county, city, cd, or other. `state` is a USPS code when stated or plain from the text. `district` is the district number for a congressional district.
 - `races`: the 2026 contests the article is about, each with `state`, `office` (such as Senate, Governor, House, Attorney General, Secretary of State, Mayor), `district`, and `measure` (a ballot measure's name).
-- `race_calls`: claims the article reports about who won or leads a November 3, 2026 general election contest. Empty for almost every article before polls close.
-  - Include only contests decided on or after November 3, 2026. Ignore primaries, past elections, polls, forecasts, and predictions.
-  - `projected`, `declared`, and `conceded` require explicit language: a named outlet projected the race, an official declared a winner, or a candidate conceded. A claim that a candidate "leads" or "is ahead" in returned votes is `leading`. A race described as too close to call is `too_close`. A race reported as undecided is `uncalled`.
-  - `winner_name`: the candidate the claim is about: the winner, or for `leading` the candidate ahead. Null for `too_close` and `uncalled`.
+- `race_calls`: claims the article reports about who won or leads a November 3, 2026 general election contest for US Senate, US House, governor, or another statewide office. Most articles have none. Report each claim wherever it appears, even one sentence in an article about something else.
+  - Skip state legislative, county, city, and other local contests, and ballot measures.
+  - Skip primaries, past elections, polls, forecasts, ratings, predictions, and fundraising. Skip a result for part of a contest, such as one county. Skip winning a debate. An earlier win mentioned as background is not a claim.
+  - Skip what a candidate, campaign, or ally says about their own result, such as declaring themselves the winner, claiming victory, or saying they won. Skip a claim the article reports as false or unverified. Report the contest only if the article also reports a call by an outlet or official, a concession, or counted votes.
+  - `status`:
+    - `projected`: a news organization projects or calls the contest, or the article itself states as fact that a candidate won the contest, in any wording, even when it cites partial or unofficial returns.
+    - `declared`: an election official or board declares or certifies a winner.
+    - `conceded`: a candidate concedes the contest.
+    - `leading`: the article reports a candidate ahead in votes counted so far, however early the count, and does not say who won. A lead in a poll, in money, or in anything else is not `leading`.
+    - `too_close`: the contest is reported as too close to call.
+    - `uncalled`: the contest is reported as undecided.
+  - `winner_name`: the candidate the claim is about: the winner, or for `leading` the candidate ahead. For `conceded`, this is the opponent who won, not the candidate who conceded. Null for `too_close` and `uncalled`.
   - `called_by`: who made the call as stated in the text, such as AP, NBC, CNN, Fox, DDHQ, ABC, CBS, or NYT; null when not stated.
   - `claimed_at_text`: when the call was made, as worded in the text; otherwise null.
-  - `evidence`: a sentence copied verbatim from the text that makes the claim.
+  - `evidence`: a sentence copied verbatim from the title or text that makes the claim, in the article's language.
 - `topics_refined`: choose only from this list: {topics}
 
 Example. Input:

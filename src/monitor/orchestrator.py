@@ -66,7 +66,12 @@ class Database:
 
 
 class Stage:
-    """One parser, its queues, and its workers."""
+    """One parser, its queues, and its workers.
+
+    A parser with a `partition` method runs one item per partition at a time.
+    An item whose partition is busy is set aside until that partition is free,
+    so it holds no worker and items of other partitions go ahead of it.
+    """
 
     def __init__(
         self,
@@ -92,6 +97,11 @@ class Stage:
         self.next_stages: list[Stage] = []
         self.live: asyncio.Queue[Item] = asyncio.Queue()
         self.backlog: deque[Item] = deque()
+        self.partition: Callable[[Item], str] | None = getattr(
+            parser, "partition", None
+        )
+        self.busy: set[str] = set()
+        self.parked: dict[str, list[Item]] = {}
         self.tracked: set[str] = set()
         self.attempts: dict[str, int] = {}
         self.paused = False
@@ -102,7 +112,8 @@ class Stage:
 
     @property
     def depth(self) -> int:
-        return self.live.qsize() + len(self.backlog)
+        parked = sum(len(items) for items in self.parked.values())
+        return self.live.qsize() + len(self.backlog) + parked
 
     def then(self, *stages: Stage) -> Stage:
         self.next_stages.extend(stages)
@@ -123,6 +134,27 @@ class Stage:
             return self.backlog.popleft()
         return None
 
+    def _claim(self, item: Item) -> bool:
+        """Take an item, or set it aside while its partition is busy."""
+        if self.partition is None:
+            return True
+        key = self.partition(item)
+        if key in self.busy:
+            self.parked.setdefault(key, []).append(item)
+            return False
+        self.busy.add(key)
+        return True
+
+    def _release(self, batch: list[Item]) -> None:
+        """Free these items' partitions and requeue what was set aside."""
+        if self.partition is None:
+            return
+        for item in batch:
+            key = self.partition(item)
+            self.busy.discard(key)
+            for waiting in self.parked.pop(key, []):
+                self._requeue(waiting)
+
     async def _next_batch(self) -> list[Item]:
         batch: list[Item] = []
         while not batch:
@@ -130,28 +162,26 @@ class Stage:
                 await asyncio.sleep(1.0)
                 continue
             item = self._pop_nowait()
-            if item is not None:
+            if item is None:
+                try:
+                    item = await asyncio.wait_for(self.live.get(), 0.5)
+                except TimeoutError:
+                    continue
+            if self._claim(item):
                 batch.append(item)
-                break
-            try:
-                batch.append(await asyncio.wait_for(self.live.get(), 0.5))
-            except TimeoutError:
-                continue
         deadline = time.monotonic() + self.linger_seconds
         while len(batch) < self.parser.batch_size:
             item = self._pop_nowait()
-            if item is not None:
+            if item is None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    item = await asyncio.wait_for(self.live.get(), remaining)
+                except TimeoutError:
+                    break
+            if self._claim(item):
                 batch.append(item)
-                continue
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            try:
-                batch.append(
-                    await asyncio.wait_for(self.live.get(), remaining)
-                )
-            except TimeoutError:
-                break
         return batch
 
     def _record_runs(self, batch: list[Item], output: ParserOutput) -> None:
@@ -272,6 +302,8 @@ class Stage:
                 self._release_later([item.item_id for item in batch])
                 if not batch:
                     await asyncio.sleep(IDLE_AFTER_FAILURE_SECONDS)
+            finally:
+                self._release(batch)
 
     async def feeder(self) -> None:
         """Pull work the lake says is owed, behind live items."""
@@ -318,9 +350,11 @@ class Stage:
 
     def oldest_live_age(self) -> float:
         """Seconds the oldest waiting live item has been in the system."""
+        queued = list(self.live._queue)  # type: ignore[attr-defined]
+        parked = [item for items in self.parked.values() for item in items]
         waiting = [
             item.first_seen_at.timestamp()
-            for item in list(self.live._queue)  # type: ignore[attr-defined]
+            for item in queued + parked
             if item.first_seen_at and not item.backfill
         ]
         return time.time() - min(waiting) if waiting else 0.0

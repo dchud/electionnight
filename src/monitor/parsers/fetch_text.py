@@ -22,7 +22,7 @@ from monitor.ingest.download import (
     build_client,
     download,
 )
-from monitor.ingest.feeds import canonicalize_url
+from monitor.ingest.feeds import canonical_or_none
 from monitor.ingest.network import NetworkGate
 from monitor.ingest.sources import Source
 from monitor.lake import utcnow
@@ -88,7 +88,7 @@ def canonical_from_html(page: str | bytes) -> str | None:
     if isinstance(page, bytes):
         page = page[:200_000].decode("latin-1")
     match = CANONICAL_RE.search(page[:200_000])
-    return canonicalize_url(match.group(1)) if match else None
+    return canonical_or_none(match.group(1)) if match else None
 
 
 def page_from(response: httpx.Response) -> str | bytes:
@@ -158,6 +158,14 @@ class FetchTextParser:
             self.version,
             RELEVANT_SQL.format(threshold=threshold),
         )
+
+    @staticmethod
+    def partition(item: Item) -> str:
+        """The item's domain. A stage runs one item per domain at a time."""
+        try:
+            return urlsplit(item.url).hostname or ""
+        except ValueError:
+            return ""
 
     async def _pace(self, domain: str) -> None:
         """Hold the domain's lock until its next request may go out."""
@@ -265,7 +273,7 @@ class FetchTextParser:
         if not self.guard.full_text_allowed():
             output.mark(item.item_id, "skipped", "disk guard")
             return
-        domain = urlsplit(item.url).hostname or ""
+        domain = self.partition(item)
         while True:
             await self.gate.wait_online()
             try:

@@ -87,15 +87,17 @@ do not add outside knowledge." For each entity, tone is how the article
 portrays it, from -2 to +2: "This is about the portrayal, not whether the news
 is good for them." A tone needs a quote of 3 to 25 words copied verbatim from
 the title, summary, or text, with the entity's name in the quote or within 200
-characters of it. A tone whose quote fails this is discarded. A race call of
-`projected`, `declared`, or `conceded` needs evidence that uses language for
-that status and names the winner, and is not negated, conditional, about a
-past election, or about a primary. A `leading` claim needs language about
-counted votes, not polls. Every race call from an item published before polls
-closed in that state is discarded, and before the first close nationally when
-the state is unknown. A caller's name stays only if the article names that
-caller. Rejecting a true claim costs less than publishing a false one, so these
-rules also drop some true claims.
+characters of it. A tone whose quote fails this is discarded. A race call
+counts only if its evidence is verbatim in the article and the article names
+the candidate. A name in one script is not compared with text in another. A
+contest the model itself labels a primary is discarded. The model decides what
+the sentence means: whether it reports a call, a concession, or counted votes
+in this election, and whether the contest is for US Senate, US House, governor,
+or another statewide office. Every race call from an item published before
+polls closed in that state is discarded, and before the first close nationally
+when the state is unknown. A caller's name stays only if the article names that
+caller. `tests/fixtures/race_claims.jsonl` measures the model on true and false
+claims.
 
 **Storyline labels.** The label is at most 8 words: "Name the event or subject,
 not its significance." The summary is at most 2 sentences stating what the
@@ -162,11 +164,16 @@ items. Poll timing makes this accurate to about 3 minutes at best.
 
 **Race calls in the news.** Grouped by race and named candidate, with the
 number of distinct outlets, their names, the earliest report, and who the
-article says made the call. A caller's name comes from article text, so the
-reporting outlets appear beside it. These are never added into a seat count.
+article says made the call. Once a race has a final claim of `projected`,
+`declared`, or `conceded`, its leads and too-close reports drop out, so each
+figure on a row describes the claims it shows. Final claims list first, then
+the newest. The card shows 30 rows and says how many others exist. A caller's
+name comes from article text, so the reporting outlets appear beside it. These
+are never added into a seat count.
 
-**Copies.** Near-duplicates form a group with one canonical member. Metrics
-count canonical members unless the Unique control says otherwise. Outlet-level
+**Copies.** Near-duplicates form a group with one canonical member. A copy
+belongs to the storyline of its group's canonical member. Metrics count
+canonical members unless the Unique control says otherwise. Outlet-level
 metrics, such as coverage by lean and the outlet lists, count all copies,
 because republishing is that outlet's coverage choice.
 
@@ -235,6 +242,20 @@ published time, so a gap does not appear as one spike on return. The article
 view shows the true first-seen time and says when and why an item was placed
 this way. `gold.*` bins use `first_seen_at` unchanged, so they can differ from
 dashboard counts for those items.
+
+**Race calls.** The specification asks for explicit language such as
+"projected", "declared the winner", or "conceded". A sentence stating as fact
+that a candidate won also counts, in any wording, because news copy often
+states a result without naming who called it. Such a row shows its caller as
+unspecified. The code does not judge a sentence's meaning: rules that did so
+kept 6 of 26 true claims in a test. On 50 invented articles written without
+sight of the prompt, over three runs, the model found 24 of 26 true claims and
+avoided 22 or 23 of 24 false ones. On 400 real articles that use words such as
+won, leads, or conceded, from before any result existed, it reported one false
+claim, a primary, and the rule on a contest's label rejects that claim. A claim
+placed in a long, unrelated article is missed more often, mostly a lead or a
+too-close report. `tests/fixtures/race_claims.jsonl` holds the invented
+articles.
 
 **Tone.** The specification shrinks a mean toward 0 with 5 pseudo-observations
 and gives it a 95% interval from the standard error. An interval around the

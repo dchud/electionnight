@@ -59,6 +59,11 @@ CHANGED_IDS = """
     UNION SELECT item_id FROM lake.nlp.dup_groups WHERE created_at >= $since
     UNION SELECT item_id FROM lake.nlp.storyline_assign
         WHERE created_at >= $since
+    UNION SELECT item_id FROM lake.nlp.dup_groups
+        WHERE dup_group_id IN (
+            SELECT d.dup_group_id FROM lake.nlp.dup_groups d
+            JOIN lake.nlp.storyline_assign s USING (item_id)
+            WHERE s.created_at >= $since)
     UNION SELECT item_id FROM lake.nlp.extract_b WHERE created_at >= $since
 """
 
@@ -85,6 +90,14 @@ FACTS_SELECT = """
         WHERE item_id IN (SELECT item_id FROM changed)
         QUALIFY row_number() OVER (
             PARTITION BY item_id ORDER BY assigned_at DESC) = 1),
+    group_story AS (
+        SELECT d.dup_group_id, s.storyline_id
+        FROM lake.nlp.dup_groups d
+        JOIN lake.nlp.storyline_assign s USING (item_id)
+        WHERE d.is_canonical
+          AND d.dup_group_id IN (SELECT dup_group_id FROM latest_dup)
+        QUALIFY row_number() OVER (
+            PARTITION BY d.dup_group_id ORDER BY s.assigned_at DESC) = 1),
     latest_extract AS (
         SELECT item_id, article_tone, raw FROM lake.nlp.extract_b
         WHERE item_id IN (SELECT item_id FROM changed)
@@ -126,7 +139,7 @@ FACTS_SELECT = """
            c.method,
            coalesce(d.is_canonical, TRUE) AS canonical,
            d.dup_group_id,
-           s.storyline_id,
+           coalesce(s.storyline_id, g.storyline_id) AS storyline_id,
            s.similarity,
            x.article_tone AS tone,
            coalesce(
@@ -142,6 +155,7 @@ FACTS_SELECT = """
     LEFT JOIN latest_class c USING (item_id)
     LEFT JOIN latest_dup d USING (item_id)
     LEFT JOIN latest_story s USING (item_id)
+    LEFT JOIN group_story g ON g.dup_group_id = d.dup_group_id
     LEFT JOIN latest_extract x USING (item_id)
     WHERE i.item_id IN (SELECT item_id FROM changed)
 """

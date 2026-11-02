@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from monitor.parsers.geo import Gazetteer, normalize_cd
 from monitor.ref import races as races_module
 from monitor.ref.races import (
     ATTORNEY_GENERAL_PAGE,
@@ -21,6 +22,7 @@ from monitor.ref.races import (
     normalize_race_key,
     normalize_rating,
     normalize_state,
+    parse_district,
     parse_location,
     parse_roster,
     rater_date,
@@ -506,3 +508,50 @@ def test_normalize_race_key_rejects_what_is_not_clearly_the_race(args):
 )
 def test_normalize_race_key_keeps_clear_races(args, expected):
     assert normalize_race_key(*args) == expected
+
+
+@pytest.mark.parametrize(
+    ("state", "district", "code"),
+    [
+        ("AK", "AL", "AK-00"),
+        ("WY", "AL", "WY-00"),
+        ("VT", "al", "VT-00"),
+        ("AK", "At-Large", "AK-00"),
+        ("AK", "AK-AL", "AK-00"),
+        ("AL", "7", "AL-07"),
+        ("AL", "AL-7", "AL-07"),
+        ("AL", "Alabama's 7th", "AL-07"),
+    ],
+)
+def test_at_large_is_not_alabama_in_a_district_code(state, district, code):
+    assert normalize_cd(state, district) == code
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (("WY", "U.S. House", "AL"), "2026-WY-H00"),
+        (("AK", "U.S. House", "al"), "2026-AK-H00"),
+        (("VT", "House", "AL"), "2026-VT-H00"),
+        (("AL", "U.S. House", "7"), "2026-AL-H07"),
+        (("AL", "U.S. House", "AL-7"), "2026-AL-H07"),
+        (("AL", "U.S. House", "Alabama's 7th"), "2026-AL-H07"),
+        # Alabama has no at-large seat.
+        (("AL", "U.S. House", "AL"), None),
+    ],
+)
+def test_at_large_is_not_alabama_in_a_race_key(args, expected):
+    assert normalize_race_key(*args) == expected
+
+
+def test_at_large_names_no_state():
+    assert parse_district("AL") == (None, "AL")
+    assert parse_district("AL-7") == ("AL", "07")
+
+
+def test_a_district_place_named_at_large_stays_in_its_state():
+    gazetteer = Gazetteer([], [])
+    match = gazetteer.resolve("AL", "cd", "WY", None, [], None)
+    assert match is not None
+    assert match.state_usps == "WY"
+    assert match.cd_code == "WY-00"
