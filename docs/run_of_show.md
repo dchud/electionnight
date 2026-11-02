@@ -29,10 +29,15 @@ change anything; their watchlist buttons have no effect.
 
 ## Moving to the classroom
 
+The trip falls between 5:30 and 7:30 pm, with the laptop asleep in a closed bag
+and no connection. Polls close at 6:00 in IN and KY, at 7:00 in FL, GA, NH, SC,
+VA, and VT, and at 7:30 in NC, OH, and WV. The 8:00 and 9:00 closings come
+after arrival.
+
 Closing the lid pauses the pipeline and the dashboard. Nothing needs stopping
 or restarting, and nothing already collected is at risk.
 
-1. Close the lid and travel.
+1. Unplug, close the lid, and travel.
 2. Open the lid, plug in, and join the network. Finish any Wi-Fi login page in
    a browser.
 3. Watch the strip. It reads "Offline since" until the network is confirmed,
@@ -61,6 +66,10 @@ gives the number cut.
 With no network at all, the dashboard still runs from local data, including
 replay. A phone hotspot works; collection reads about 650 MB per hour before
 HTTP compression.
+
+Aim to be connected by 7:45 pm. Feeds poll within 35 seconds of the network
+returning, and the backlog should clear within about 15 minutes, ahead of the
+8:00 closings.
 
 ## During class
 
