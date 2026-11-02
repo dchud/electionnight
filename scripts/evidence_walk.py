@@ -20,7 +20,6 @@ CHARTS = (
     ("Entity Rank", "bump"),
     ("Tone by Lean", "tone_by_lean"),
     ("Coverage by Lean", "coverage_matrix"),
-    ("Global Press", "global_press"),
 )
 
 
@@ -132,6 +131,24 @@ def main() -> None:
             print("skip Brief footnote: no brief yet")
         for name, chart in CHARTS:
             report(name, click_mark(page, chart))
+        # A language's share is a thin spike, so its center can miss it.
+        press = page.locator('[data-chart="global_press"] svg').first
+        press.scroll_into_view_if_needed()
+        box = press.bounding_box()
+        outcome = (False, "no click opened a drawer")
+        for column in range(4, 98, 3):
+            for row in range(4, 96, 4):
+                page.mouse.click(
+                    box["x"] + box["width"] * column / 100,
+                    box["y"] + box["height"] * row / 100,
+                )
+                page.wait_for_timeout(25)
+                if page.locator("#drawer").get_attribute("data-open") == "1":
+                    outcome = drawer_result(page)
+                    break
+            if outcome[0]:
+                break
+        report("Global Press", outcome)
         # Named storylines are thin bands; "Other" opens nothing, so scan.
         stream = page.locator('[data-chart="stream"] svg')
         stream.scroll_into_view_if_needed()
