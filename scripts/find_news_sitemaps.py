@@ -15,7 +15,7 @@ import asyncio
 import csv
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
@@ -23,6 +23,7 @@ from urllib.robotparser import RobotFileParser
 import httpx
 
 from monitor.ingest.feeds import (
+    ParsedFeed,
     main_language,
     parse_news_sitemap,
     same_site,
@@ -35,6 +36,7 @@ from monitor.settings import load_settings
 OUTPUT = Path("config/news_sitemaps.csv")
 SITEMAP_LINE = re.compile(r"(?im)^\s*sitemap:\s*(\S+)")
 CONCURRENCY = 16
+RECENT = timedelta(days=7)
 TIMEOUT_SECONDS = 12.0
 AGENT_TOKEN = "ElectionNightMonitor"
 
@@ -47,6 +49,18 @@ class Found:
     language: str
 
 
+def recent_entries(content: bytes) -> ParsedFeed:
+    """A sitemap's entries from the last week. An old one cannot help."""
+    since = datetime.now(UTC) - RECENT
+    feed = parse_news_sitemap(content)
+    feed.entries = [
+        entry
+        for entry in feed.entries
+        if entry.published_at is None or entry.published_at >= since
+    ]
+    return feed
+
+
 async def entries_in(client: httpx.AsyncClient, url: str) -> tuple[int, str]:
     """How many entries a sitemap holds, and the language of most of them."""
     response = await client.get(url)
@@ -54,12 +68,12 @@ async def entries_in(client: httpx.AsyncClient, url: str) -> tuple[int, str]:
         return 0, ""
     children = sitemap_children(response.content)
     if not children:
-        feed = parse_news_sitemap(response.content)
+        feed = recent_entries(response.content)
         return len(feed.entries), main_language(feed)
     listed = [child for child in children if same_site(url, child)]
     for child in listed[:MAX_SITEMAP_CHILDREN]:
         inner = await client.get(child)
-        feed = parse_news_sitemap(inner.content)
+        feed = recent_entries(inner.content)
         if feed.entries:
             return len(feed.entries), main_language(feed)
     return 0, ""
