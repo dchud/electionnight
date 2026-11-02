@@ -34,18 +34,6 @@ and no connection. Polls close at 6:00 in IN and KY, at 7:00 in FL, GA, NH, SC,
 VA, and VT, and at 7:30 in NC, OH, and WV. The 8:00 and 9:00 closings come
 after arrival.
 
-Before the trip, check that the Mac sleeps with its lid closed on battery. A
-Mac that stays awake in a closed bag can overheat. `caffeinate` holds it awake
-only on AC power, and Amphetamine must allow closed-display sleep. Unplug,
-close the lid for two minutes, open it, and run:
-
-```bash
-pmset -g log | rg -a ' Sleep ' | tail -2
-```
-
-The newest line must read `Entering Sleep state`. `Entering DarkWake state`
-means it stayed awake, so do not put it in the bag until that is fixed.
-
 Closing the lid pauses the pipeline and the dashboard. Nothing needs stopping
 or restarting, and nothing already collected is at risk.
 
