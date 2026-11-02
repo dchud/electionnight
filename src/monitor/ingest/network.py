@@ -79,6 +79,7 @@ class NetworkGate:
         self.offline_since: datetime | None = None
         self.offline_reason: str | None = None
         self.last_gap: dict[str, Any] | None = None
+        self.returns = 0
         self._resume = asyncio.Event()
         self._lock = asyncio.Lock()
         self._confirmed_at = -math.inf
@@ -101,10 +102,15 @@ class NetworkGate:
             age = time.monotonic() - self._confirmed_at
             if age < self.settings.poll.probe_cache_seconds:
                 return True
+            started = time.monotonic()
+            since = datetime.now(UTC)
             if await self.probe():
                 self._confirmed_at = time.monotonic()
                 return True
-            self._go_offline("network", datetime.now(UTC))
+            # The network was found during this probe, so its answer is old.
+            if self._confirmed_at > started:
+                return True
+            self._go_offline("network", since)
             return False
 
     async def wait_online(self) -> bool:
@@ -124,6 +130,12 @@ class NetworkGate:
         return True
 
     def _go_offline(self, reason: str, since: datetime) -> None:
+        """Hold collection from `since`. An outage's start only moves earlier.
+
+        A probe and the clock check can finish in either order.
+        """
+        if self.offline_since is not None and since >= self.offline_since:
+            return
         self.online.clear()
         self.offline_since = since
         self.offline_reason = reason
@@ -144,6 +156,7 @@ class NetworkGate:
             except Exception:
                 log.exception("gate_restore_failed", reason=gap["reason"])
         self.last_gap = gap
+        self.returns += 1
         self.offline_since = None
         self.offline_reason = None
         self._confirmed_at = time.monotonic()
@@ -166,13 +179,8 @@ class NetworkGate:
         slept = (now_wall - wall) - (now_mono - mono)
         if slept < self.settings.poll.sleep_gap_seconds:
             return
-        since = datetime.fromtimestamp(wall, UTC)
         log.info("system_slept", seconds=round(slept))
-        if self.is_online:
-            self._go_offline("sleep", since)
-        elif self.offline_since is None or since < self.offline_since:
-            self.offline_since = since
-            self.offline_reason = "sleep"
+        self._go_offline("sleep", datetime.fromtimestamp(wall, UTC))
 
     async def check_restored(self) -> None:
         """Probe while offline, no more often than the configured rate."""

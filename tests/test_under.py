@@ -720,7 +720,7 @@ def lake_state(settings):
     return rows, files
 
 
-def test_home_links_the_teaching_views_from_the_header_and_footer(client):
+def test_every_dashboard_page_links_to_the_teaching_views(client):
     html = client.get("/").text
     assert html.count('href="/under"') == 2
     assert html.rindex('href="/under"') > html.index('id="band-5"')

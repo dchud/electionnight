@@ -14,7 +14,7 @@ from monitor.maintenance import (
     backups_to_keep,
     parse_span,
     prune,
-    restore_backup,
+    restore_catalog,
     run_maintenance,
     thin_versions,
 )
@@ -162,7 +162,9 @@ def test_backup_restores_to_a_queryable_catalog(settings, tmp_path):
     restored_paths = Paths.under(tmp_path / "restored")
     restored_paths.catalog.parent.mkdir(parents=True)
     restored_paths.data = settings.paths.data
-    restore_backup(backup, restored_paths.catalog)
+    restored_paths.backups = backup.parent
+    report = restore_catalog(Settings(paths=restored_paths))
+    assert backup.name in report
     restored = connect(
         Settings(paths=restored_paths),
         read_only=True,

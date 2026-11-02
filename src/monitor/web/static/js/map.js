@@ -220,6 +220,7 @@
     let map = null;
     let running = null;
     let again = false;
+    let shownQs;
     const readoutSlot = document.getElementById("map-readout");
     const readout = makeReadout(readoutSlot, MAP_HINTS[metric]);
     const legend = document.createElement("div");
@@ -251,6 +252,16 @@
       }
       paint(data);
       Monitor.mapData = data;
+      shownQs = qs;
+      Monitor.staleNote(container, false);
+    }
+
+    /* A map that kept an earlier filter's data says so. */
+    function noteIfStale() {
+      const qs = document.body.dataset.qs;
+      if (shownQs !== undefined && shownQs !== qs) {
+        Monitor.staleNote(container, true);
+      }
     }
 
     /* A refresh asked for during another runs after it. */
@@ -266,6 +277,7 @@
             await refreshOnce();
           } catch (error) {
             console.warn("map refresh failed", error);
+            noteIfStale();
           }
         } while (again);
         if (map) map.svg.classed("map-painted", true);
@@ -363,7 +375,9 @@
     }
     Monitor.bus.addEventListener("refresh", refresh);
     Monitor.bus.addEventListener("theme", refresh);
-    Monitor.switchers.push(() => Monitor.dimWhile(container, refresh()));
+    Monitor.switchers.push(() =>
+      Monitor.dimWhile(container, refresh(), noteIfStale)
+    );
     refresh();
   }
 

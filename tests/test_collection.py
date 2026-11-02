@@ -25,6 +25,7 @@ from typer.testing import CliRunner
 
 import monitor.archive
 import monitor.maintenance
+from monitor import maintenance as maintenance_module
 from monitor.archive import ArchiveWriter
 from monitor.cli import app
 from monitor.control import (
@@ -661,8 +662,9 @@ def pipeline(settings):
 class CatchUpRecorder:
     def __init__(self):
         self.calls = []
+        self.catch_up_since = None
 
-    async def catch_up(self, since):
+    async def catch_up(self, since, after_first_polls=False):
         self.calls.append(since)
 
 
@@ -689,7 +691,9 @@ async def test_network_return_survives_a_failed_flush(pipeline, monkeypatch):
 
 async def test_a_failed_catch_up_is_logged(pipeline):
     class Failing:
-        async def catch_up(self, since):
+        catch_up_since = None
+
+        async def catch_up(self, since, after_first_polls=False):
             raise RuntimeError("catch-up bug")
 
     pipeline.poller = Failing()
@@ -969,6 +973,76 @@ def test_restore_uses_the_newest_backup_whose_files_all_exist(settings):
     assert damaged
     reader = connect(settings, read_only=True)
     assert read_all(reader) == 10000
+    reader.close()
+
+
+def test_a_failure_replacing_the_catalog_leaves_it_in_place(
+    settings, monkeypatch
+):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    write_parquet_rows(conn, writer, batches=1)
+    backup_catalog(settings)
+    conn.close()
+    before = settings.paths.catalog.read_bytes()
+    replace = Path.replace
+
+    def fails_on_the_catalog(self, target):
+        if Path(target).name == settings.paths.catalog.name:
+            raise OSError(28, "No space left on device")
+        return replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fails_on_the_catalog)
+    with pytest.raises(RestoreError, match="No space left"):
+        restore_catalog(settings)
+    assert settings.paths.catalog.read_bytes() == before
+    parent = settings.paths.catalog.parent
+    assert list(parent.glob("*.damaged*")) == []
+    assert list(parent.glob("*.restoring*")) == []
+
+
+def test_a_failure_while_unpacking_never_touches_the_catalog(
+    settings, monkeypatch
+):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    write_parquet_rows(conn, writer, batches=1)
+    backup_catalog(settings)
+    conn.close()
+    before = settings.paths.catalog.read_bytes()
+
+    def no_room(path, target):
+        target.write_bytes(b"partial")
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("monitor.maintenance._decompress", no_room)
+    with pytest.raises(RestoreError, match="No space left"):
+        restore_catalog(settings)
+    assert settings.paths.catalog.read_bytes() == before
+    parent = settings.paths.catalog.parent
+    assert list(parent.glob("*.damaged*")) == []
+    assert list(parent.glob("*.restoring*")) == []
+
+
+def test_restore_installs_the_file_it_checked(settings, monkeypatch):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    write_parquet_rows(conn, writer, batches=1)
+    backup_catalog(settings)
+    conn.close()
+    real = maintenance_module._decompress
+    calls = []
+
+    def counted(path, target):
+        calls.append(target.name)
+        return real(path, target)
+
+    monkeypatch.setattr("monitor.maintenance._decompress", counted)
+    restore_catalog(settings)
+    assert calls == ["catalog.sqlite.restoring"]
+    assert list(settings.paths.catalog.parent.glob("*.restoring*")) == []
+    reader = connect(settings, read_only=True)
+    assert read_all(reader) > 0
     reader.close()
 
 

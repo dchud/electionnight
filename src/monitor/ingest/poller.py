@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import random
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -22,13 +22,15 @@ from monitor.ingest.feeds import (
     SITEMAP_MAX_BYTES,
     FeedEntry,
     ParsedFeed,
+    main_language,
     parse_feed,
     parse_news_sitemap,
+    published_since,
     same_site,
     sitemap_children,
 )
 from monitor.ingest.network import NetworkGate
-from monitor.ingest.sources import Source
+from monitor.ingest.sources import Source, outlet_for_language
 from monitor.lake import BatchWriter, hash_id
 from monitor.logs import get
 from monitor.settings import Settings
@@ -37,7 +39,16 @@ log = get(__name__)
 
 MAX_BACKOFF_MULTIPLIER = 8
 MAX_SITEMAP_CHILDREN = 3
-MAX_ENTRIES_PER_POLL = 200
+MAX_FIRST_POLL_SPREAD_SECONDS = 60
+MAX_NEW_PER_POLL = 200
+# A sitemap is read only after a gap, so nothing later reads what it cuts.
+MAX_NEW_PER_SITEMAP = 500
+# Passes of one catch-up in which a sitemap may fail with the network up.
+MAX_SITEMAP_FAILURES = 3
+# What reading one listed sitemap came to.
+ANSWERED = "answered"
+NO_NETWORK = "no network"
+FAILED = "failed"
 
 
 @dataclass
@@ -53,10 +64,26 @@ class FeedState:
     last_success_at: datetime | None = None
     last_error: str | None = None
     n_new_total: int = 0
+    # From the latest poll: the status, whether the network lost it, and how
+    # many new stories the cap cut.
+    last_status: int | None = None
+    lost_to_network: bool = False
+    n_cut: int = 0
 
     @property
     def is_open(self) -> bool:
         return self.failures > 0 and monotonic() < self.circuit_open_until
+
+
+@dataclass
+class SitemapRead:
+    """One read of one listed sitemap and any files it lists."""
+
+    outcome: str = ANSWERED
+    files: int = 0
+    new: int = 0
+    cut: int = 0
+    error: str | None = None
 
 
 def item_row(
@@ -152,6 +179,7 @@ class Poller:
         self.catch_up_since: datetime | None = None
         self.last_catch_up: dict[str, Any] | None = None
         self._catch_up_lock = asyncio.Lock()
+        self._catch_up_asked = 0
         self.archive = archive
         self.sightings = sightings if sightings is not None else {}
         self.writer = writer
@@ -172,6 +200,10 @@ class Poller:
             for url in source.feed_urls:
                 etag, modified = validators.get(url, (None, None))
                 self.feeds.append(FeedState(source, url, etag, modified))
+        self._unpolled = len(self.feeds)
+        self._first_polls_done = asyncio.Event()
+        if not self.feeds:
+            self._first_polls_done.set()
 
     async def poll_once(
         self,
@@ -179,12 +211,21 @@ class Poller:
         parse: Callable[[bytes], ParsedFeed] = parse_feed,
         since: datetime | None = None,
         max_bytes: int = FEED_MAX_BYTES,
+        max_new: int = MAX_NEW_PER_POLL,
+        response: httpx.Response | None = None,
+        shared_by: list[Source] | None = None,
     ) -> int:
         """Poll one URL. Returns new items. `since` drops older entries.
 
-        One poll takes at most `MAX_ENTRIES_PER_POLL` entries that write a row.
-        A feed's remaining entries are read on its next polls.
+        One poll takes at most `max_new` new stories. A poll that cuts any
+        stores no validators, so a feed's next poll reads the rest.
+
+        `response` is an answer already fetched. `shared_by` lists the outlets
+        that share this URL, and the entries go to the one in their language.
         """
+        state.last_status = None
+        state.lost_to_network = False
+        state.n_cut = 0
         started = datetime.now(UTC)
         clock = monotonic()
         headers: dict[str, str] = {}
@@ -200,31 +241,42 @@ class Poller:
         new_rows: list[dict[str, Any]] = []
         details: dict[str, Any] | None = None
         try:
-            async with self.domain_limits[domain]:
-                response = await download(
-                    self.client,
-                    state.url,
-                    max_bytes,
-                    self.settings.poll.download_deadline_seconds,
-                    headers=headers,
-                )
+            if response is None:
+                async with self.domain_limits[domain]:
+                    response = await download(
+                        self.client,
+                        state.url,
+                        max_bytes,
+                        self.settings.poll.download_deadline_seconds,
+                        headers=headers,
+                        network_up=self.gate.reachable,
+                    )
             status = response.status_code
+            state.last_status = status
             if status == 200:
                 feed = await asyncio.to_thread(parse, response.content)
                 # A Wi-Fi login page answers 200 with no entries.
                 if not feed.entries and not await self.gate.reachable():
+                    state.lost_to_network = True
                     return 0
-                state.etag = response.headers.get("etag")
-                state.last_modified = response.headers.get("last-modified")
+                if shared_by is not None and feed.entries:
+                    language = main_language(feed)
+                    outlet = outlet_for_language(shared_by, language)
+                    if outlet is None:
+                        log.warning(
+                            "sitemap_no_outlet",
+                            url=state.url,
+                            language=language,
+                            outlets=[s.source_id for s in shared_by],
+                        )
+                        return 0
+                    state.source = outlet
                 n_entries = len(feed.entries)
                 now = datetime.now(UTC)
                 sighted = []
                 taken = 0
                 for entry in feed.entries:
-                    if since is not None and (
-                        entry.published_at is None
-                        or entry.published_at < since
-                    ):
+                    if since is not None and not published_since(entry, since):
                         continue
                     row = item_row(state.source, state.url, entry, now)
                     item_id = row["item_id"]
@@ -234,15 +286,9 @@ class Poller:
                     unseen = item_id not in self.seen
                     if not changed and not unseen:
                         continue
-                    if taken == MAX_ENTRIES_PER_POLL:
-                        log.warning(
-                            "feed_entries_capped",
-                            source_id=state.source.source_id,
-                            feed_url=state.url,
-                            n_entries=n_entries,
-                        )
-                        break
-                    taken += 1
+                    if unseen and taken == max_new:
+                        state.n_cut += 1
+                        continue
                     if changed:
                         self.sightings[key] = title_hash
                         sighted.append(
@@ -255,8 +301,21 @@ class Poller:
                             }
                         )
                     if unseen:
+                        taken += 1
                         self.seen.add(item_id)
                         new_rows.append(row)
+                if state.n_cut:
+                    log.warning(
+                        "feed_entries_capped",
+                        source_id=state.source.source_id,
+                        feed_url=state.url,
+                        n_entries=n_entries,
+                        n_cut=state.n_cut,
+                        limit=max_new,
+                    )
+                else:
+                    state.etag = response.headers.get("etag")
+                    state.last_modified = response.headers.get("last-modified")
                 self.writer.add("raw.sightings", sighted)
                 index_row = None
                 unchanged = self.archive.unchanged if self.archive else 0
@@ -286,6 +345,7 @@ class Poller:
                 error = f"HTTP {status}"
         except httpx.TransportError as exc:
             if not await self.gate.reachable():
+                state.lost_to_network = True
                 return 0
             error = type(exc).__name__
         except Exception as exc:
@@ -321,93 +381,225 @@ class Poller:
                 self.on_new_items(new_rows)
         return n_new
 
+    async def _read_sitemap_file(
+        self,
+        read: SitemapRead,
+        sources: list[Source],
+        url: str,
+        since: datetime,
+        response: httpx.Response | None = None,
+    ) -> None:
+        state = FeedState(sources[0], url)
+        read.new += await self.poll_once(
+            state,
+            parse_news_sitemap,
+            since,
+            SITEMAP_MAX_BYTES,
+            MAX_NEW_PER_SITEMAP,
+            response=response,
+            shared_by=sources if len(sources) > 1 else None,
+        )
+        read.cut += state.n_cut
+        if state.lost_to_network:
+            read.outcome = NO_NETWORK
+        elif state.last_status is None:
+            read.outcome = FAILED
+            read.error = state.last_error
+        else:
+            read.files += 1
+
     async def _read_sitemap(
-        self, source: Source, url: str, since: datetime
-    ) -> tuple[int, int]:
-        """Read one outlet's news sitemap. Returns (files read, new items)."""
+        self, sources: list[Source], url: str, since: datetime
+    ) -> SitemapRead:
+        """Read one listed sitemap once, however many outlets list it."""
+        read = SitemapRead()
         if not self.gate.is_online:
-            return 0, 0
+            read.outcome = NO_NETWORK
+            return read
         try:
             response = await download(
                 self.client,
                 url,
                 SITEMAP_MAX_BYTES,
                 self.settings.poll.download_deadline_seconds,
+                network_up=self.gate.reachable,
             )
-        except httpx.HTTPError:
-            return 0, 0
-        urls = [url]
+        except httpx.TransportError as error:
+            reachable = await self.gate.reachable()
+            read.outcome = FAILED if reachable else NO_NETWORK
+            read.error = type(error).__name__
+            return read
+        except httpx.HTTPError as error:
+            # An answer that cannot be used. Asking again gets the same one.
+            log.warning(
+                "sitemap_unusable", url=url, error=type(error).__name__
+            )
+            read.error = type(error).__name__
+            return read
+        children: list[str] = []
         if response.status_code == 200:
             children = await asyncio.to_thread(
                 sitemap_children, response.content
             )
-            if children:
-                urls = [child for child in children if same_site(url, child)][
-                    :MAX_SITEMAP_CHILDREN
-                ]
-        new = 0
-        for child in urls:
-            new += await self.poll_once(
-                FeedState(source, child),
-                parse_news_sitemap,
-                since,
-                SITEMAP_MAX_BYTES,
+        if not children:
+            await self._read_sitemap_file(
+                read, sources, url, since, response=response
             )
-        return len(urls), new
+            return read
+        listed = [child for child in children if same_site(url, child)]
+        for child in listed[:MAX_SITEMAP_CHILDREN]:
+            await self._read_sitemap_file(read, sources, child, since)
+            if read.outcome != ANSWERED:
+                break
+        return read
 
-    async def catch_up(self, since: datetime) -> None:
-        """Read further back than feeds reach, once, after a collection gap.
+    def _listed_sitemaps(self) -> dict[str, list[Source]]:
+        """Each sitemap URL, with the enabled outlets that list it."""
+        enabled = {feed.source.source_id: feed.source for feed in self.feeds}
+        listed: dict[str, list[Source]] = {}
+        for source_id, url in self.news_sitemaps.items():
+            if source_id in enabled:
+                listed.setdefault(url, []).append(enabled[source_id])
+        return listed
 
-        A feed lists only its newest stories. A news sitemap lists about two
-        days of them. If the network drops again, the next return starts over
-        from the earliest gap not yet caught up.
-        """
+    async def _read_listed(
+        self, owed: dict[str, list[Source]], since: datetime
+    ) -> dict[str, SitemapRead]:
+        # An outage is noticed after it starts, and a slow feed was last read
+        # earlier still. Stories already seen are not read twice.
+        slack = 2 * max(self.settings.poll.tier_seconds)
+        read_from = since - timedelta(seconds=slack)
+        limit = asyncio.Semaphore(self.settings.poll.catch_up_concurrency)
+
+        async def read_one(url: str, sources: list[Source]) -> SitemapRead:
+            async with limit:
+                return await self._read_sitemap(sources, url, read_from)
+
+        urls = list(owed)
+        results = await asyncio.gather(
+            *(read_one(url, owed[url]) for url in urls),
+            return_exceptions=True,
+        )
+        reads: dict[str, SitemapRead] = {}
+        for url, result in zip(urls, results, strict=True):
+            if isinstance(result, SitemapRead):
+                reads[url] = result
+            else:
+                log.warning(
+                    "catch_up_failed", url=url, error=repr(result)[:200]
+                )
+                reads[url] = SitemapRead(FAILED, error=type(result).__name__)
+        return reads
+
+    async def _wait_for_first_polls(self) -> None:
+        """Wait for every feed's first poll, for as long as those can take."""
+        spread = min(
+            max(self.settings.poll.tier_seconds), MAX_FIRST_POLL_SPREAD_SECONDS
+        )
+        limit = spread + self.settings.poll.download_deadline_seconds
+        try:
+            async with asyncio.timeout(limit):
+                await self._first_polls_done.wait()
+        except TimeoutError:
+            log.info("catch_up_before_first_polls", unpolled=self._unpolled)
+
+    async def _read_until_finished(self) -> None:
+        listed = self._listed_sitemaps()
+        owed = dict(listed)
+        failures: Counter[str] = Counter()
+        gave_up: list[str] = []
+        answered: set[str] = set()
+        earliest = self.catch_up_since
+        new_items = 0
+        cut = 0
+        stagger = self.settings.poll.resume_stagger_seconds
+        while owed:
+            await self.gate.wait_online()
+            # Feeds go first, so a story keeps its feed's summary.
+            await asyncio.sleep(stagger)
+            started = datetime.now(UTC)
+            since = self.catch_up_since or started
+            earliest = min(earliest or since, since)
+            returns = self.gate.returns
+            asked = self._catch_up_asked
+            reads = await self._read_listed(owed, since)
+            still_owed: dict[str, list[Source]] = {}
+            for url, read in reads.items():
+                new_items += read.new
+                cut += read.cut
+                if read.outcome == ANSWERED:
+                    if read.files:
+                        answered.add(url)
+                    continue
+                if read.outcome == FAILED:
+                    failures[url] += 1
+                    if failures[url] >= MAX_SITEMAP_FAILURES:
+                        gave_up.append(url)
+                        log.warning(
+                            "catch_up_gave_up",
+                            url=url,
+                            failures=failures[url],
+                            error=read.error,
+                        )
+                        continue
+                still_owed[url] = owed[url]
+            owed = still_owed
+            if (
+                self.gate.returns != returns
+                or self._catch_up_asked != asked
+                or not self.gate.is_online
+            ):
+                log.info("catch_up_interrupted", since=since.isoformat())
+                # A sitemap read before the drop lists nothing from during it.
+                if not owed and self.catch_up_since == since:
+                    self.catch_up_since = started
+                owed = {
+                    url: outlets
+                    for url, outlets in listed.items()
+                    if url not in gave_up
+                }
+        self.catch_up_since = None
+        self.last_catch_up = {
+            "since": earliest,
+            "finished_at": datetime.now(UTC),
+            "outlets": len(answered),
+            "new_items": new_items,
+            "cut": cut,
+            "gave_up": gave_up,
+        }
+        log.info("catch_up_done", **self.last_catch_up)
+
+    def owe_catch_up(self, since: datetime) -> None:
+        """Note a gap to read back over. A running catch-up reads it too."""
+        self._catch_up_asked += 1
         if self.catch_up_since is None or since < self.catch_up_since:
             self.catch_up_since = since
+
+    async def catch_up(
+        self, since: datetime, after_first_polls: bool = False
+    ) -> None:
+        """Read further back than feeds reach, after a collection gap.
+
+        A feed lists only its newest stories. A news sitemap lists about two
+        days of them. This returns when every listed sitemap has answered or
+        has been given up on after `MAX_SITEMAP_FAILURES` passes in which it
+        failed with the network up.
+
+        It waits out a network drop. A drop that returns during a pass causes
+        another pass, because a sitemap read before the drop lists nothing
+        from during it. That pass starts from the earliest time not yet read.
+        Only one run goes at a time, and a second call adds to the running one.
+
+        After a restart, `after_first_polls` holds the first pass until every
+        feed has been polled once, so a story keeps its feed's summary.
+        """
+        self.owe_catch_up(since)
+        if self._catch_up_lock.locked():
+            return
         async with self._catch_up_lock:
-            since = self.catch_up_since
-            if since is None:
-                return
-            # Feeds go first, so a story keeps its feed's summary.
-            await asyncio.sleep(self.settings.poll.resume_stagger_seconds)
-            # An outage is noticed after it starts, and a slow feed was last
-            # read earlier still. Stories already seen are not read twice.
-            slack = 2 * max(self.settings.poll.tier_seconds)
-            read_from = since - timedelta(seconds=slack)
-            limit = asyncio.Semaphore(self.settings.poll.catch_up_concurrency)
-            sources = {
-                feed.source.source_id: feed.source for feed in self.feeds
-            }
-
-            async def read(source_id: str, url: str) -> tuple[int, int]:
-                async with limit:
-                    return await self._read_sitemap(
-                        sources[source_id], url, read_from
-                    )
-
-            results = await asyncio.gather(
-                *(
-                    read(source_id, url)
-                    for source_id, url in self.news_sitemaps.items()
-                    if source_id in sources
-                ),
-                return_exceptions=True,
-            )
-            done = [r for r in results if isinstance(r, tuple)]
-            for failure in results:
-                if isinstance(failure, Exception):
-                    log.warning("catch_up_failed", error=repr(failure)[:200])
-            if not self.gate.is_online:
-                log.info("catch_up_interrupted", since=since.isoformat())
-                return
-            self.catch_up_since = None
-            self.last_catch_up = {
-                "since": since,
-                "finished_at": datetime.now(UTC),
-                "outlets": sum(1 for files, _ in done if files),
-                "new_items": sum(new for _, new in done),
-            }
-            log.info("catch_up_done", **self.last_catch_up)
+            if after_first_polls:
+                await self._wait_for_first_polls()
+            await self._read_until_finished()
 
     def _record(
         self,
@@ -442,8 +634,10 @@ class Poller:
         # Spread the first poll across the tier so startup is not a burst.
         tiers = self.settings.poll.tier_seconds
         tier = tiers[min(state.source.poll_tier, len(tiers)) - 1]
-        await asyncio.sleep(random.uniform(0, min(tier, 60)))
+        spread = min(tier, MAX_FIRST_POLL_SPREAD_SECONDS)
+        await asyncio.sleep(random.uniform(0, spread))
         stagger = self.settings.poll.resume_stagger_seconds
+        first_poll = True
         while True:
             # One feed's failure must not stop this feed or any other.
             try:
@@ -459,6 +653,11 @@ class Poller:
                     feed_url=state.url,
                 )
                 self._record(state, None, type(error).__name__, 0)
+            if first_poll:
+                first_poll = False
+                self._unpolled -= 1
+                if not self._unpolled:
+                    self._first_polls_done.set()
             delay = next_delay(self.settings, state)
             if await self.gate.sleep_or_resume(delay):
                 await asyncio.sleep(random.uniform(0, stagger))

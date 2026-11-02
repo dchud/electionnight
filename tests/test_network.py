@@ -1,7 +1,9 @@
 """Outages of the whole network do not count against feeds."""
 
 import asyncio
+import importlib.util
 import json
+import sys
 import time
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -9,6 +11,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from structlog.testing import capture_logs
 
 from monitor.ingest.feeds import (
     parse_news_sitemap,
@@ -25,6 +28,7 @@ from monitor.parsers.base import Item
 from monitor.parsers.fetch_text import FetchTextParser
 from monitor.pipeline import Pipeline
 from monitor.web.app import create_app
+from monitor.web.readmodel import ReadModel
 
 FEED = b"""<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>
 <item><title>Polls close in Ohio</title>
@@ -214,6 +218,113 @@ async def test_sleep_widens_an_outage_noticed_on_waking(settings):
     gate.note_clocks(wall, 100.0, wall + 2705, 105.0)
     assert gate.offline_since == before
     assert gate.offline_reason == "sleep"
+
+
+async def test_outage_start_holds_when_the_clock_check_finishes_first(
+    settings,
+):
+    release = asyncio.Event()
+
+    async def slow_failure():
+        await release.wait()
+        return False
+
+    gate = NetworkGate(settings, probe=slow_failure)
+    probing = asyncio.ensure_future(gate.reachable())
+    await asyncio.sleep(0)
+    wall = time.time() - 2705
+    gate.note_clocks(wall, 100.0, wall + 2700, 105.0)
+    release.set()
+    assert await probing is False
+    assert gate.offline_since == datetime.fromtimestamp(wall, UTC)
+    assert gate.offline_reason == "sleep"
+
+
+async def test_outage_start_moves_earlier_when_the_probe_finishes_first(
+    settings,
+):
+    async def down():
+        return False
+
+    gate = NetworkGate(settings, probe=down)
+    assert await gate.reachable() is False
+    assert gate.offline_reason == "network"
+    wall = time.time() - 2705
+    gate.note_clocks(wall, 100.0, wall + 2700, 105.0)
+    assert gate.offline_since == datetime.fromtimestamp(wall, UTC)
+    assert gate.offline_reason == "sleep"
+
+
+async def test_a_later_start_never_replaces_an_earlier_one(settings):
+    gate = NetworkGate(settings)
+    start = datetime.now(UTC) - timedelta(minutes=45)
+    gate._go_offline("sleep", start)
+    gate._go_offline("network", start + timedelta(minutes=1))
+    assert gate.offline_since == start
+    assert gate.offline_reason == "sleep"
+
+
+async def test_a_lid_close_keeps_its_gap_through_a_slow_probe(settings):
+    built = Pipeline(settings, no_llm=True)
+    calls = []
+
+    async def catch_up(since, after_first_polls=False):
+        calls.append(since)
+
+    built.poller = SimpleNamespace(
+        catch_up=catch_up, catch_up_since=None, last_catch_up=None
+    )
+    release = asyncio.Event()
+
+    async def slow_failure():
+        await release.wait()
+        return False
+
+    gate = built.gate
+    gate.probe = slow_failure
+    probing = asyncio.ensure_future(gate.reachable())
+    await asyncio.sleep(0)
+    wall = time.time() - 2705
+    gate.note_clocks(wall, 100.0, wall + 2700, 105.0)
+    release.set()
+    await probing
+
+    async def up():
+        return True
+
+    gate.probe = up
+    await gate.check_restored()
+    await built.catch_up_task
+    rows = built.conn.execute(
+        "SELECT reason, round(epoch(gap_end - gap_start) / 60) "
+        "FROM lake.raw.collection_gaps"
+    ).fetchall()
+    assert rows == [("sleep", 45.0)]
+    assert calls == [datetime.fromtimestamp(wall, UTC)]
+    built.conn.close()
+
+
+async def test_a_probe_from_before_the_return_cannot_hold_collection(settings):
+    release = asyncio.Event()
+
+    async def slow_failure():
+        await release.wait()
+        return False
+
+    async def up():
+        return True
+
+    gate = NetworkGate(settings, probe=slow_failure)
+    probing = asyncio.ensure_future(gate.reachable())
+    await asyncio.sleep(0)
+    gate._go_offline("sleep", datetime.now(UTC) - timedelta(minutes=45))
+    gate.probe = up
+    await gate.check_restored()
+    assert gate.is_online
+    release.set()
+    await probing
+    assert gate.is_online
+    assert gate.offline_since is None
 
 
 def test_backoff_never_outlasts_the_circuit_retry(settings):
@@ -457,6 +568,154 @@ def test_a_sitemap_index_cannot_send_us_elsewhere(child, expected):
     assert same_site("https://www.example.com/robots", child) is expected
 
 
+@pytest.mark.parametrize(
+    ("parent", "child", "expected"),
+    [
+        ("https://www.independent.co.uk/x", "https://evil.co.uk/x", False),
+        ("https://www.smh.com.au/x", "https://other.com.au/x", False),
+        ("https://abcnews.go.com/x", "https://espn.go.com/x", False),
+        ("https://www.independent.co.uk/x", "https://independent.co.uk/x", 1),
+        ("https://independent.co.uk/x", "https://www.independent.co.uk/x", 1),
+        ("https://www.independent.co.uk/x", "https://a.independent.co.uk/", 1),
+        ("https://www.example.com/x", "http://[bad/x", False),
+        ("http://[bad/x", "https://www.example.com/x", False),
+        ("https://www.example.com/x", "not a url", False),
+    ],
+)
+def test_same_site_is_the_host_or_a_subdomain_of_it(parent, child, expected):
+    assert same_site(parent, child) is bool(expected)
+
+
+async def test_a_malformed_child_does_not_cost_the_outlet_its_stories(rig):
+    now = datetime.now(UTC)
+    index = (
+        b'<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        b"<sitemap><loc>http://[bad/news-1.xml</loc></sitemap>"
+        b"<sitemap><loc>https://example.com/news-2.xml</loc></sitemap>"
+        b"</sitemapindex>"
+    )
+    story = news_sitemap([("kept", now - timedelta(minutes=10))])
+
+    def handler(request):
+        body = index if request.url.path == "/news.xml" else story
+        return httpx.Response(200, content=body)
+
+    rig.listen({"s": "https://example.com/news.xml"})
+    rig.poller.client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    )
+    await rig.outage_ends(now - timedelta(minutes=30))
+    await rig.finished()
+    assert rig.urls() == ["https://example.com/kept"]
+    assert rig.poller.last_catch_up["gave_up"] == []
+
+
+def bbc_sources():
+    return [
+        Source(name, name, "https://www.bbc.com/", ["u"], language=language)
+        for name, language in (
+            ("bbc-news", "en"),
+            ("bbc-news-arabic", "ar"),
+            ("bbc-news-mundo", "es"),
+        )
+    ]
+
+
+BBC_SITEMAP = "https://www.bbc.com/sitemaps/https-index-com-mundo-news.xml"
+
+
+def shared_rig(rig, language):
+    now = datetime.now(UTC)
+    body = news_sitemap(
+        [(f"s{n}", now - timedelta(minutes=n + 1)) for n in range(4)],
+        language,
+    )
+
+    def handler(request):
+        rig.requests.append(str(request.url))
+        return httpx.Response(200, content=body)
+
+    rig.listen({source.source_id: BBC_SITEMAP for source in bbc_sources()})
+    rig.poller = Poller(
+        rig.settings,
+        rig.pipeline.writer,
+        bbc_sources(),
+        set(),
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        gate=rig.gate,
+        on_new_items=rig.delivered.extend,
+        news_sitemaps={
+            source.source_id: BBC_SITEMAP for source in bbc_sources()
+        },
+    )
+    rig.pipeline.poller = rig.poller
+    return now
+
+
+async def test_a_shared_sitemap_is_read_once_and_filed_by_language(rig):
+    now = shared_rig(rig, "es")
+    await rig.outage_ends(now - timedelta(minutes=30))
+    await rig.finished()
+    assert rig.requests == [BBC_SITEMAP]
+    assert {row["source_id"] for row in rig.delivered} == {"bbc-news-mundo"}
+    assert len(rig.delivered) == 4
+    assert rig.poller.last_catch_up["outlets"] == 1
+
+
+async def test_a_shared_sitemap_with_no_matching_outlet_is_skipped(rig):
+    now = shared_rig(rig, "de")
+    with capture_logs() as logs:
+        await rig.outage_ends(now - timedelta(minutes=30))
+        await rig.finished()
+    assert rig.requests == [BBC_SITEMAP]
+    assert rig.delivered == []
+    assert rig.poller.catch_up_since is None
+    assert rig.poller.last_catch_up["gave_up"] == []
+    assert "sitemap_no_outlet" in [entry["event"] for entry in logs]
+
+
+async def test_a_sitemap_listed_once_is_filed_whatever_its_language(rig):
+    now = datetime.now(UTC)
+    body = news_sitemap([("a", now - timedelta(minutes=1))], "de")
+    rig.listen({"s": "https://example.com/a.xml"})
+    rig.poller.client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, content=body)
+        )
+    )
+    await rig.outage_ends(now - timedelta(minutes=30))
+    await rig.finished()
+    assert [row["source_id"] for row in rig.delivered] == ["s"]
+
+
+def test_the_discovery_script_lists_a_shared_url_once():
+    spec = importlib.util.spec_from_file_location(
+        "find_news_sitemaps", "scripts/find_news_sitemaps.py"
+    )
+    script = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = script
+    spec.loader.exec_module(script)
+    outlets = {source.source_id: source for source in bbc_sources()}
+    solo = Source("solo", "Solo", "https://solo.example/", ["u"])
+    found = [
+        script.Found(outlets["bbc-news"], BBC_SITEMAP, 20, "es"),
+        script.Found(outlets["bbc-news-arabic"], BBC_SITEMAP, 20, "es"),
+        script.Found(outlets["bbc-news-mundo"], BBC_SITEMAP, 20, "es"),
+        script.Found(solo, "https://solo.example/news.xml", 5, "de"),
+        script.Found(
+            outlets["bbc-news"], "https://shared.example/a.xml", 5, "de"
+        ),
+        script.Found(
+            outlets["bbc-news-arabic"], "https://shared.example/a.xml", 5, "de"
+        ),
+    ]
+    kept = script.one_outlet_per_url(found)
+    assert [(row.source.source_id, row.url) for row in kept] == [
+        ("bbc-news-mundo", BBC_SITEMAP),
+        ("solo", "https://solo.example/news.xml"),
+    ]
+
+
 async def catching_up(settings, lake, handler, since):
     settings.poll.resume_stagger_seconds = 0
     rows = []
@@ -542,43 +801,402 @@ async def test_catch_up_follows_a_sitemap_index_on_the_same_site(
     assert len(rows) >= 1
 
 
-async def test_interrupted_catch_up_starts_over_on_return(settings, lake):
-    since = datetime.now(UTC) - timedelta(hours=1)
-    network = Network()
-    network.up = False
+def news_sitemap(stories, language="en"):
+    entries = "".join(
+        f"<url><loc>https://example.com/{name}</loc><news:news>"
+        f"<news:publication><news:language>{language}</news:language>"
+        f"</news:publication><news:publication_date>{at.isoformat()}"
+        f"</news:publication_date><news:title>Story {name}</news:title>"
+        "</news:news></url>"
+        for name, at in stories
+    )
+    return (
+        '<?xml version="1.0"?><urlset '
+        'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+        'xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">'
+        f"{entries}</urlset>"
+    ).encode()
+
+
+class Returning:
+    """The restore path as it runs: a pipeline's gate, gap rule, and poller."""
+
+    def __init__(self, settings):
+        settings.poll.resume_stagger_seconds = 0.05
+        settings.poll.probe_cache_seconds = 0.0
+        self.settings = settings
+        self.pipeline = Pipeline(settings, no_llm=True)
+        self.gate = self.pipeline.gate
+        self.gate.probe = self.probe
+        self.up = True
+        self.stories = {}
+        self.holds = {}
+        self.broken = set()
+        self.requests = []
+        self.reading = {}
+        self.most_reading = 0
+        self.delivered = []
+        self.poller = None
+
+    def listen(self, sitemaps, sources=None):
+        self.poller = Poller(
+            self.settings,
+            self.pipeline.writer,
+            sources or [Source("s", "S", "https://example.com/", ["u"])],
+            set(),
+            client=httpx.AsyncClient(
+                transport=httpx.MockTransport(self.handler)
+            ),
+            gate=self.gate,
+            on_new_items=self.delivered.extend,
+            news_sitemaps=sitemaps,
+        )
+        self.pipeline.poller = self.poller
+
+    async def probe(self):
+        return self.up
+
+    async def handler(self, request):
+        path = request.url.path
+        self.requests.append(path)
+        if not self.up or path in self.broken:
+            raise httpx.ConnectError("no route to host", request=request)
+        self.reading[path] = self.reading.get(path, 0) + 1
+        self.most_reading = max(self.most_reading, self.reading[path])
+        try:
+            if path in self.holds:
+                await self.holds[path].wait()
+            return httpx.Response(
+                200, content=news_sitemap(self.stories.get(path, []))
+            )
+        finally:
+            self.reading[path] -= 1
+
+    def urls(self):
+        return sorted(row["url"] for row in self.delivered)
+
+    async def drop(self):
+        """The network goes, and a failing request tells the gate."""
+        self.up = False
+        assert await self.gate.reachable() is False
+
+    async def back(self):
+        self.up = True
+        self.gate._last_probe = float("-inf")
+        await self.gate.check_restored()
+        assert self.gate.is_online
+
+    async def outage_ends(self, start):
+        self.gate._go_offline("network", start)
+        await self.back()
+
+    async def finished(self):
+        await asyncio.wait_for(self.pipeline.catch_up_task, 10)
+
+
+@pytest.fixture
+def rig(settings):
+    made = Returning(settings)
+    yield made
+    if made.pipeline.catch_up_task is not None:
+        made.pipeline.catch_up_task.cancel()
+    made.pipeline.conn.close()
+
+
+async def test_reads_that_fail_before_the_gate_knows_do_not_finish(rig):
+    now = datetime.now(UTC)
+    start = now - timedelta(minutes=30)
+    rig.stories["/a.xml"] = [("gone", now - timedelta(minutes=10))]
+    rig.listen({"s": "https://example.com/a.xml"})
+    await rig.outage_ends(start)
+    # Nothing has told the gate yet, so it still says online.
+    rig.up = False
+    await asyncio.sleep(0.2)
+    assert rig.poller.catch_up_since == start
+    assert rig.poller.last_catch_up is None
+    await rig.back()
+    await rig.finished()
+    assert rig.urls() == ["https://example.com/gone"]
+    assert rig.poller.catch_up_since is None
+    assert rig.poller.last_catch_up["since"] == start
+
+
+async def test_a_sitemap_skipped_during_a_drop_is_read_after_it(rig):
+    rig.settings.poll.catch_up_concurrency = 2
+    now = datetime.now(UTC)
+    for name in "abc":
+        rig.stories[f"/{name}.xml"] = [
+            (f"{name}-story", now - timedelta(minutes=10))
+        ]
+    rig.holds = {"/a.xml": asyncio.Event(), "/b.xml": asyncio.Event()}
+    rig.listen(
+        {name: f"https://example.com/{name}.xml" for name in "abc"},
+        [Source(name, name, "https://example.com/", ["u"]) for name in "abc"],
+    )
+    await rig.outage_ends(now - timedelta(minutes=30))
+    await asyncio.sleep(0.2)
+    await rig.drop()
+    rig.holds["/b.xml"].set()
+    await asyncio.sleep(0.05)
+    await rig.back()
+    rig.holds["/a.xml"].set()
+    await rig.finished()
+    assert rig.urls() == [
+        "https://example.com/a-story",
+        "https://example.com/b-story",
+        "https://example.com/c-story",
+    ]
+    assert rig.poller.catch_up_since is None
+
+
+async def test_a_gap_returning_during_a_run_is_read_over(rig):
+    now = datetime.now(UTC)
+    start = now - timedelta(minutes=30)
+    rig.stories["/a.xml"] = [("before", now - timedelta(minutes=10))]
+    rig.holds = {"/b.xml": asyncio.Event()}
+    rig.listen(
+        {
+            "a": "https://example.com/a.xml",
+            "b": "https://example.com/b.xml",
+        },
+        [Source(name, name, "https://example.com/", ["u"]) for name in "ab"],
+    )
+    await rig.outage_ends(start)
+    await asyncio.sleep(0.2)
+    assert rig.urls() == ["https://example.com/before"]
+    # A second, short gap, with a story published during it.
+    await rig.drop()
+    rig.stories["/a.xml"].append(("during", datetime.now(UTC)))
+    await rig.back()
+    rig.holds["/b.xml"].set()
+    await rig.finished()
+    assert rig.urls() == [
+        "https://example.com/before",
+        "https://example.com/during",
+    ]
+    assert rig.poller.last_catch_up["since"] == start
+
+
+async def test_a_pending_catch_up_restarts_after_a_short_gap(rig):
+    now = datetime.now(UTC)
+    start = now - timedelta(minutes=30)
+    rig.stories["/a.xml"] = [("gone", now - timedelta(minutes=10))]
+    rig.listen({"s": "https://example.com/a.xml"})
+    await rig.outage_ends(start)
+    await rig.drop()
+    await asyncio.sleep(0.2)
+    assert rig.poller.catch_up_since == start
+    await rig.back()
+    await rig.finished()
+    assert rig.urls() == ["https://example.com/gone"]
+    assert rig.poller.last_catch_up["since"] == start
+
+
+async def test_a_return_starts_catch_up_owed_with_no_run_going(rig):
+    now = datetime.now(UTC)
+    start = now - timedelta(minutes=30)
+    rig.stories["/a.xml"] = [("gone", now - timedelta(minutes=10))]
+    rig.listen({"s": "https://example.com/a.xml"})
+    rig.poller.catch_up_since = start
+    await rig.outage_ends(now - timedelta(seconds=5))
+    await rig.finished()
+    assert rig.urls() == ["https://example.com/gone"]
+    assert rig.poller.catch_up_since is None
+
+
+async def test_catch_up_runs_never_overlap(rig):
+    now = datetime.now(UTC)
+    start = now - timedelta(minutes=30)
+    rig.stories["/a.xml"] = [("gone", now - timedelta(minutes=10))]
+    rig.holds = {"/a.xml": asyncio.Event()}
+    rig.listen({"s": "https://example.com/a.xml"})
+    await rig.outage_ends(start)
+    await asyncio.sleep(0.2)
+    running = rig.pipeline.catch_up_task
+    await rig.poller.catch_up(now - timedelta(minutes=5))
+    await rig.outage_ends(now - timedelta(minutes=20))
+    assert rig.pipeline.catch_up_task is running
+    await asyncio.sleep(0.2)
+    rig.holds["/a.xml"].set()
+    await rig.finished()
+    assert rig.most_reading == 1
+    assert rig.poller.catch_up_since is None
+
+
+async def test_a_sitemap_that_keeps_failing_is_given_up_and_logged(rig):
+    now = datetime.now(UTC)
+    rig.stories["/good.xml"] = [("kept", now - timedelta(minutes=10))]
+    rig.broken = {"/bad.xml"}
+    rig.settings.poll.resume_stagger_seconds = 0
+    rig.listen(
+        {
+            "good": "https://example.com/good.xml",
+            "bad": "https://example.com/bad.xml",
+        },
+        [
+            Source(name, name, "https://example.com/", ["u"])
+            for name in ("good", "bad")
+        ],
+    )
+    with capture_logs() as logs:
+        await rig.outage_ends(now - timedelta(minutes=30))
+        await rig.finished()
+    assert rig.requests.count("/bad.xml") == 3
+    assert rig.requests.count("/good.xml") == 1
+    assert rig.urls() == ["https://example.com/kept"]
+    assert rig.poller.catch_up_since is None
+    assert rig.poller.last_catch_up["gave_up"] == [
+        "https://example.com/bad.xml"
+    ]
+    assert "catch_up_gave_up" in [entry["event"] for entry in logs]
+
+
+async def test_a_network_drop_does_not_count_toward_giving_up(rig):
+    now = datetime.now(UTC)
+    rig.stories["/a.xml"] = [("gone", now - timedelta(minutes=10))]
+    rig.listen({"s": "https://example.com/a.xml"})
+    await rig.outage_ends(now - timedelta(minutes=30))
+    for _ in range(4):
+        rig.up = False
+        await asyncio.sleep(0.2)
+        assert rig.poller.catch_up_since is not None
+        await rig.back()
+    await rig.finished()
+    assert rig.urls() == ["https://example.com/gone"]
+    assert rig.poller.last_catch_up["gave_up"] == []
+
+
+async def test_an_error_status_counts_as_an_answer(rig):
+    now = datetime.now(UTC)
+
+    def missing(request):
+        rig.requests.append(request.url.path)
+        return httpx.Response(404)
+
+    rig.listen({"s": "https://example.com/a.xml"})
+    rig.poller.client = httpx.AsyncClient(
+        transport=httpx.MockTransport(missing)
+    )
+    await rig.outage_ends(now - timedelta(minutes=30))
+    await rig.finished()
+    assert rig.requests == ["/a.xml"]
+    assert rig.poller.last_catch_up["gave_up"] == []
+
+
+async def test_restart_reads_sitemaps_after_first_feed_polls(settings):
     settings.poll.resume_stagger_seconds = 0
-    gate = NetworkGate(settings, probe=network.probe)
-    poller = Poller(
+    settings.poll.tier_seconds = [1, 1, 1]
+    now = datetime.now(UTC)
+    site = news_sitemap([("a", now - timedelta(minutes=5))])
+    feed = (
+        b'<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>'
+        b"<item><title>Story a</title><link>https://example.com/a</link>"
+        b"<description>The feed summary</description></item>"
+        b"</channel></rss>"
+    )
+
+    def handler(request):
+        is_sitemap = request.url.path.endswith(".xml")
+        return httpx.Response(200, content=site if is_sitemap else feed)
+
+    built = Pipeline(settings, no_llm=True)
+    delivered = []
+    built.poller = Poller(
         settings,
-        lake,
-        [source()],
+        built.writer,
+        [source(tier=1)],
         set(),
-        client=network.client(),
-        gate=gate,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        gate=built.gate,
+        on_new_items=delivered.extend,
         news_sitemaps={"s": "https://example.com/news.xml"},
     )
-    await gate.reachable()
-    await poller.catch_up(since)
-    assert poller.catch_up_since == since
-    assert poller.last_catch_up is None
-    later = since + timedelta(minutes=30)
-    network.up = True
-    network.body = sitemap_body(later, later)
-    gate._last_probe = float("-inf")
-    await gate.check_restored()
-    await poller.catch_up(later)
-    assert poller.catch_up_since is None
-    assert poller.last_catch_up["since"] == since
+    built.writer.add(
+        "raw.fetches",
+        [{"fetch_id": "last", "started_at": now - timedelta(hours=1)}],
+    )
+    built.writer.flush()
+    await built.note_downtime()
+    running = asyncio.ensure_future(built.poller.run())
+    await asyncio.wait_for(built.catch_up_task, 10)
+    running.cancel()
+    await asyncio.gather(running, return_exceptions=True)
+    assert [row["summary"] for row in delivered] == ["The feed summary"]
+    built.conn.close()
+
+
+async def test_a_slow_commit_does_not_hold_the_gate(rig, monkeypatch):
+    monkeypatch.setattr(
+        "monitor.pipeline.GAP_COMMIT_WAIT_SECONDS", 0.05, raising=False
+    )
+    now = datetime.now(UTC)
+    rig.listen({})
+    conn = rig.pipeline.conn
+    await rig.pipeline.db.lock.acquire()
+    rig.gate._go_offline("network", now - timedelta(minutes=30))
+    rig.up = True
+    rig.gate._last_probe = float("-inf")
+    await asyncio.wait_for(rig.gate.check_restored(), 2)
+    assert rig.gate.is_online
+    assert rig.pipeline.writer.pending() == 1
+    rig.pipeline.db.lock.release()
+    await asyncio.wait_for(rig.pipeline.gap_commit, 5)
+    assert rig.pipeline.writer.pending() == 0
+    rows = conn.execute(
+        "SELECT reason FROM lake.raw.collection_gaps"
+    ).fetchall()
+    assert rows == [("network",)]
+
+
+async def test_a_slow_commit_still_places_stories_at_their_published_time(
+    rig, monkeypatch
+):
+    monkeypatch.setattr(
+        "monitor.pipeline.GAP_COMMIT_WAIT_SECONDS", 0.05, raising=False
+    )
+    now = datetime.now(UTC)
+    published = now - timedelta(minutes=20)
+    rig.listen({})
+    await rig.pipeline.db.lock.acquire()
+    rig.gate._go_offline("network", now - timedelta(minutes=30))
+    rig.up = True
+    rig.gate._last_probe = float("-inf")
+    await asyncio.wait_for(rig.gate.check_restored(), 2)
+    # A story read on return goes in behind the gap row, not ahead of it.
+    rig.pipeline.writer.add(
+        "raw.items",
+        [
+            {
+                "item_id": "in_gap",
+                "source_id": "wire",
+                "title": "A story",
+                "summary": "",
+                "url": "https://example.com/in_gap",
+                "first_seen_at": datetime.now(UTC),
+                "published_at": published,
+                "language": "en",
+                "feed_categories": [],
+            }
+        ],
+    )
+    rig.pipeline.db.lock.release()
+    await asyncio.wait_for(rig.pipeline.gap_commit, 5)
+    model = ReadModel(rig.settings)
+    model.refresh()
+    rows = model.rows("SELECT item_id, first_seen_at FROM facts")
+    assert [row["first_seen_at"] for row in rows] == [published]
 
 
 async def test_short_gap_does_not_catch_up_and_long_gap_does(settings):
     built = Pipeline(settings, no_llm=True)
     calls = []
 
-    async def catch_up(since):
+    async def catch_up(since, after_first_polls=False):
         calls.append(since)
 
-    built.poller = SimpleNamespace(catch_up=catch_up, last_catch_up=None)
+    built.poller = SimpleNamespace(
+        catch_up=catch_up, catch_up_since=None, last_catch_up=None
+    )
     now = datetime.now(UTC)
     limit = settings.poll.catch_up_min_gap_seconds
     short = now - timedelta(seconds=limit - 1)

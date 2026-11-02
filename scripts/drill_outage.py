@@ -5,6 +5,11 @@ Serves generated feeds from a local server and runs the real poller, writer,
 and read model on a scratch lake. Taking the server down refuses connections,
 as a dropped network does. Sleep is simulated by feeding the gate a clock
 difference, because the monotonic clock only stops during real system sleep.
+Network returns go through the pipeline's own gap handling.
+
+The last part runs the sequence of closing a laptop and moving it: sleep with a
+slow probe failing across the wake, a return, catch-up, and a short drop during
+that catch-up.
 
     uv run python scripts/drill_outage.py
 """
@@ -16,6 +21,7 @@ import asyncio
 import shutil
 import threading
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -25,7 +31,8 @@ from typing import Any
 from monitor.ingest.network import NetworkGate
 from monitor.ingest.poller import Poller
 from monitor.ingest.sources import Source
-from monitor.lake import BatchWriter, connect, init_lake
+from monitor.lake import init_lake
+from monitor.pipeline import Pipeline
 from monitor.settings import Paths, Settings
 from monitor.web.readmodel import ReadModel
 
@@ -34,6 +41,9 @@ REPORT = Path("reports/outage_drill.md")
 PORT = 8765
 ITEMS_KEPT = 10
 OVERRUN = 25
+SLOW_PROBE_SECONDS = 3.0
+SITEMAP_DELAY_SECONDS = 0.25
+SHORT_DROP_SECONDS = 3.0
 
 
 class Feeds:
@@ -45,6 +55,8 @@ class Feeds:
             feed: [] for feed in range(n_feeds)
         }
         self.counter = 0
+        self.sitemap_reads = 0
+        self.sitemap_delay = 0.0
         self.lock = threading.Lock()
 
     def publish(self, label: str, at: datetime | None = None) -> None:
@@ -56,7 +68,9 @@ class Feeds:
                 )
 
     def sitemap(self, feed: int) -> bytes:
+        time.sleep(self.sitemap_delay)
         with self.lock:
+            self.sitemap_reads += 1
             stories = list(self.stories[feed])
         entries = "".join(
             f"<url><loc>https://example.com/{name}</loc><news:news>"
@@ -87,7 +101,7 @@ class Feeds:
         ).encode()
 
 
-def serve(feeds: Feeds) -> ThreadingHTTPServer:
+def serve(feeds: Feeds, port: int) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
             feed = int(self.path.rsplit("/", 1)[1])
@@ -102,15 +116,16 @@ def serve(feeds: Feeds) -> ThreadingHTTPServer:
         def log_message(self, *args: Any) -> None:
             pass
 
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     server.allow_reuse_address = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
 
 class Drill:
-    def __init__(self, n_feeds: int, outage: float) -> None:
+    def __init__(self, n_feeds: int, outage: float, port: int) -> None:
         shutil.rmtree(ROOT, ignore_errors=True)
+        self.port = port
         self.settings = Settings(
             paths=Paths.under(ROOT, config=Path("config"))
         )
@@ -122,21 +137,23 @@ class Drill:
         self.settings.poll.catch_up_min_gap_seconds = 1.0
         self.settings.poll.allow_loopback = True
         init_lake(self.settings)
-        self.conn = connect(self.settings)
-        self.writer = BatchWriter(self.conn, self.settings)
+        self.pipeline = Pipeline(self.settings, no_llm=True)
+        self.conn = self.pipeline.conn
+        self.writer = self.pipeline.writer
         self.feeds = Feeds(n_feeds)
         self.outage = outage
         self.up = True
+        self.probe_delay = 0.0
+        self.probes_running = 0
         self.rows: list[tuple[str, str, bool]] = []
-        self.gate = NetworkGate(
-            self.settings, probe=self.probe, on_restored=self.restored
-        )
+        self.gate: NetworkGate = self.pipeline.gate
+        self.gate.probe = self.probe
         sources = [
             Source(
                 source_id=f"s{n}",
                 name=f"S{n}",
                 homepage="https://example.com/",
-                feed_urls=[f"http://127.0.0.1:{PORT}/{n}"],
+                feed_urls=[f"http://127.0.0.1:{port}/{n}"],
                 poll_tier=(n % 3) + 1,
             )
             for n in range(n_feeds)
@@ -148,23 +165,19 @@ class Drill:
             set(),
             gate=self.gate,
             news_sitemaps={
-                f"s{n}": f"http://127.0.0.1:{PORT}/sitemap/{n}"
+                f"s{n}": f"http://127.0.0.1:{port}/sitemap/{n}"
                 for n in range(n_feeds)
             },
         )
-        self.catch_ups: list[asyncio.Task[None]] = []
+        self.pipeline.poller = self.poller
 
     async def probe(self) -> bool:
-        return self.up
-
-    async def restored(self, gap: dict[str, Any]) -> None:
-        seconds = (gap["gap_end"] - gap["gap_start"]).total_seconds()
-        if seconds >= self.settings.poll.min_gap_seconds:
-            self.writer.add("raw.collection_gaps", [gap])
-            self.writer.flush()
-            self.catch_ups.append(
-                asyncio.create_task(self.poller.catch_up(gap["gap_start"]))
-            )
+        up = self.up
+        if self.probe_delay:
+            self.probes_running += 1
+            await asyncio.sleep(self.probe_delay)
+            self.probes_running -= 1
+        return up
 
     def check(self, what: str, seen: Any, ok: bool) -> None:
         self.rows.append((what, str(seen), ok))
@@ -194,7 +207,7 @@ class Drill:
     async def run(self) -> int:
         n = self.feeds.n_feeds
         self.feeds.publish("before")
-        server = serve(self.feeds)
+        server = serve(self.feeds, self.port)
         task = asyncio.ensure_future(self.poller.run())
         took = await self.wait_for_all("before", 30)
         self.check(
@@ -237,7 +250,7 @@ class Drill:
         )
 
         # The network returns.
-        server = serve(self.feeds)
+        server = serve(self.feeds, self.port)
         self.up = True
         took = await self.wait_for_all("during", 60, n * OVERRUN)
         self.check(
@@ -304,6 +317,7 @@ class Drill:
             gaps,
             gaps is not None and gaps[0] == "sleep" and gaps[1] >= 44,
         )
+        server = await self.moving_the_laptop(server)
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
         server.shutdown()
@@ -313,6 +327,109 @@ class Drill:
         failed = sum(not row[2] for row in self.rows)
         print(f"{failed} failed; wrote {REPORT}")
         return 1 if failed else 0
+
+    async def until(self, ready: Callable[[], bool]) -> None:
+        for _ in range(1200):
+            if ready():
+                return
+            await asyncio.sleep(0.05)
+        raise TimeoutError("the drill waited 60 s for a step")
+
+    async def catch_up_finished(self, limit: float) -> float:
+        started = time.monotonic()
+        running = self.pipeline.catch_up_task
+        if running is not None:
+            await asyncio.wait_for(asyncio.shield(running), limit)
+        return time.monotonic() - started
+
+    async def moving_the_laptop(
+        self, server: ThreadingHTTPServer
+    ) -> ThreadingHTTPServer:
+        """Sleep, a slow failing probe, a return, a drop during catch-up."""
+        n = self.feeds.n_feeds
+        await self.catch_up_finished(120)
+        # The short drop below is under this, as a real short drop would be.
+        self.settings.poll.catch_up_min_gap_seconds = 60.0
+        reads_before = self.feeds.sitemap_reads
+
+        # The network goes as the lid closes. A failing feed starts a probe
+        # that is still running when the clock check sees the sleep.
+        server.shutdown()
+        server.server_close()
+        self.up = False
+        self.probe_delay = SLOW_PROBE_SECONDS
+        await self.until(lambda: self.probes_running > 0)
+        wall = time.time() - 2700
+        slept_from = datetime.fromtimestamp(wall, UTC)
+        self.gate.note_clocks(wall, 100.0, wall + 2705, 105.0)
+        for _ in range(OVERRUN):
+            self.feeds.publish("away", slept_from + timedelta(minutes=1))
+        await asyncio.sleep(SLOW_PROBE_SECONDS + 1)
+        self.check(
+            "a slow failing probe leaves the outage's start at the sleep",
+            self.gate.offline_since,
+            self.gate.offline_since == slept_from
+            and self.gate.offline_reason == "sleep",
+        )
+
+        # The network returns, and catch-up starts reading.
+        self.probe_delay = 0.0
+        self.feeds.sitemap_delay = SITEMAP_DELAY_SECONDS
+        server = serve(self.feeds, self.port)
+        self.up = True
+        await self.until(lambda: self.feeds.sitemap_reads >= reads_before + 20)
+        running = self.pipeline.catch_up_task
+
+        # A short drop during catch-up.
+        server.shutdown()
+        server.server_close()
+        self.up = False
+        await asyncio.sleep(SHORT_DROP_SECONDS)
+        self.check(
+            "catch-up is still owed during a short drop",
+            self.poller.catch_up_since,
+            self.poller.catch_up_since == slept_from,
+        )
+        server = serve(self.feeds, self.port)
+        self.up = True
+        took = await self.catch_up_finished(120)
+        self.feeds.sitemap_delay = 0.0
+        self.check(
+            "catch-up finishes after a drop under the catch-up minimum",
+            f"{took:.0f} s",
+            self.poller.catch_up_since is None
+            and self.poller.last_catch_up is not None
+            and self.poller.last_catch_up["since"] == slept_from
+            and self.poller.last_catch_up["gave_up"] == [],
+        )
+        self.check(
+            "one run lasted through the drop",
+            "same task",
+            self.pipeline.catch_up_task is running,
+        )
+        self.check(
+            "every story from the sleep is read",
+            f"{self.seen('away')} of {n * OVERRUN}",
+            self.seen("away") == n * OVERRUN,
+        )
+        gaps = self.conn.execute(
+            "SELECT reason, round(epoch(gap_end - gap_start) / 60) "
+            "FROM lake.raw.collection_gaps WHERE gap_start = $start",
+            {"start": slept_from},
+        ).fetchall()
+        self.check(
+            "the gap row starts at the sleep",
+            gaps,
+            len(gaps) == 1 and gaps[0][0] == "sleep" and gaps[0][1] >= 44,
+        )
+        await asyncio.sleep(self.settings.poll.resume_stagger_seconds + 5)
+        health = self.poller.health()
+        self.check(
+            "no feed is penalized by the sequence",
+            health,
+            health["healthy"] == n,
+        )
+        return server
 
     def write_report(self) -> None:
         failed = sum(not row[2] for row in self.rows)
@@ -340,8 +457,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--feeds", type=int, default=200)
     parser.add_argument("--outage", type=float, default=20.0)
+    parser.add_argument("--port", type=int, default=PORT)
     args = parser.parse_args()
-    raise SystemExit(asyncio.run(Drill(args.feeds, args.outage).run()))
+    drill = Drill(args.feeds, args.outage, args.port)
+    raise SystemExit(asyncio.run(drill.run()))
 
 
 if __name__ == "__main__":

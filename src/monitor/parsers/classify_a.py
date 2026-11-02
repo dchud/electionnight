@@ -358,6 +358,11 @@ class ClassifyParser:
         fields: dict[str, Any],
         batch_id: str | None = None,
     ) -> None:
+        # One rule for every reader: below the threshold is not relevant. The
+        # model's own answer stays in the trace.
+        threshold = self.settings.nlp.relevance_threshold
+        if fields["relevance_conf"] < threshold:
+            fields = {**fields, "election_relevant": False}
         item.relevant = fields["election_relevant"]
         item.relevance_conf = fields["relevance_conf"]
         item.states = fields["states"]
