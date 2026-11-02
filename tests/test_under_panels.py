@@ -758,6 +758,13 @@ def test_a_repeated_statement_says_which_methods_ran_it():
     assert merged[0].runs_by_method == {"map_data": 3, "states_rising": 2}
 
 
+def test_the_race_call_page_states_the_rules_that_apply(client):
+    page = client.get(f"/under/panels/calls?{QUERY}").text
+    assert "decided what its sentence means" in page
+    assert "the article to name the candidate" in page
+    assert "language for its status" not in page
+
+
 def test_the_map_page_credits_each_run_to_its_method(client):
     page = client.get(f"/under/panels/map?{QUERY}").text
     assert "The method ran this" not in page

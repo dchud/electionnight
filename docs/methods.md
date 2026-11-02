@@ -546,7 +546,9 @@ view shows the true first-seen time and says when and why an item was placed
 this way. `gold.*` bins use `first_seen_at` unchanged, so they can differ from
 dashboard counts for those items.
 
-**Race calls.** The specification asks for explicit language such as
+### Race calls
+
+The specification asks for explicit language such as
 "projected", "declared the winner", or "conceded". A sentence stating as fact
 that a candidate won also counts, in any wording, because news copy often
 states a result without naming who called it. Such a row shows its caller as
