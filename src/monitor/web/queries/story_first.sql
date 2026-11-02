@@ -1,4 +1,4 @@
--- The first canonical report of one storyline.
+-- The first report of one storyline, counting every copy.
 SELECT f.first_seen_at, f.item_id,
        coalesce(s.name, f.source_id) AS outlet
 FROM facts f LEFT JOIN sources s USING (source_id)

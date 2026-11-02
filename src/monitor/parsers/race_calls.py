@@ -18,6 +18,7 @@ from typing import Any
 
 from monitor.lake import hash_id
 from monitor.llm.schemas import RaceCallB
+from monitor.ref.races import normalize_state
 
 FINAL_STATUSES = {"projected", "declared", "conceded"}
 UNSPECIFIED = {"unspecified", "unknown", "none"}
@@ -126,17 +127,24 @@ def _script(text: str) -> str | None:
 
 
 def _names_candidate(names: Iterable[str | None], text: str) -> bool:
-    """True unless a name that could appear in the text does not.
+    """True unless the article should show one of these names and does not.
 
-    A name written in one script cannot be compared with text in another, so
-    that comparison is not made.
+    Only Latin-script text is compared, from the start of the surname. Names
+    take endings and prefixes in other scripts, and endings in some languages
+    written in Latin script.
     """
-    known = [name for name in names if name]
-    script = _script(text)
-    comparable = [name for name in known if _script(name) == script]
-    if not comparable:
+    if _script(text) != "LATIN":
         return True
-    return names_person(comparable, text)
+    latin = [name for name in names if name and _script(name) == "LATIN"]
+    if not latin:
+        return True
+    folded = fold(text)
+    surnames = (_surname(name) for name in latin)
+    return any(
+        re.search(rf"(?<!\w){re.escape(word)}", folded)
+        for word in surnames
+        if word
+    )
 
 
 def call_problem(
@@ -192,7 +200,7 @@ def call_row(
         "claimed_at_text": call.claimed_at_text,
         "confidence": call_confidence(call.status, caller),
         "evidence": call.evidence,
-        "state": call.state,
+        "state": normalize_state(call.state) or call.state,
         "office": call.office,
         "district": call.district,
         "first_seen_at": first_seen_at,

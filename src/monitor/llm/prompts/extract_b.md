@@ -25,6 +25,7 @@ Rules:
     - `leading`: the article reports a candidate ahead in votes counted so far, however early the count, and does not say who won. A lead in a poll, in money, or in anything else is not `leading`.
     - `too_close`: the contest is reported as too close to call.
     - `uncalled`: the contest is reported as undecided.
+  - `state`: the USPS code of the contest's state.
   - `winner_name`: the candidate the claim is about: the winner, or for `leading` the candidate ahead. For `conceded`, this is the opponent who won, not the candidate who conceded. Null for `too_close` and `uncalled`.
   - `called_by`: who made the call as stated in the text, such as AP, NBC, CNN, Fox, DDHQ, ABC, CBS, or NYT; null when not stated.
   - `claimed_at_text`: when the call was made, as worded in the text; otherwise null.

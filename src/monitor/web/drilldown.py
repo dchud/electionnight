@@ -751,7 +751,7 @@ class Drill:
                 {**extra, "storyline_id": storyline_id},
             )[0]
 
-        where, extra = self._where(filters, windowed=False, unique=True)
+        where, extra = self._where(filters, windowed=False, unique=False)
         first = self.model.query(
             "story_first",
             self._sql("story_first", where),
@@ -876,7 +876,7 @@ class Drill:
     ) -> dict[str, Any]:
         """Items in the storyline. Unique collapses each duplicate group."""
         collapse = filters.copies == "unique"
-        where, extra = self._where(filters, unique=False)
+        where, extra = self._where(filters)
         copies_where, _ = self._where(filters, windowed=False, unique=False)
         clauses = ["TRUE"]
         keyword = (params.get("kw") or "").strip()

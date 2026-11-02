@@ -193,7 +193,6 @@ async def _noop():
         ("projected", "Smith", "The AP called it for Jones.", "winner"),
         ("conceded", "Jones", "Smith conceded on Tuesday.", "winner"),
         ("leading", "Jones", "Smith leads with 40% counted.", "winner"),
-        ("conceded", "Ривера", "Коул признал поражение.", "winner"),
         ("projected", None, "The AP projected a winner.", "no winner named"),
         ("leading", None, "One candidate leads.", "no winner named"),
     ],
@@ -269,29 +268,36 @@ def test_the_rules_leave_the_meaning_of_a_sentence_to_the_model(evidence):
 
 
 @pytest.mark.parametrize(
-    ("winner", "evidence"),
+    ("winner", "names", "text"),
     [
-        ("Maria Rivera", "Según la AP, María Rivera derrotó a Cole."),
-        ("Maria Rivera", "Rivera est élue sénatrice de l'Ohio."),
-        ("Maria Rivera", "Коул признал поражение от Риверы."),
-        ("Maria Rivera", "أعلنت وكالة أسوشيتد برس فوز ريفيرا."),
-        ("Maria Rivera", "据AP预测,里维拉赢得参议院席位。"),
-        ("Ривера", "Ривера избрана сенатором."),
-        ("里维拉", "里维拉赢得参议院席位"),
+        ("Maria Rivera", [], "Según la AP, María Rivera derrotó a Cole."),
+        ("Maria Rivera", [], "Rivera est élue sénatrice de l'Ohio."),
+        ("Maria Rivera", [], "Riveras Sieg in Ohio ist amtlich."),
+        ("Maria Rivera", [], "Коул признал поражение от Риверы."),
+        ("Maria Rivera", ["Мария Ривера"], "Победа Марии Риверы признана."),
+        ("Maria Rivera", [], "أعلنت وكالة أسوشيتد برس فوز لريفيرا."),
+        ("Maria Rivera", [], "据AP预测,里维拉赢得参议院席位。"),
+        ("Ривера", [], "Ривера избрана сенатором."),
+        ("里维拉", [], "里维拉赢得参议院席位"),
     ],
 )
-def test_a_name_in_another_script_is_not_compared(winner, evidence):
-    call = race_call(winner_name=winner, evidence=evidence)
-    assert call_problem(call, f"{evidence} Fin.") is None
+def test_a_name_is_compared_only_in_latin_text(winner, names, text):
+    call = race_call(winner_name=winner, evidence=text)
+    assert call_problem(call, text, names=names) is None
 
 
-def test_an_alias_in_the_evidence_script_must_appear():
-    call = race_call(
-        winner_name="Maria Rivera", evidence="Ривера избрана сенатором."
-    )
-    text = call.evidence
-    assert call_problem(call, text, names=["Мария Ривера"]) is None
-    assert call_problem(call, text, names=["Иван Петров"]) is not None
+def test_a_latin_alias_can_name_the_candidate():
+    text = "Kowalski won the seat."
+    call = race_call(winner_name="Коваль", evidence=text)
+    assert call_problem(call, text) is None
+    assert call_problem(call, text, names=["Jan Kowalski"]) is None
+    assert call_problem(call, text, names=["Jan Nowak"]) is not None
+
+
+def test_a_state_is_stored_as_its_usps_code():
+    call = race_call(state="Georgia")
+    row = call_row("i", call, None, None, AFTER_CLOSE, "p", "1", "text")
+    assert row["state"] == "GA"
 
 
 @pytest.mark.parametrize(

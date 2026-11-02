@@ -9,5 +9,6 @@
     <div class="stat"><span class="kpi-label">First seen</span><span class="kpi-value stat-small">{{ (first_report.first_seen_at if first_report else story.first_seen_at)|et_datetime }}</span>{% if first_report %}<span class="panel-note"><span class="text-link" data-article="{{ first_report.item_id }}" role="button" tabindex="0">{{ first_report.outlet }}</span></span>{% endif %}</div>
     <div class="stat"><span class="kpi-label">Status</span><span class="kpi-value stat-small">{{ story.status }}</span></div>
   </div>
-  {% if not totals.n and totals_all_time.n %}<p class="filter-line">No stories from this storyline fall in the {{ WINDOWS[filters.window][0] }} window. Widen it: <a class="text-link" href="?{{ filters.query_string(window='24h') }}">24 h</a>.</p>{% endif %}
+  {% if not totals_copies.n and totals_all_time.n %}<p class="filter-line">No stories from this storyline fall in the {{ WINDOWS[filters.window][0] }} window. Widen it: <a class="text-link" href="?{{ filters.query_string(window='24h') }}">24 h</a>.</p>
+  {% elif not totals.n and totals_copies.n %}<p class="filter-line">The first copy of each story falls before the {{ WINDOWS[filters.window][0] }} window, and later copies fall inside it. <a class="text-link" href="?{{ filters.query_string(copies='all') }}">Show all copies</a>.</p>{% endif %}
 </header>
