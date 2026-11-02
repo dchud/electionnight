@@ -21,6 +21,8 @@ DISTRIBUTION_ORDER = ["L", "LL", "C", "LR", "R", "Non-US", "Unrated"]
 TIME_AXIS = alt.Axis(
     format="%-I:%M %p", title=None, grid=False, labelFlush=False
 )
+RULE_LABEL_ROWS = 5
+RULE_LABEL_ROW_PX = 20
 
 
 def _named(name: str = "table") -> alt.Chart:
@@ -28,17 +30,27 @@ def _named(name: str = "table") -> alt.Chart:
 
 
 def _poll_rule_layers() -> list[alt.Chart]:
+    """A dashed rule per moment, with labels taking turns across rows."""
+    detail = alt.Tooltip("detail:N")
     rule = (
         _named("rules")
         .mark_rule(strokeDash=[3, 3], opacity=0.6)
-        .encode(x=alt.X("time:T"))
+        .encode(x=alt.X("time:T"), tooltip=detail)
     )
-    text = (
+    labels = [
         _named("rules")
+        .transform_window(turn="row_number()")
+        .transform_filter(f"(datum.turn - 1) % {RULE_LABEL_ROWS} === {row}")
         .mark_text(align="left", dx=3, dy=2, baseline="top", angle=0)
-        .encode(x=alt.X("time:T"), y=alt.value(0), text="label:N")
-    )
-    return [rule, text]
+        .encode(
+            x=alt.X("time:T"),
+            y=alt.value(row * RULE_LABEL_ROW_PX),
+            text="label:N",
+            tooltip=detail,
+        )
+        for row in range(RULE_LABEL_ROWS)
+    ]
+    return [rule, *labels]
 
 
 def stream(stack: Any) -> dict[str, Any]:
@@ -157,6 +169,13 @@ def bump() -> dict[str, Any]:
             sort=[alt.SortField("bin_start", order="descending")],
         )
         .transform_filter("datum.newest === 1")
+        # Lines can end at one rank in different bins; the newer one is named.
+        .transform_window(
+            newest_at_rank="row_number()",
+            groupby=["rank"],
+            sort=[alt.SortField("bin_start", order="descending")],
+        )
+        .transform_filter("datum.newest_at_rank === 1")
         .mark_text(align="left", dx=8)
         .encode(
             x=alt.X("bin_start:T"),

@@ -1050,6 +1050,7 @@ main {
 .tour-panel {
   position: fixed !important;
   inset: 0;
+  height: auto !important;
   z-index: 55;
   border-radius: 0;
 }
