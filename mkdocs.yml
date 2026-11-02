@@ -55,6 +55,7 @@ extra_javascript:
 
 nav:
   - Overview: index.md
+  - Tour: tour.md
   - Teaching:
       - Class walkthrough: walkthrough.md
       - Methods: methods.md

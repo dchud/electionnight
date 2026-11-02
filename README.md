@@ -25,6 +25,10 @@ The dashboard shows short-term and medium-term trends, and its charts and
 counts open the stories behind them. Focus modes narrow the view to
 battleground states, close races, a watchlist, or one state.
 
+[![The dashboard's Storyline Stream and Topic Heat panels](docs/screenshots/storylines.png)](https://dchud.github.io/electionnight/tour/)
+
+The [tour](https://dchud.github.io/electionnight/tour/) has more screens.
+
 ## Context
 
 The monitor was built for one evening: the US midterm elections on November 3,
@@ -76,6 +80,7 @@ every operating command.
 | File | What it holds |
 |---|---|
 | [`SPEC.md`](SPEC.md) | Requirements, data model, and dashboard behavior |
+| [`docs/tour.md`](docs/tour.md) | Screens of the dashboard and the "Under the hood" pages |
 | [`docs/methods.md`](docs/methods.md) | How each number is produced, and its limits |
 | [`docs/walkthrough.md`](docs/walkthrough.md) | The class script for the "Under the hood" pages |
 | [`docs/run_of_show.md`](docs/run_of_show.md) | Operating steps for election night, and what to do when something fails |
