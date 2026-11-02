@@ -468,7 +468,10 @@ two days of stories and a feed lists fewer. It reads each one until it has an
 answer, starting over if the network drops during the read, and gives up on a
 sitemap that keeps failing. Only stories published since 20 minutes before the
 gap are added, and a date with no time of day counts if it falls within a day
-of that. One sitemap read adds at most 500 stories. These stories have no feed
+of that. One sitemap read adds at most 500 stories. An entry dated over an hour
+ahead is left out, because some sitemaps list pages under a future date, such
+as a results page dated election morning, and the dashboard does not count a
+story dated over an hour after it was first seen. These stories have no feed
 summary and may come from sections the outlet's feed omits, so that outlet can
 show more stories for that period than it would otherwise.
 
