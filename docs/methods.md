@@ -164,15 +164,17 @@ copies. Poll timing makes this accurate to about 3 minutes at best.
 
 **Race calls in the news.** Grouped by race and named candidate, with a
 candidate's final claims on one row and leads on another. A race is settled
-once a final claim of `projected`, `declared`, or `conceded` names a caller or
-comes from two outlets. Only the time asked for decides that, so a filter that
-hides the final claim cannot bring back a lead. A settled race shows only its
-final claims. An unsettled final claim shows beside the race's other reports.
-Each row's statuses, outlets, callers, and earliest report describe the claims
-on that row, and a concession reads "opponent conceded" on the winner's row.
-Rows list newest first. The card shows 60 rows and says how many others exist.
-A caller's name comes from article text, so the reporting outlets appear beside
-it. These are never added into a seat count.
+once a final claim of `projected`, `declared`, or `conceded` names a caller, or
+two outlets report one candidate's final claim. Only the time asked for decides
+that, so a filter that hides the final claim cannot bring back a lead. A
+settled race shows only its final claims. An unsettled final claim shows beside
+the race's other reports. Each row's statuses, outlets, callers, and earliest
+report describe the claims on that row, and a concession reads "opponent
+conceded" on the winner's row. Rows list by latest report. The card shows 60
+rows and says how many others exist. A claim with no race key counts as its own
+race under the model's description. A caller's name comes from article text, so
+the reporting outlets appear beside it. These are never added into a seat
+count.
 
 **Copies.** Near-duplicates form a group with one canonical member. A copy
 belongs to the storyline of its group's canonical member. Metrics count

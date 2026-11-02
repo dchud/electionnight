@@ -876,11 +876,14 @@ class Drill:
     ) -> dict[str, Any]:
         """Items in the storyline. Unique collapses each duplicate group."""
         collapse = filters.copies == "unique"
-        where, extra = self._where(filters)
-        copies_where, _ = self._where(filters, windowed=False, unique=False)
-        clauses = ["TRUE"]
         keyword = (params.get("kw") or "").strip()
         lean = params.get("lean") or ""
+        # A headline or an outlet's lean can belong to any copy of a story.
+        where, extra = self._where(
+            filters, unique=False if keyword or lean else None
+        )
+        copies_where, _ = self._where(filters, windowed=False, unique=False)
+        clauses = ["TRUE"]
         if keyword:
             clauses.append(
                 "(contains(lower(f.title), lower($kw)) "

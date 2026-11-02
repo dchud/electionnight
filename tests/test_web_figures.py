@@ -678,6 +678,65 @@ def test_race_calls_list_newest_first_so_leads_are_not_pushed_out(lake):
     assert rows[0]["total"] == 62
 
 
+def test_a_new_report_brings_a_race_back_up_the_list(lake):
+    lake.source("other")
+    for number in range(60):
+        item = lake.item(NOW - timedelta(minutes=30), states=["GA"])
+        lake.call(item, race_key=f"2026-GA-{number:02d}")
+    old = lake.item(NOW - timedelta(minutes=85), states=["OH"])
+    fresh = lake.item(
+        NOW - timedelta(minutes=1), source="other", states=["OH"]
+    )
+    for item in (old, fresh):
+        lake.call(
+            item,
+            race_key="2026-OH-SEN",
+            status="leading",
+            winner_name="Ann Roe",
+        )
+    with client_for(lake) as client:
+        rows = race_rows(client)
+    assert rows[0]["race"] == "2026-OH-SEN"
+    assert rows[0]["outlets"] == 2
+
+
+def test_two_outlets_naming_different_candidates_do_not_settle_a_race(lake):
+    lake.source("other")
+    lake.call(
+        lake.item(NOW - timedelta(minutes=60), states=["GA"]),
+        status="too_close",
+        winner_name=None,
+    )
+    for source, winner in (("wire", "Jon Doe"), ("other", "Ann Roe")):
+        lake.call(
+            lake.item(
+                NOW - timedelta(minutes=30), source=source, states=["GA"]
+            ),
+            winner_name=winner,
+            called_by="unspecified",
+        )
+    with client_for(lake) as client:
+        rows = race_rows(client)
+    assert ["too_close"] in [row["statuses"] for row in rows]
+    assert len(rows) == 3
+
+
+def test_a_caller_outside_the_known_list_settles_a_race(lake):
+    lake.source("other")
+    lake.call(
+        lake.item(NOW - timedelta(minutes=60), states=["GA"]),
+        status="too_close",
+        winner_name=None,
+    )
+    lake.call(
+        lake.item(NOW - timedelta(minutes=30), source="other", states=["GA"]),
+        called_by="other",
+    )
+    with client_for(lake) as client:
+        rows = race_rows(client)
+    assert [row["statuses"] for row in rows] == [["projected"]]
+
+
 def test_the_race_card_says_when_rows_are_left_out(lake):
     for number in range(62):
         item = lake.item(NOW - timedelta(minutes=number), states=["GA"])
@@ -686,7 +745,7 @@ def test_the_race_card_says_when_rows_are_left_out(lake):
         page = client.get(
             "/frag/race-calls", params={"as_of": NOW.isoformat()}
         ).text
-    assert "60 of 62 shown, newest first" in page
+    assert "60 of 62 shown, latest report first" in page
 
 
 def test_the_race_card_says_nothing_when_all_rows_fit(lake):
@@ -713,8 +772,22 @@ def test_a_storys_articles_agree_with_its_unique_count(lake):
         page = client.get("/story/s1", params=query).text
     assert unique["articles_total"] == 0
     assert every["articles_total"] == 2
-    assert "later copies fall inside it" in page
+    assert "later copies do" in page
     assert "No stories from this storyline fall" not in page
+
+
+def test_a_storys_lean_filter_finds_a_copy_in_unique_mode(lake):
+    lake.source("center", lean="C")
+    lake.source("left", lean="L")
+    lake.story("s1")
+    lake.item(source="center", group="g", storyline="s1")
+    copy = lake.item(source="left", canonical=False, group="g")
+    query = {"as_of": NOW.isoformat(), "window": "24h"}
+    with client_for(lake) as client:
+        found = client.app.state.web.drill.story_articles(
+            Filters.parse(query), "s1", {"lean": "L"}
+        )
+    assert [row["item_id"] for row in found["articles"]] == [copy]
 
 
 def test_first_seen_on_a_story_counts_a_copy_seen_first(lake):

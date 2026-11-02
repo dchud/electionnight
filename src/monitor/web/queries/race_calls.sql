@@ -1,20 +1,23 @@
 -- Race-call claims reported in news, grouped by race and candidate. Not
--- official. A race is settled once a final claim names a caller or comes from
--- two outlets. Only the time asked for decides that, so a filter that hides
--- the final claim cannot bring back a lead. A settled race shows only its
--- final claims. Every figure on a row describes the claims on that row. A
--- caller's name comes from article text, so the outlets are shown beside it.
-WITH settled AS (
-    SELECT coalesce(rc.race_key, rc.race_desc) AS race
+-- official. A race is settled once a final claim names a caller or two outlets
+-- report one candidate's final claim. Only the time asked for decides that, so
+-- a filter that hides the final claim cannot bring back a lead. A settled race
+-- shows only its final claims. Every figure on a row describes the claims on
+-- that row. A caller's name comes from article text, so the outlets are shown
+-- beside it.
+WITH final_claims AS (
+    SELECT coalesce(rc.race_key, rc.race_desc) AS race,
+           coalesce(rc.winner_entity_id, rc.winner_name) AS candidate,
+           rc.called_by, f.source_id
     FROM race_calls rc
     JOIN facts f ON f.item_id = rc.item_id
     WHERE {when} AND rc.status IN ('projected', 'declared', 'conceded')
-    GROUP BY 1
-    HAVING count(DISTINCT f.source_id) >= 2
-        OR bool_or(
-            coalesce(rc.called_by, 'unspecified')
-                NOT IN ('unspecified', 'other')
-        )
+),
+settled AS (
+    SELECT DISTINCT race FROM final_claims
+    GROUP BY race, candidate
+    HAVING count(DISTINCT source_id) >= 2
+        OR bool_or(coalesce(called_by, 'unspecified') <> 'unspecified')
 ),
 calls AS (
     SELECT rc.*, f.first_seen_at AS seen_at, f.source_id, f.item_id AS fact_id,
@@ -42,11 +45,12 @@ SELECT c.race,
            AS outlet_names,
        count(DISTINCT c.source_id) AS outlets,
        min(c.seen_at) AS first_reported,
+       max(c.seen_at) AS last_reported,
        list(DISTINCT c.fact_id) AS item_ids,
        count(*) OVER () AS total
 FROM calls c
 LEFT JOIN sources s ON s.source_id = c.source_id
 WHERE c.final OR c.race NOT IN (SELECT race FROM settled)
 GROUP BY c.race, c.final, c.candidate
-ORDER BY first_reported DESC, c.race
+ORDER BY last_reported DESC, c.race
 LIMIT $limit
