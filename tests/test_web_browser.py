@@ -7,6 +7,7 @@ import json
 import os
 import re
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -25,7 +26,15 @@ from monitor.web.under import et_label
 
 pytestmark = [pytest.mark.slow, pytest.mark.enable_socket]
 
-PORT = int(os.environ.get("MONITOR_TEST_PORT", "8030"))
+
+def free_port() -> int:
+    """A port nothing listens on. Each test process takes its own."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+PORT = free_port()
 BASE = f"http://127.0.0.1:{PORT}"
 SERVE = """
 import sys
@@ -192,8 +201,8 @@ def scratch(lake_template, tmp_path):
 
 
 @pytest.fixture
-def browser(tmp_path):
-    os.environ["TMPDIR"] = str(tmp_path)
+def browser(tmp_path, monkeypatch):
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as playwright:
