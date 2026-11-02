@@ -1,0 +1,104 @@
+<div class="article-view">
+<h2 class="article-title">{{ item.headline }}</h2>
+{% if item.title != item.headline %}<p class="article-original" lang="{{ item.language }}">Original: {{ item.title }}</p>{% endif %}
+<div class="wire-meta mb-2">
+  <span>{{ item.outlet }}</span>
+  {% if item.glyph %}<span class="glyph" title="{{ item.lean|lean_title }}">{{ item.glyph }}</span>{% endif %}
+  <a class="text-link" href="/sources?{{ qs }}#{{ item.source_id }}" title="See this outlet's rating and citation">{{ item.lean }}</a>
+  {% if item.state_affiliated %}<span class="badge">state-affiliated</span>{% endif %}
+  <span>First seen {{ item.seen_raw_at|et_datetime }}</span>
+  {% if item.published_at %}<span>Published {{ item.published_at|et_datetime }}</span>{% endif %}
+</div>
+{% if item.placed_because == 'backlog' %}<p class="panel-note">Published more than 2 hours before it was first seen, so time charts place it at its published time.</p>{% elif item.placed_because == 'gap' %}<p class="panel-note">Published during a collection gap and read on return, so time charts place it at its published time.</p>{% endif %}
+{% if item.after_as_of %}<p class="filter-line">First seen after the replay time.</p>{% endif %}
+<div class="article-actions">
+  {% if item.url %}<a class="text-link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">Open original</a>{% endif %}
+  <a class="text-link" href="/article/{{ item.item_id }}?{{ qs }}">Full page</a>
+</div>
+{% if item.has_extract %}
+<h3 class="section-title">{% if item.extract_basis == 'full' %}Extract{% else %}Feed summary{% endif %}</h3>
+<div class="article-text">{{ item.extract_html }}</div>
+{% if item.extract_truncated %}<p class="panel-note">Extract only. {% if item.url %}<a class="text-link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">Read the full article at the outlet.</a>{% endif %}</p>{% endif %}
+{% if item.extract_basis != 'full' %}<p class="panel-note">{% if item.paywalled %}The outlet's paywall blocked text extraction.{% else %}No article text is stored for this item.{% endif %}</p>{% endif %}
+{% elif item.summary %}
+<p>{{ item.summary }}</p>
+{% endif %}
+
+<h3 class="section-title">Classification</h3>
+<div class="wire-meta">
+  {% if item.primary_level and item.primary_level != 'none' %}<span class="badge">primary: {{ item.primary_level }}</span>{% endif %}
+  {% for level in item.levels %}<span class="badge">{{ level }}</span>{% endfor %}
+  {% for state in item.states %}<span class="chip" title="{{ state|state_name }}">{{ state }}</span>{% endfor %}
+  {% for race in item.race_types %}<span class="chip">{{ race }}</span>{% endfor %}
+  {% for topic in item.topics %}<span class="chip">{{ topic }}</span>{% endfor %}
+  {% if item.is_opinion %}<span class="badge">opinion</span>{% endif %}
+  {% if item.is_results %}<span class="badge">results report</span>{% endif %}
+  {% if item.language %}<span class="badge" title="{{ item.language|language_name }}">{{ item.language|upper }}</span>{% endif %}
+  {% if item.method %}<span class="badge">classified by {{ item.method }}</span>{% endif %}
+</div>
+{% if not item.relevant %}<p class="panel-note">Classified as not election relevant.</p>{% endif %}
+
+<h3 class="section-title">Storyline</h3>
+{% if item.storyline %}
+<p class="m-0"><a class="text-link" href="/story/{{ item.storyline.storyline_id }}?{{ qs }}">{{ item.storyline.label or 'Unlabeled storyline' }}</a>
+  <span class="panel-note">{{ item.storyline.status }}{% if item.similarity is not none %} · similarity {{ '%.2f' % item.similarity }}{% endif %}</span></p>
+{% else %}
+<div class="empty">This item is in no storyline.</div>
+{% endif %}
+
+<h3 class="section-title">Entities and tone</h3>
+{% if item.entity_rows %}
+<table class="table">
+  <thead><tr><th>Entity</th><th>Type</th><th>Tone</th><th>Evidence</th></tr></thead>
+  <tbody>
+  {% for row in item.entity_rows %}
+  <tr>
+    <td>{% if row.party %}<span class="party-chip" data-party="{{ row.party }}"></span>{% endif %}{% if row.entity_id %}<a class="text-link" href="/entity/{{ row.entity_id }}?{{ qs }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
+    <td>{{ row.ent_type }}</td>
+    <td class="num">{% if row.tone is not none %}<span class="tone-dot" data-tone="{{ row.tone }}" title="{{ row.tone|tone_title }}"></span> {{ '%+.1f' % row.tone }}{% else %}—{% endif %}</td>
+    <td>{% for quote in row.quotes %}<q class="quote">{{ quote }}</q>{% endfor %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">No entities have been extracted from this item.</div>
+{% endif %}
+{% if item.place_rows %}
+<div class="wire-meta mt-1">
+  <span>Places:</span>
+  {% for place in item.place_rows %}<a class="chip" href="/state/{{ place.state_usps }}?{{ qs }}">{{ place.surface }}</a>{% endfor %}
+</div>
+{% endif %}
+
+<h3 class="section-title">Nearest items</h3>
+{% if item.neighbors %}
+{% for near in item.neighbors %}
+<div class="wire-row" data-article="{{ near.item_id }}">
+  <span class="wire-time num" title="Cosine similarity">{{ '%.3f' % near.score }}</span>
+  <span class="wire-head">{{ near.headline }}</span>
+  <span class="wire-meta"><span>{{ near.outlet }}</span>{% if near.glyph %}<span class="glyph" title="{{ near.lean|lean_title }}">{{ near.glyph }}</span>{% else %}<span class="glyph">{{ near.lean }}</span>{% endif %}<span>{{ near.first_seen_at|et_datetime }}</span></span>
+</div>
+{% endfor %}
+{% else %}
+<div class="empty">No similar items match these filters, or this item has no embedding.</div>
+{% endif %}
+
+<h3 class="section-title">Syndication group</h3>
+{% if item.group and item.group|length > 1 %}
+{% for member in item.group %}
+<div class="wire-row" data-article="{{ member.item_id }}">
+  <span class="wire-time">{{ member.first_seen_at|et_time }}</span>
+  <span class="wire-head">{{ member.headline }}</span>
+  <span class="wire-meta"><span>{{ member.outlet }}</span>{% if member.glyph %}<span class="glyph" title="{{ member.lean|lean_title }}">{{ member.glyph }}</span>{% else %}<span class="glyph">{{ member.lean }}</span>{% endif %}{% if member.canonical %}<span class="badge">canonical</span>{% endif %}{% if member.item_id == item.item_id %}<span class="badge">this item</span>{% endif %}</span>
+</div>
+{% endfor %}
+{% else %}
+<div class="empty">No other outlet carried a copy of this item.</div>
+{% endif %}
+
+<details class="raw-details" hx-get="/frag/article/{{ item.item_id }}/raw" hx-trigger="toggle once" hx-target="find .raw-slot">
+  <summary>Raw parser output</summary>
+  <div class="raw-slot"><div class="empty">Loading.</div></div>
+</details>
+</div>

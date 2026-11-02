@@ -1,0 +1,23 @@
+{% if rows %}
+<table class="table">
+  <thead><tr><th>Race</th><th>Candidate</th><th>Status</th><th>Caller named in article</th><th>Reported by</th><th>Outlets</th><th>First reported</th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+  <tr class="clickable" data-evidence="{{ row.evidence }}">
+    <td>{{ row.race }}</td>
+    <td>{% if row.party %}<span class="party-chip" data-party="{{ row.party }}"></span>{% endif %}{{ row.winner_name or '—' }}</td>
+    <td>{% for status in row.statuses %}{{ 'opponent conceded' if status == 'conceded' else status|replace('_', ' ') }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+    <td>{{ (row.called_by or [])|join(', ') or 'unspecified' }}</td>
+    <td>{{ (row.outlet_names or [])|join(', ') }}</td>
+    <td class="num">{{ row.outlets }}</td>
+    <td class="num">{{ row.first_reported|et_time }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if rows[0].total > rows|length %}
+<p class="panel-note">{{ rows|length }} of {{ rows[0].total }} shown, latest report first. Focus on a state or a group to see others.</p>
+{% endif %}
+{% else %}
+<div class="empty">No race-call claims in the news for these filters.</div>
+{% endif %}

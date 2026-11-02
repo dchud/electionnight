@@ -1,0 +1,22 @@
+{% if lean_rows %}
+<table class="table">
+  <thead><tr><th>Lean</th><th>Mentions</th><th>Mean tone</th><th>95% CI</th><th>n</th></tr></thead>
+  <tbody>
+  {% for row in lean_rows %}
+  <tr>
+    <td>{% if row.glyph %}<span class="glyph" title="{{ row.bucket|lean_title }}">{{ row.glyph }}</span> {% endif %}{{ row.bucket }}</td>
+    <td class="num"><span class="count-link" data-evidence="kind=entity&key={{ page_key }}&copies=all&opinion=exclude{% if row.bucket != 'All' %}&bucket={{ row.bucket }}{% endif %}" role="button" tabindex="0">{{ row.mentions }}</span></td>
+    {% if row.hidden %}
+    <td colspan="2" class="panel-note">Hidden: n under 5</td>
+    {% else %}
+    <td class="num">{{ '%+.2f' % row.mean }}{% if row.low_n %} <span class="badge">low n</span>{% endif %}</td>
+    <td class="num">{{ '%+.2f' % row.ci_low }} to {{ '%+.2f' % row.ci_high }}</td>
+    {% endif %}
+    <td class="num">{{ row.n }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">No mentions in this window.</div>
+{% endif %}

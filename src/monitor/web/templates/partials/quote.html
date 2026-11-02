@@ -1,0 +1,5 @@
+<div class="quote-row" data-article="{{ row.item_id }}">
+  <span class="tone-dot" data-tone="{{ row.tone }}" title="{{ row.tone|tone_title }}"></span> <span class="num">{{ '%+.1f' % row.tone }}</span>
+  <q class="quote">{{ row.tone_evidence }}</q>
+  <span class="wire-meta"><span>{{ row.outlet }}</span>{% if row.glyph %}<span class="glyph" title="{{ row.lean|lean_title }}">{{ row.glyph }}</span>{% else %}<span class="glyph">{{ row.lean }}</span>{% endif %}<span>{{ row.first_seen_at|et_datetime }}</span><span class="fn" data-item="{{ row.item_id }}" role="button" tabindex="0">[source]</span></span>
+</div>

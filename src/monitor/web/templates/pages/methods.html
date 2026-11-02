@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Methods · Election Night Monitor{% endblock %}
+{% block content %}
+<main class="page page-narrow">
+  <article class="panel page-panel-body doc">
+    {% if document %}{{ document }}{% else %}<div class="empty">The Methods document is missing.</div>{% endif %}
+  </article>
+  <article class="panel">
+    <div class="panel-head"><h2 class="panel-title">Models and parsers in service</h2></div>
+    <div class="page-panel-body">
+      <p class="m-0">Bulk model: <code>{{ settings.llm.model_bulk }}</code>. Brief model: <code>{{ settings.llm.model_brief }}</code>. Embedding model: <code>{{ settings.nlp.embed_model }}</code>.</p>
+      {% if stages %}
+      <div class="wire-meta mt-1">{% for stage in stages %}<span class="chip">{{ stage.parser }} {{ stage.version }}</span>{% endfor %}</div>
+      {% else %}
+      <div class="empty">The pipeline status file is missing, so parser versions cannot be listed.</div>
+      {% endif %}
+    </div>
+  </article>
+  <article class="panel">
+    <div class="panel-head"><h2 class="panel-title">Cost ledger</h2><span class="panel-note">estimated from token counts; up to the replay time</span></div>
+    <div class="page-panel-body">{% include "fragments/ledger.html" %}</div>
+  </article>
+</main>
+{% endblock %}

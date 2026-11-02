@@ -1,0 +1,8 @@
+{% for row in state_stories %}
+<div class="card">
+  <a class="card-label" href="/story/{{ row.storyline_id }}?{{ qs }}">{{ row.label or 'Unlabeled storyline' }}</a>
+  <div class="card-row"><span class="count-link num" data-evidence="kind=state&key={{ page_key }}&also=storyline:{{ row.storyline_id }}" role="button" tabindex="0">{{ row.n }} {{ 'story' if row.n == 1 else 'stories' }}</span><span>{{ row.status }}</span><span>first {{ row.first_seen_at|et_datetime }}</span></div>
+</div>
+{% else %}
+<div class="empty">No storylines touch this state in this window.</div>
+{% endfor %}

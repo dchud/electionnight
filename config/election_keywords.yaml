@@ -1,0 +1,200 @@
+# The keyword path for classification, used when the Claude API is unavailable
+# or the budget guard applies. Matching ignores case. `strong` phrases make an
+# item relevant alone; `weak` phrases need a second match or a US state name.
+relevance:
+  en:
+    strong:
+      - midterm
+      - midterms
+      - election day
+      - election night
+      - general election
+      - polls close
+      - polling place
+      - early voting
+      - mail-in ballot
+      - absentee ballot
+      - ballot measure
+      - ballot initiative
+      - exit poll
+      - race call
+      - conceded
+      - concedes
+      - projected winner
+      - declared the winner
+      - senate race
+      - house race
+      - gubernatorial
+      - governor's race
+      - secretary of state
+      - voter turnout
+      - election results
+      - recount
+      - 2026 election
+      - 2026 elections
+    weak:
+      - election
+      - elections
+      - voters
+      - voting
+      - ballot
+      - campaign
+      - candidate
+      - senate
+      - congress
+      - governor
+      - poll
+      - polls
+      - democrat
+      - democrats
+      - republican
+      - republicans
+      - gop
+      - incumbent
+      - challenger
+      - redistricting
+  es:
+    strong:
+      - elecciones de medio término
+      - elecciones intermedias
+      - elecciones de mitad de mandato
+      - día de las elecciones
+      - voto anticipado
+      - voto por correo
+      - resultados electorales
+      - carrera al senado
+    weak:
+      - elecciones
+      - votantes
+      - electoral
+      - candidato
+      - candidata
+      - senado
+      - congreso
+      - gobernador
+      - demócratas
+      - republicanos
+      - estados unidos
+  fr:
+    strong:
+      - élections de mi-mandat
+      - midterms
+      - jour du scrutin
+      - résultats des élections
+      - vote anticipé
+    weak:
+      - élections
+      - électeurs
+      - scrutin
+      - candidat
+      - candidate
+      - sénat
+      - démocrates
+      - républicains
+      - états-unis
+  ar:
+    strong:
+      - انتخابات التجديد النصفي
+      - الانتخابات النصفية
+      - نتائج الانتخابات الأمريكية
+    weak:
+      - الانتخابات
+      - الناخبين
+      - مجلس الشيوخ
+      - الكونغرس
+      - الديمقراطيين
+      - الجمهوريين
+      - الولايات المتحدة
+  zh:
+    strong:
+      - 中期选举
+      - 期中选举
+      - 中期選舉
+      - 期中選舉
+      - 美国大选
+    weak:
+      - 选举
+      - 選舉
+      - 选民
+      - 選民
+      - 参议院
+      - 參議院
+      - 众议院
+      - 眾議院
+      - 民主党
+      - 民主黨
+      - 共和党
+      - 共和黨
+      - 美国
+      - 美國
+  ru:
+    strong:
+      - промежуточные выборы
+      - промежуточных выборов
+      - промежуточных выборах
+    weak:
+      - выборы
+      - выборах
+      - избиратели
+      - сенат
+      - конгресс
+      - демократы
+      - республиканцы
+      - сша
+# Topic keywords, in English. Non-English items get relevance and level only.
+topics:
+  control_senate: [control of the senate, senate majority, senate control]
+  control_house: [control of the house, house majority, house control]
+  governor_races: [governor's race, gubernatorial]
+  senate_race: [senate race, senate seat, senate candidate]
+  house_race: [house race, congressional district, house seat]
+  state_legislature: [state legislature, state senate, state house]
+  local_race: [mayoral, mayor's race, county commission, city council]
+  ballot_measure_abortion: [abortion amendment, abortion measure]
+  ballot_measure_redistricting: [redistricting measure, redistricting amendment]
+  ballot_measure_other: [ballot measure, ballot initiative, proposition, referendum]
+  turnout: [turnout]
+  early_vote_mail: [early voting, mail-in, absentee, early vote]
+  polling_place_ops: [polling place, polling station, poll worker]
+  lines_wait_times: [long lines, wait times]
+  voting_hours_extended: [polls extended, extended hours, stay open late]
+  machine_or_tech_issue: [machine, tabulator, e-poll, technical problem]
+  vote_counting: [vote count, counting votes, ballots counted]
+  results_projection: [projected, projects, wins, won the race, declared the winner]
+  concession_victory: [concede, conceded, concedes, victory speech]
+  recount_close_race: [recount, too close to call]
+  legal_challenge: [lawsuit, court ruling, judge, sued]
+  misinformation_claims: [misinformation, false claim, disinformation]
+  election_security_threats: [bomb threat, threats, election security, cyberattack]
+  violence_intimidation: [intimidation, violence, shooting at]
+  foreign_interference: [foreign interference, russian, iranian, chinese influence]
+  exit_polls: [exit poll]
+  polls_forecasts: [poll shows, forecast, polling average, new poll]
+  issue_economy: [inflation, tariffs, jobs, economy]
+  issue_immigration: [immigration, border, deportation]
+  issue_abortion: [abortion]
+  issue_health: [health care, healthcare, medicaid, medicare]
+  issue_crime: [crime, public safety]
+  issue_democracy: [democracy, election integrity]
+  issue_foreign_policy: [foreign policy, ukraine, israel, nato]
+  campaign_finance: [campaign finance, fundraising, super pac, ad spending]
+  candidate_controversy: [scandal, controversy, allegations]
+  endorsements: [endorse, endorsed, endorsement]
+  redistricting_maps: [redistricting, gerrymander, new map]
+  trump_factor: [trump]
+  party_strategy: [strategy, dnc, rnc, nrsc, dscc, nrcc, dccc]
+  international_reaction: [allies, world leaders, abroad]
+  markets_reaction: [markets, stocks, wall street]
+race_types:
+  senate: [senate]
+  house: [house race, congressional district, congressman, congresswoman]
+  governor: [governor, gubernatorial]
+  attorney_general: [attorney general]
+  secretary_of_state: [secretary of state]
+  state_supreme_court: [state supreme court]
+  state_legislature: [state legislature, state senate, state house]
+  mayor: [mayor]
+  county: [county commission, county executive, sheriff]
+  ballot_measure: [ballot measure, ballot initiative, proposition, referendum]
+local_terms: [county, mayor, city council, sheriff, school board, polling place, precinct, congressional district]
+national_terms: [control of congress, control of the senate, control of the house, nationwide, national, president, white house, midterm]

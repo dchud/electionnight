@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Not found · Election Night Monitor{% endblock %}
+{% block content %}
+<main class="page">
+  <h1>No such {{ what }}</h1>
+  <p class="page-lede">Nothing in the monitor has the id <code>{{ key }}</code>.</p>
+  <p><a class="text-link" href="/?{{ qs }}">Back to the dashboard</a></p>
+</main>
+{% endblock %}

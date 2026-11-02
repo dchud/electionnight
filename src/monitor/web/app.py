@@ -1,0 +1,253 @@
+"""The dashboard application. Read-only against the lake."""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import re
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
+
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
+
+from monitor.llm.citations import split_sentences
+from monitor.logs import configure, get
+from monitor.settings import Settings, get_settings
+from monitor.web.access import AccessControl, is_loopback
+from monitor.web.chip_titles import (
+    language_name,
+    lean_title,
+    level_title,
+    state_name,
+    tone_title,
+)
+from monitor.web.drilldown import Drill
+from monitor.web.filters import (
+    FOCUSES,
+    LEVELS,
+    WINDOWS,
+    Filters,
+    init_ui_db,
+)
+from monitor.web.hub import Hub
+from monitor.web.panels import Panels, lean_glyph, lean_text
+from monitor.web.readmodel import ReadModel
+from monitor.web.reference import Reference
+from monitor.web.vectors import Vectors
+
+log = get(__name__)
+
+ET = ZoneInfo("America/New_York")
+WEB_DIR = Path(__file__).parent
+FOOTNOTE_RE = re.compile(r"\[\^(\w+)\]")
+ALL_STATES = (
+    "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN "
+    "MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA "
+    "WV WI WY"
+).split()
+
+
+def et_time(value: datetime | None) -> str:
+    """A time of day in Eastern time, such as `8:05 pm`."""
+    if value is None:
+        return ""
+    return value.astimezone(ET).strftime("%-I:%M %p").lower()
+
+
+def et_datetime(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    return value.astimezone(ET).strftime("%b %-d, %-I:%M %p ET")
+
+
+def render_cited(
+    markdown: str | None, citations: dict[str, str] | None
+) -> Markup:
+    """Escape model text and turn `[^n]` markers into footnote links."""
+    if not markdown:
+        return Markup("")
+    citations = citations or {}
+
+    def footnote(match: re.Match[str]) -> str:
+        number = match.group(1)
+        item_id = citations.get(number)
+        if not item_id:
+            return ""
+        return (
+            f'<sup class="fn" data-item="{escape(item_id)}" '
+            f'tabindex="0" role="button">[{escape(number)}]</sup>'
+        )
+
+    paragraphs = [
+        f"<p>{FOOTNOTE_RE.sub(footnote, str(escape(part)))}</p>"
+        for part in markdown.split("\n\n")
+    ]
+    return Markup("".join(paragraphs))
+
+
+def first_sentence(markdown: str | None) -> str:
+    """The first sentence, with its citation markers."""
+    if not markdown:
+        return ""
+    return split_sentences(markdown)[0]
+
+
+def create_templates() -> Jinja2Templates:
+    templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
+    env = templates.env
+    env.filters["et_time"] = et_time
+    env.filters["et_datetime"] = et_datetime
+    env.filters["glyph"] = lean_glyph
+    env.filters["lean_text"] = lean_text
+    env.filters["state_name"] = state_name
+    env.filters["language_name"] = language_name
+    env.filters["level_title"] = level_title
+    env.filters["lean_title"] = lean_title
+    env.filters["tone_title"] = tone_title
+    env.filters["cited"] = render_cited
+    env.filters["first_sentence"] = first_sentence
+    env.globals.update(
+        WINDOWS=WINDOWS,
+        LEVELS=LEVELS,
+        FOCUSES=FOCUSES,
+        ALL_STATES=ALL_STATES,
+    )
+    return templates
+
+
+class Web:
+    """Everything a route needs."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        load_embedding_model: Callable[[Settings], Any] | None = None,
+    ) -> None:
+        self.settings = settings
+        init_ui_db(settings.paths.ui_db)
+        self.model = ReadModel(settings)
+        self.panels = Panels(settings, self.model)
+        self.vectors = Vectors(settings, self.model, load_embedding_model)
+        self.drill = Drill(settings, self.model, self.panels, self.vectors)
+        self.reference = Reference(settings, self.model, self.panels)
+        self.templates = create_templates()
+        self.hub = Hub(self.model, settings)
+
+    def filters(self, request: Request) -> Filters:
+        return Filters.parse(
+            request.query_params, self.settings.web.default_window
+        )
+
+    def render(
+        self,
+        request: Request,
+        template: str,
+        filters: Filters | None = None,
+        status_code: int = 200,
+        **context: Any,
+    ) -> HTMLResponse:
+        filters = filters or self.filters(request)
+        return self.templates.TemplateResponse(
+            request,
+            template,
+            status_code=status_code,
+            context={
+                "filters": filters,
+                "qs": filters.query_string(),
+                "now": datetime.now(UTC),
+                "throttle": self.settings.web.fragment_throttle_seconds,
+                "tour_seconds": self.settings.nlp.tour_seconds,
+                **context,
+            },
+        )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    web: Web = app.state.web
+    await asyncio.to_thread(web.model.refresh, True)
+    task = asyncio.ensure_future(web.hub.run())
+    warm = asyncio.ensure_future(asyncio.to_thread(web.vectors.refresh))
+    yield
+    task.cancel()
+    await asyncio.gather(task, warm, return_exceptions=True)
+
+
+def create_app(
+    settings: Settings,
+    load_embedding_model: Callable[[Settings], Any] | None = None,
+) -> FastAPI:
+    """Build the app. `load_embedding_model` replaces the on-disk model."""
+    from monitor.web.routes import api, fragments, pages, sse
+
+    # FastAPI's documentation pages load their assets from CDNs.
+    app = FastAPI(
+        title="Election Night Monitor",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
+    app.add_middleware(
+        AccessControl,
+        allowed_hosts=settings.web.allowed_hosts,
+        lan=not is_loopback(settings.web.host),
+    )
+    app.state.web = Web(settings, load_embedding_model)
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(WEB_DIR / "static")),
+        name="static",
+    )
+    app.include_router(pages.router)
+    app.include_router(fragments.router)
+    app.include_router(api.router)
+    app.include_router(sse.router)
+    return app
+
+
+def create_app_from_env() -> FastAPI:
+    """App factory for auto-reload, which re-imports on every change."""
+    settings = get_settings()
+    configure("web", settings.paths.logs)
+    return create_app(settings)
+
+
+def serve(
+    settings: Settings, host: str, port: int, reload: bool = False
+) -> None:
+    configure("web", settings.paths.logs)
+    log.info("web_starting", host=host, port=port, reload=reload)
+    settings.web.host = host
+    limit = None if is_loopback(host) else settings.web.lan_concurrency
+    if reload:
+        # The reloader's child builds its own settings from the environment.
+        os.environ["WEB__HOST"] = host
+        uvicorn.run(
+            "monitor.web.app:create_app_from_env",
+            factory=True,
+            host=host,
+            port=port,
+            log_level="warning",
+            reload=True,
+            reload_dirs=[str(WEB_DIR)],
+            reload_includes=["*.py", "*.sql"],
+            limit_concurrency=limit,
+        )
+        return
+    uvicorn.run(
+        create_app(settings),
+        host=host,
+        port=port,
+        log_level="warning",
+        limit_concurrency=limit,
+    )

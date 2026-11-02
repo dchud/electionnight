@@ -1,0 +1,115 @@
+{
+ "pagination": {
+  "count": 8,
+  "page": 1,
+  "pages": 1,
+  "per_page": 100,
+  "is_count_exact": true
+ },
+ "results": [
+  {
+   "name": "DE LA CRUZ, CARLOS JR.",
+   "party": "REP",
+   "party_full": "REPUBLICAN PARTY",
+   "state": "TX",
+   "office": "H",
+   "district": "35",
+   "district_number": 35,
+   "incumbent_challenge": "C",
+   "candidate_status": "C",
+   "candidate_inactive": false,
+   "candidate_id": "H6TX35087"
+  },
+  {
+   "name": "GARCIA, JOHNNY",
+   "party": "DEM",
+   "party_full": "DEMOCRATIC PARTY",
+   "state": "TX",
+   "office": "H",
+   "district": "35",
+   "district_number": 35,
+   "incumbent_challenge": "C",
+   "candidate_status": "C",
+   "candidate_inactive": false,
+   "candidate_id": "H6TX35095"
+  },
+  {
+   "name": "CARTER, EARL LEROY",
+   "party": "REP",
+   "party_full": "REPUBLICAN PARTY",
+   "state": "GA",
+   "office": "S",
+   "district": "00",
+   "district_number": 0,
+   "incumbent_challenge": "C",
+   "candidate_status": "C",
+   "candidate_inactive": false,
+   "candidate_id": "S6GA00374"
+  },
+  {
+   "name": "COLLINS, MICHAEL A JR",
+   "party": "REP",
+   "party_full": "REPUBLICAN PARTY",
+   "state": "GA",
+   "office": "S",
+   "district": "00",
+   "district_number": 0,
+   "incumbent_challenge": "C",
+   "candidate_status": "C",
+   "candidate_inactive": false,
+   "candidate_id": "S6GA00390"
+  },
+  {
+   "name": "OSSOFF, T. JONATHAN",
+   "party": "DEM",
+   "party_full": "DEMOCRATIC PARTY",
+   "state": "GA",
+   "office": "S",
+   "district": "00",
+   "district_number": 0,
+   "incumbent_challenge": "I",
+   "candidate_status": "C",
+   "candidate_inactive": false,
+   "candidate_id": "S8GA00180"
+  },
+  {
+   "name": "PELTOLA, MARY",
+   "party": "DEM",
+   "party_full": "DEMOCRATIC PARTY",
+   "state": "AK",
+   "office": "S",
+   "district": "00",
+   "district_number": 0,
+   "incumbent_challenge": "C",
+   "candidate_status": "C",
+   "candidate_inactive": false,
+   "candidate_id": "S6AK00276"
+  },
+  {
+   "name": "SULLIVAN, DAN",
+   "party": "REP",
+   "party_full": "REPUBLICAN PARTY",
+   "state": "AK",
+   "office": "S",
+   "district": "00",
+   "district_number": 0,
+   "incumbent_challenge": "I",
+   "candidate_status": "C",
+   "candidate_inactive": false,
+   "candidate_id": "S4AK00214"
+  },
+  {
+   "name": "SULLIVAN, DANIEL J",
+   "party": "REP",
+   "party_full": "REPUBLICAN PARTY",
+   "state": "AK",
+   "office": "S",
+   "district": "00",
+   "district_number": 0,
+   "incumbent_challenge": "C",
+   "candidate_status": "C",
+   "candidate_inactive": false,
+   "candidate_id": "S6AK00326"
+  }
+ ]
+}

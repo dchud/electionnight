@@ -1,0 +1,67 @@
+<header class="app-header">
+  <div>
+    <div class="app-title"><a href="/?{{ qs }}">Election Night Monitor</a></div>
+    <div class="flex items-center gap-2">
+      <span class="clock" id="clock">--:--</span>
+      {% if filters.is_replay %}<span class="pill pill-replay" id="mode-pill">REPLAY</span>
+      {% else %}<span class="pill pill-live" id="mode-pill">LIVE</span>{% endif %}
+    </div>
+  </div>
+  <div class="kpis" hx-get="/frag/kpis?{{ qs }}" hx-trigger="load, sse:snapshot throttle:{{ throttle }}s, replay-tick from:body"></div>
+  <nav class="controls" aria-label="Global controls">
+    <span class="control-group" title="Window (w)" data-cycle="window">
+      {% for key, value in WINDOWS.items() %}
+      <a data-filter="window:{{ key }}" href="?{{ filters.query_string(window=key) }}{% if window_qs is defined %}{{ window_qs }}&time={{ key }}{% else %}{{ extra_qs }}{% endif %}" aria-current="{{ 'true' if filters.window == key else 'false' }}">{{ value[0] }}</a>
+      {% endfor %}
+    </span>
+    <span class="control-group" title="Focus (f)" data-cycle="focus">
+      {% for key, label in FOCUSES.items() %}
+      <a data-filter="focus:{{ key }}" href="?{{ filters.query_string(focus=key) }}{{ extra_qs }}" aria-current="{{ 'true' if filters.focus == key else 'false' }}">{{ label }}</a>
+      {% endfor %}
+      <select aria-label="Focus on one state" data-nav-select data-filter="focus:state">
+        <option value="?{{ filters.query_string(focus='all') }}{{ extra_qs }}">State</option>
+        {% for usps in ALL_STATES %}
+        <option value="?{{ filters.query_string(focus='state:' + usps) }}{{ extra_qs }}" {{ 'selected' if filters.focused_state == usps else '' }}>{{ usps }}</option>
+        {% endfor %}
+      </select>
+    </span>
+    <span class="control-group secondary-control">
+      {% for key, label in LEVELS.items() %}
+      <a data-filter="level:{{ key }}" href="?{{ filters.query_string(level=key) }}{{ extra_qs }}" aria-current="{{ 'true' if filters.level == key else 'false' }}">{{ label if key != 'all' else 'All' }}</a>
+      {% endfor %}
+    </span>
+    <span class="control-group secondary-control">
+      <a data-filter="lang:en" href="?{{ filters.query_string(lang='en') }}{{ extra_qs }}" aria-current="{{ 'true' if filters.lang == 'en' else 'false' }}">EN</a>
+      <a data-filter="lang:all" href="?{{ filters.query_string(lang='all') }}{{ extra_qs }}" aria-current="{{ 'true' if filters.lang == 'all' else 'false' }}">All langs</a>
+    </span>
+    <span class="control-group secondary-control">
+      <a data-filter="copies:unique" href="?{{ filters.query_string(copies='unique') }}{{ extra_qs }}" aria-current="{{ 'true' if filters.copies == 'unique' else 'false' }}">Unique</a>
+      <a data-filter="copies:all" href="?{{ filters.query_string(copies='all') }}{{ extra_qs }}" aria-current="{{ 'true' if filters.copies == 'all' else 'false' }}">All copies</a>
+    </span>
+    <span class="control-group">
+      <button data-toggle-projector title="Projector mode (p)">Projector</button>
+      <button data-toggle-theme title="Light or dark theme">Theme</button>
+      <button data-toggle-replay title="Replay (r)">Replay</button>
+      <button data-toggle-tour title="Tour (t)">Tour</button>
+    </span>
+    <span class="control-group secondary-control">
+      <a href="/search?{{ qs }}" title="Search (/)">Search</a>
+      <a href="/sources?{{ qs }}">Sources</a>
+      <a href="/methods?{{ qs }}">Methods</a>
+      <a href="/status?{{ qs }}">Status</a>
+      <a href="/watchlist?{{ qs }}">Watchlist</a>
+    </span>
+  </nav>
+</header>
+<div class="status-strip" hx-get="/frag/status-strip" hx-trigger="load, sse:status"></div>
+<div class="filter-line" id="replay-note" {{ '' if filters.is_replay else 'hidden' }}>Replay shows what had been first seen by this time. Storyline labels and assignments are current, not as of this time.</div>
+<div class="replay-bar" id="replay-bar">
+  <button class="drawer-close" data-toggle-replay>Exit replay</button>
+  <span id="replay-time" class="num"></span>
+  <input type="range" id="replay-scrubber" aria-label="Replay time">
+  <span class="segmented" id="replay-speed">
+    <button data-speed="1" aria-pressed="false">1×</button>
+    <button data-speed="5" aria-pressed="true">5×</button>
+    <button data-speed="20" aria-pressed="false">20×</button>
+  </span>
+</div>

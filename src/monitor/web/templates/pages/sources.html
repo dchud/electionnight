@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Sources · Election Night Monitor{% endblock %}
+{% block content %}
+<main class="page">
+  <h1>Sources</h1>
+  <div class="page-grid">
+    <article class="panel span-7">
+      <div class="panel-head"><h2 class="panel-title">Inclusion and exclusion criteria</h2></div>
+      <div class="page-panel-body criteria">
+        <div>
+          <h3 class="section-title">Included</h3>
+          <ul>{% for line in criteria_include %}<li>{{ line }}</li>{% endfor %}</ul>
+        </div>
+        <div>
+          <h3 class="section-title">Excluded</h3>
+          <ul>{% for line in criteria_exclude %}<li>{{ line }}</li>{% endfor %}</ul>
+        </div>
+        <div class="criteria-wide">
+          <h3 class="section-title">Lean labels</h3>
+          <p class="m-0">The label is the AllSides Media Bias Rating where one exists, with its citation and retrieval date. Ad Fontes bias and reliability appear where available. An outlet with no cited rating reads <span class="lean-neutral">Unrated</span>. The US left-right scale does not transfer abroad, so international and non-English outlets read <span class="lean-neutral">Non-US outlet</span>.</p>
+        </div>
+        {% if flagged %}
+        <div class="criteria-wide">
+          <h3 class="section-title">Flagged outlets</h3>
+          <ul>
+            {% for row in flagged %}<li><a class="text-link" href="#{{ row.source_id }}">{{ row.name }}</a>: {% if row.state_affiliated %}state-affiliated{% endif %}{% if row.state_affiliated and row.censorship %}; {% endif %}{{ row.censorship }}</li>{% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+      </div>
+    </article>
+    <article class="panel span-5 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Outlets by lean</h2><span class="panel-note">click a bar for that lean's stories</span></div>
+      <div class="panel-chart"><div class="chart" data-chart="lean_distribution" data-click="bucket" data-empty="No outlets are loaded."></div></div>
+    </article>
+  </div>
+  <article class="panel">
+    <div class="panel-head"><h2 class="panel-title">{{ sources|length }} outlets</h2><span class="panel-note">click a heading to sort; error rate covers the last 24 hours; items count up to the replay time, under the Focus, Level, and Language controls</span></div>
+    {% if sources %}
+    <div class="table-scroll">
+      <table class="table sources-table" data-sortable>
+        <thead><tr>
+          <th data-sort="text" aria-sort="ascending"><button type="button">Outlet</button></th>
+          <th data-sort="text"><button type="button">Scope</button></th>
+          <th data-sort="text"><button type="button">State</button></th>
+          <th data-sort="text"><button type="button">Country</button></th>
+          <th data-sort="text"><button type="button">Lang</button></th>
+          <th data-sort="number"><button type="button">Lean and citation</button></th>
+          <th data-sort="number"><button type="button">Ad Fontes</button></th>
+          <th data-sort="text"><button type="button">Ownership</button></th>
+          <th data-sort="text"><button type="button">Paywall</button></th>
+          <th data-sort="number"><button type="button">Feeds</button></th>
+          <th data-sort="text"><button type="button">Last success</button></th>
+          <th data-sort="number"><button type="button">Errors</button></th>
+          <th data-sort="number"><button type="button">Items</button></th>
+          <th data-sort="number"><button type="button">Relevant</button></th>
+        </tr></thead>
+        <tbody>
+        {% for row in sources %}
+        <tr id="{{ row.source_id }}" class="anchor-row">
+          <td data-value="{{ row.name|lower }}">
+            {% if row.homepage %}<a class="text-link" href="{{ row.homepage }}" target="_blank" rel="noopener noreferrer">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}
+            {% if row.state_affiliated %}<span class="badge badge-flag">state-affiliated</span>{% endif %}
+            {% if row.censorship %}<span class="badge badge-flag" title="{{ row.censorship }}">censorship</span><div class="panel-note">{{ row.censorship }}</div>{% endif %}
+            {% if not row.enabled %}<span class="badge">disabled</span>{% endif %}
+          </td>
+          <td>{{ row.scope or '—' }}</td>
+          <td>{% if row.home_state %}<a class="text-link" href="/state/{{ row.home_state }}?{{ qs }}">{{ row.home_state }}</a>{% else %}—{% endif %}</td>
+          <td>{{ row.country or '—' }}</td>
+          <td>{{ row.language or '—' }}</td>
+          <td data-value="{{ row.lean_sort }}">
+            {% if row.lean_url %}
+            <span class="glyph" title="{{ row.lean_shown|lean_title }}">{{ row.lean_glyph }}</span> {{ row.lean_shown }}
+            <div class="panel-note"><a class="text-link" href="{{ row.lean_url }}" target="_blank" rel="noopener noreferrer">{{ row.lean_source or 'Rating' }}</a>{% if row.lean_retrieved_on %}, retrieved {{ row.lean_retrieved_on }}{% endif %}</div>
+            {% else %}
+            <span class="lean-neutral">{{ row.lean_shown }}</span>
+            {% endif %}
+          </td>
+          <td class="num" data-value="{{ row.adfontes_reliability if row.adfontes_reliability is not none else -1 }}">
+            {% if row.adfontes_bias is not none or row.adfontes_reliability is not none %}
+            {% if row.adfontes_url %}<a class="text-link" href="{{ row.adfontes_url }}" target="_blank" rel="noopener noreferrer">{% endif %}bias {{ '%.1f' % row.adfontes_bias if row.adfontes_bias is not none else '—' }}, reliability {{ '%.1f' % row.adfontes_reliability if row.adfontes_reliability is not none else '—' }}{% if row.adfontes_url %}</a>{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ row.ownership or '—' }}</td>
+          <td>{{ row.paywall or '—' }}</td>
+          <td class="num" data-value="{{ row.feed_list|length }}" title="{{ row.feed_list|join('\n') }}">{{ row.feed_list|length }}</td>
+          <td class="num" data-value="{{ row.last_success.isoformat() if row.last_success else '' }}">{{ row.last_success|et_datetime if row.last_success else '—' }}{% if row.feed_state and row.feed_state != 'ok' %} <span class="badge badge-flag" title="{{ row.feed_errors|join('; ') }}">{{ row.feed_state }}</span>{% endif %}</td>
+          <td class="num" data-value="{{ row.error_rate if row.error_rate is not none else -1 }}" title="{{ row.fetch_failed }} of {{ row.fetch_attempts }} fetches failed">{{ '%.1f%%' % (row.error_rate * 100) if row.error_rate is not none else '—' }}</td>
+          <td class="num" data-value="{{ row['items'] }}"><span class="count-link" data-evidence="kind=source&key={{ row.source_id|urlencode }}&span=all&rel=any&copies=all" role="button" tabindex="0">{{ row['items'] }}</span></td>
+          <td class="num" data-value="{{ row.relevant_share if row.relevant_share is not none else -1 }}"><span class="count-link" data-evidence="kind=source&key={{ row.source_id|urlencode }}&span=all&copies=all" role="button" tabindex="0" title="{{ row.relevant }} of {{ row['items'] }}">{{ '%.0f%%' % (row.relevant_share * 100) if row.relevant_share is not none else '—' }}</span></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty">No outlets are loaded. The pipeline mirrors them from the sources file.</div>
+    {% endif %}
+  </article>
+</main>
+{% endblock %}

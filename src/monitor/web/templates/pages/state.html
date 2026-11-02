@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ state.name }} · Election Night Monitor{% endblock %}
+{% block content %}
+{% set live = 'sse:snapshot throttle:' ~ throttle ~ 's, replay-tick from:body' %}
+{% set base = '/frag/section/state/' ~ page_key ~ '/' %}
+<main class="page">
+  <div hx-get="{{ base }}head?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/state_head.html" %}</div>
+  <div class="page-grid">
+    <article class="panel span-7 page-panel-xl">
+      <div class="panel-head"><h2 class="panel-title">Races</h2><span class="panel-note">ratings as reported, with their sources</span></div>
+      <div class="panel-body" hx-get="{{ base }}races?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/state_races.html" %}</div>
+    </article>
+    <article class="panel span-5 page-panel-xl">
+      <div class="panel-head"><h2 class="panel-title">Counties</h2><span class="panel-note">stories naming a county; click for its stories</span></div>
+      <div class="panel-chart">
+        <div class="county-map" data-county-map data-usps="{{ page_key }}" data-fips="{{ state.fips }}" data-params="key={{ page_key }}"></div>
+      </div>
+    </article>
+    <article class="panel span-7 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Attention index over time</h2><span class="panel-note">1.0 = the state's baseline share of coverage</span></div>
+      <div class="panel-chart"><div class="chart" data-chart="state_attention" data-params="key={{ page_key }}" data-base-query="kind=state&key={{ page_key }}&focus=all" data-click="bin" data-time-axis="1" data-empty="No stories for these filters."></div></div>
+    </article>
+    <article class="panel span-5 page-panel-tall">
+      <div class="panel-head"><h2 class="panel-title">Storylines</h2></div>
+      <div class="panel-body" hx-get="{{ base }}storylines?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/state_storylines.html" %}</div>
+    </article>
+    <article class="panel span-7 page-panel-xl">
+      <div class="panel-head"><h2 class="panel-title">Local outlets and their latest stories</h2></div>
+      <div class="panel-body" hx-get="{{ base }}outlets?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/state_outlets.html" %}</div>
+    </article>
+    <article class="panel span-5 page-panel-xl">
+      <div class="panel-head"><h2 class="panel-title">Race-call claims</h2></div>
+      <div class="claims-banner">Claims as reported by news outlets; not official results.</div>
+      <div class="panel-body" hx-get="{{ base }}calls?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/state_calls.html" %}</div>
+    </article>
+  </div>
+</main>
+{% endblock %}

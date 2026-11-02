@@ -1,0 +1,7 @@
+<span class="num">Lag: {{ strip.lag_seconds if strip.lag_seconds is not none else '—' }} s</span>
+<span>LLM: {{ strip.llm_state }}</span>
+<span class="num">Spend today: ${{ '%.2f' % strip.spent_today }}</span>
+<span class="num">Disk free: {{ strip.free_gb if strip.free_gb is not none else '—' }} GB</span>
+{% if strip.disk_level == 'WARN' %}<span class="banner-warn">Disk below warning level</span>{% endif %}
+{% if strip.disk_level in ('DEGRADE', 'AUTOPRUNE') %}<span class="banner-crit">Disk critically low: full-text fetching stopped</span>{% endif %}
+{% for warning in strip.warnings %}<span class="banner-warn">{{ warning }}</span>{% endfor %}

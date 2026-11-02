@@ -1,0 +1,12 @@
+<header class="page-head">
+  <div class="page-title-row">
+    <h1>{{ state.name }} <span class="panel-note">{{ state.usps }}</span></h1>
+    {% if is_battleground %}<span class="badge">battleground</span>{% endif %}
+    {% with kind = 'state', key = state.usps, watched = state_watched %}{% include "fragments/watch_toggle.html" %}{% endwith %}
+  </div>
+  <div class="stat-row">
+    <div class="stat" data-evidence="kind=state&key={{ state.usps }}" role="button" tabindex="0"><span class="kpi-label">Stories, {{ WINDOWS[filters.window][0] }}, {{ 'unique' if filters.copies == 'unique' else 'all copies' }}</span><span class="kpi-value">{{ state_n }}</span></div>
+    <div class="stat" data-evidence="kind=state&key={{ state.usps }}&focus=all" role="button" tabindex="0" title="1.0 is normal for this state. Focus does not change this figure."><span class="kpi-label">Attention index</span><span class="kpi-value">{{ '%.2f' % attention }}</span></div>
+    <div class="stat"><span class="kpi-label">{{ 'First polls closed' if polls_closed else 'First polls close' }}</span><span class="kpi-value stat-small">{{ close_at|et_datetime if close_at else 'Not listed' }}</span>{% if all_close_at %}<span class="panel-note">All polls close {{ all_close_at|et_datetime }}</span>{% endif %}</div>
+  </div>
+</header>

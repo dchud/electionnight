@@ -23,3 +23,5 @@ bin/
 agent-approach-brief.md
 .DS_Store
 .abacus/
+.playwright-mcp/
+reports/screens/

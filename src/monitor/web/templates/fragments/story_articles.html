@@ -1,0 +1,6 @@
+{% if articles %}
+<p class="panel-note m-0">{{ articles_total }} {{ 'groups' if filters.copies == 'unique' else 'items' }}{% if articles_total > articles|length %}; newest {{ articles|length }} shown{% endif %}</p>
+{% with items = articles %}{% include "fragments/wire_rows.html" %}{% endwith %}
+{% else %}
+<div class="empty">No articles match this filter in this window.</div>
+{% endif %}

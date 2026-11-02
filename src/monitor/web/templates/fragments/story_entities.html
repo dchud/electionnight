@@ -1,0 +1,10 @@
+{% for row in entities %}
+<div class="bar-row">
+  <a class="bar-label text-link" href="/entity/{{ row.entity_id }}?{{ qs }}">{% if row.party %}<span class="party-chip" data-party="{{ row.party }}"></span>{% endif %}{{ row.entity }}</a>
+  <span class="bar-track"><span class="bar-fill" style="width:{{ '%.0f' % row.width }}%"></span></span>
+  <span class="count-link num" data-evidence="kind=storyline&key={{ page_key }}&also=entity:{{ row.entity_id }}" role="button" tabindex="0">{{ row.mentions }}</span>
+  <span class="bar-tone num" title="Mean tone; n counts mentions with a tone, opinion excluded">{% if row.hidden %}n under 5{% else %}{{ '%+.2f' % row.mean }} (n={{ row.n }}{{ ', low n' if row.low_n else '' }}){% endif %}</span>
+</div>
+{% else %}
+<div class="empty">No entity mentions for this storyline in this window. Mentions come from full-text extraction.</div>
+{% endfor %}

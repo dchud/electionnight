@@ -1,0 +1,11 @@
+{% for outlet in local_outlets %}
+<div class="outlet-block">
+  <div class="card-top">
+    <span class="card-label">{{ outlet.outlet }}{% if not outlet.enabled %} <span class="badge">disabled</span>{% endif %}</span>
+    <span class="wire-meta"><a class="text-link" href="/sources?{{ qs }}#{{ outlet.source_id }}">{% if outlet.glyph %}<span class="glyph">{{ outlet.glyph }}</span> {% endif %}<span class="{{ 'lean-neutral' if not outlet.glyph else '' }}">{{ outlet.lean }}</span></a><span>{{ outlet.scope }}</span><span class="count-link num" data-evidence="kind=source&key={{ outlet.source_id|urlencode }}" role="button" tabindex="0">{{ outlet.n }} in window</span></span>
+  </div>
+  {% if outlet.latest %}{% with items = outlet.latest %}{% include "fragments/wire_rows.html" %}{% endwith %}{% else %}<div class="empty">No relevant stories from this outlet for these filters.</div>{% endif %}
+</div>
+{% else %}
+<div class="empty">No outlets are based in this state.</div>
+{% endfor %}
