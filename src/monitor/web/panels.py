@@ -735,14 +735,10 @@ class Panels:
             for row in ranked
         ]
 
-    def race_calls(
-        self,
-        filters: Filters,
-        limit: int = 60,
-        clause: str = "TRUE",
-        extra: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Claims by race and winner; `clause` may use the `rc` alias."""
+    def race_calls_query(
+        self, filters: Filters, clause: str = "TRUE"
+    ) -> tuple[str, dict[str, Any]]:
+        """The Race Calls SQL and its parameters, with no limit bound."""
         sets = self.focus_sets()
         where, params = filters.where(
             sets, windowed=False, unique=False, relevant=False
@@ -756,12 +752,24 @@ class Panels:
             where += opened
             when += opened
             params = {**params, "calls_open": self.calls_open}
-        rows = self.model.query(
-            "race_calls",
+        sql = (
             load_sql("race_calls")
             .replace("{where}", f"{where} AND {clause}")
-            .replace("{when}", when),
-            {**params, **(extra or {}), "limit": limit},
+            .replace("{when}", when)
+        )
+        return sql, params
+
+    def race_calls(
+        self,
+        filters: Filters,
+        limit: int = 60,
+        clause: str = "TRUE",
+        extra: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Claims by race and winner; `clause` may use the `rc` alias."""
+        sql, params = self.race_calls_query(filters, clause)
+        rows = self.model.query(
+            "race_calls", sql, {**params, **(extra or {}), "limit": limit}
         )
         return [
             {

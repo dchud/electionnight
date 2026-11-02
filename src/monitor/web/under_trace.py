@@ -245,6 +245,9 @@ def trim_article_text(request_text: Any) -> Any:
     return json.dumps(request, ensure_ascii=False)
 
 
+RACE_CALLS_PANEL = "Race Calls in the News"
+
+
 def panel_checks(
     under: Under, item_id: str, filters: Filters
 ) -> list[dict[str, Any]]:
@@ -276,11 +279,6 @@ def panel_checks(
         "EXISTS (SELECT 1 FROM mentions m WHERE m.item_id = f.item_id "
         "AND m.entity_id IS NOT NULL)"
     )
-    calls = (
-        "EXISTS (SELECT 1 FROM race_calls rc WHERE rc.item_id = f.item_id "
-        "AND rc.status IN ('projected', 'declared', 'conceded', 'leading', "
-        "'too_close'))"
-    )
     checks: list[tuple[str, tuple[str, dict[str, Any]], str, str]] = [
         (
             "Live Wire",
@@ -307,10 +305,12 @@ def panel_checks(
             "Relevant, canonical, in the window, tagged with a state.",
         ),
         (
-            "Race Calls in the News",
+            RACE_CALLS_PANEL,
             where(windowed=False, unique=False, relevant=False),
-            calls,
-            "Has a race call row with a reported status. Copies count.",
+            "TRUE",
+            "Appears on a row of the card's own query. Items from before the "
+            "first polls closed do not, nor does a lead in a settled race. "
+            "Copies count.",
         ),
         (
             "Storyline Stream",
@@ -361,6 +361,12 @@ def panel_checks(
             "SELECT count(*) AS n FROM facts f "
             f"WHERE f.item_id = $item_id AND {clause} AND {extra}"
         )
+        if panel == RACE_CALLS_PANEL:
+            shown, params = under.panels.race_calls_query(
+                filters, "rc.item_id = $item_id"
+            )
+            sql = f"SELECT count(*) AS n FROM ({shown})"
+            params = {**params, "limit": 1}
         ran = under.local(sql, {**params, "item_id": item_id})
         results.append(
             {

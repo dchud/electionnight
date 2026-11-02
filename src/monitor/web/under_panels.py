@@ -279,8 +279,8 @@ CARDS: tuple[Card, ...] = (
             "not to be labeled a primary, and the item to come from after the "
             "first polls closed in that state. The query also drops items "
             "from before the first close nationally. Once a final claim names "
-            "a caller or comes from two outlets, the race shows only its "
-            "final claims, whatever filters are on.",
+            "a caller, or two outlets report one candidate's final claim, the "
+            "race shows only its final claims, whatever filters are on.",
             "These are claims in news articles, not official results.",
         ),
         (CodeRef("monitor.parsers.race_calls", "call_problem"),),

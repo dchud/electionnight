@@ -1633,6 +1633,52 @@ def test_stage_line_describes_the_newest_row(settings):
     assert stage["snapshot"] == newest
 
 
+def test_the_trace_uses_the_race_cards_own_query(settings):
+    call = {
+        "race_key": "2026-GA-SEN",
+        "race_desc": "Georgia Senate",
+        "winner_name": "Ann Roe",
+        "state": "GA",
+    }
+    add_rows(
+        settings,
+        {
+            "ref.sources": [source("peach", "Peach Post")],
+            "raw.items": [item("lead", NOW), item("final", NOW)],
+            "nlp.classify_a": [classified("lead"), classified("final")],
+            "nlp.race_calls": [
+                {
+                    **call,
+                    "call_id": "lead",
+                    "item_id": "lead",
+                    "status": "leading",
+                    "called_by": "unspecified",
+                },
+                {
+                    **call,
+                    "call_id": "final",
+                    "item_id": "final",
+                    "status": "projected",
+                    "called_by": "AP",
+                },
+            ],
+        },
+    )
+    filters = Filters.parse({}, "24h")
+    with app_client(settings) as test_client:
+        web = test_client.app.state.web
+        web.panels.calls_open = None
+        checked = {
+            item_id: {
+                row["panel"]: row["counts"]
+                for row in panel_checks(web.under, item_id, filters)
+            }
+            for item_id in ("lead", "final")
+        }
+    assert checked["final"]["Race Calls in the News"] is True
+    assert checked["lead"]["Race Calls in the News"] is False
+
+
 def test_panel_checks_match_what_the_panels_draw(settings):
     add_rows(
         settings,
