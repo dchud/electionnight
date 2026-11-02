@@ -1211,3 +1211,77 @@ async def test_short_gap_does_not_catch_up_and_long_gap_does(settings):
     await built.catch_up_task
     assert calls == [long]
     built.conn.close()
+
+
+async def test_catch_up_leaves_out_pages_dated_in_the_future(settings, lake):
+    now = datetime.now(UTC)
+    since = now - timedelta(hours=1)
+    in_gap = now - timedelta(minutes=30)
+    future = now + timedelta(days=1)
+
+    def handler(request):
+        return httpx.Response(200, content=sitemap_body(in_gap, future))
+
+    poller, rows = await catching_up(settings, lake, handler, since)
+    assert [row["url"] for row in rows] == [
+        "https://example.com/new?utm_source=x"
+    ]
+    assert poller.last_catch_up["new_items"] == 1
+
+
+def test_a_story_dated_after_it_was_seen_is_not_counted(settings):
+    now = datetime.now(UTC) - timedelta(minutes=5)
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    dates = {
+        "future": now + timedelta(days=1),
+        "soon": now + timedelta(minutes=30),
+        "past": now - timedelta(minutes=30),
+        "undated": None,
+    }
+    writer.add(
+        "raw.items",
+        [
+            {
+                "item_id": item_id,
+                "source_id": "wire",
+                "title": f"Story {item_id}",
+                "summary": "",
+                "url": f"https://example.com/{item_id}",
+                "first_seen_at": now,
+                "published_at": published,
+                "language": "en",
+                "feed_categories": [],
+            }
+            for item_id, published in dates.items()
+        ],
+    )
+    writer.add(
+        "nlp.classify_a",
+        [
+            {
+                "item_id": item_id,
+                "election_relevant": True,
+                "relevance_conf": 0.9,
+                "states": [],
+                "levels": [],
+                "race_types": [],
+                "topics": [],
+                "free_tags": [],
+            }
+            for item_id in dates
+        ],
+    )
+    writer.flush()
+    conn.close()
+    with TestClient(create_app(settings)) as client:
+        rows = client.app.state.web.model.rows(
+            "SELECT item_id, relevant FROM facts"
+        )
+    relevant = {row["item_id"]: row["relevant"] for row in rows}
+    assert relevant == {
+        "future": False,
+        "soon": True,
+        "past": True,
+        "undated": True,
+    }

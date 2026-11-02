@@ -276,7 +276,9 @@ class Poller:
                 sighted = []
                 taken = 0
                 for entry in feed.entries:
-                    if since is not None and not published_since(entry, since):
+                    if since is not None and not published_since(
+                        entry, since, now
+                    ):
                         continue
                     row = item_row(state.source, state.url, entry, now)
                     item_id = row["item_id"]

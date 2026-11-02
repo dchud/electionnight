@@ -110,7 +110,10 @@ FACTS_SELECT = """
            END AS first_seen_at,
            i.first_seen_at AS seen_raw_at,
            i.published_at,
-           coalesce(c.election_relevant, FALSE) AS relevant,
+           coalesce(c.election_relevant, FALSE)
+               AND coalesce(
+                   i.published_at <= i.first_seen_at + INTERVAL 1 HOUR, TRUE
+               ) AS relevant,
            coalesce(c.relevance_conf, 0) AS relevance_conf,
            coalesce(c.us_politics, FALSE) AS us_politics,
            coalesce(c.levels, []) AS levels,
