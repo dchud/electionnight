@@ -24,6 +24,7 @@ CATEGORY_MAX_COUNT = 20
 URL_MAX_CHARS = 2048
 STRIP_INPUT_MAX_CHARS = 100_000
 FEED_MAX_BYTES = 10_000_000
+FUTURE_DATE_SLACK = timedelta(hours=1)
 SITEMAP_MAX_BYTES = 20_000_000
 EARLIEST_YEAR = 2000
 ROUGH_DATE_MARGIN = timedelta(days=1)
@@ -271,13 +272,19 @@ def _sitemap_date(text: str) -> tuple[datetime | None, date | None]:
         return None, None
 
 
-def published_since(entry: FeedEntry, since: datetime) -> bool:
-    """Whether an entry can have been published since `since`.
+def published_since(
+    entry: FeedEntry, since: datetime, now: datetime | None = None
+) -> bool:
+    """Whether an entry can have been published since a moment, and by now.
 
-    A date with no time zone can be most of a day off, so it passes within a
-    day of `since`, and deduplication decides. An undated entry does not pass.
+    A date with no time zone can be most of a day off, so it counts within a
+    day of `since`, and deduplication decides. An undated entry does not count.
+    Some sitemaps list pages under a future date, such as a results page dated
+    election morning. Those are not stories yet.
     """
     if entry.published_at is not None:
+        if now is not None and entry.published_at > now + FUTURE_DATE_SLACK:
+            return False
         return entry.published_at >= since
     if entry.rough_date is None:
         return False
