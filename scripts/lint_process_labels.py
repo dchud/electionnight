@@ -31,6 +31,7 @@ EXCLUDED_DIRS = {
     "data",
     "logs",
     "reports",
+    "site",
     "tmp",
     "vendor",
 }
