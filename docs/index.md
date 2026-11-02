@@ -17,6 +17,10 @@ The code is at
 pages describe a dashboard that runs on one laptop, and that dashboard is not
 on this site. A "Live view" line names a page of the running dashboard.
 
+## Screens
+
+- [Tour](tour.md): the dashboard and the "Under the hood" pages.
+
 ## Teaching
 
 - [Class walkthrough](walkthrough.md): the script for teaching from the "Under
