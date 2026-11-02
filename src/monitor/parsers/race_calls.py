@@ -38,6 +38,8 @@ CALLERS = (
     ("ABC", r"\bABC\b"),
     ("CBS", r"\bCBS\b"),
     ("NYT", r"\bNYT\b|(?i:new york times)"),
+    ("Reuters", r"\bReuters\b|\bREUTERS\b"),
+    ("Washington Post", r"(?i:washington post)"),
 )
 
 # Reads the model's own label for a contest, not a sentence from an article.
@@ -200,7 +202,8 @@ def call_row(
         "claimed_at_text": call.claimed_at_text,
         "confidence": call_confidence(call.status, caller),
         "evidence": call.evidence,
-        "state": normalize_state(call.state) or call.state,
+        "state": normalize_state(call.state)
+        or (race_key.split("-")[1] if race_key else call.state),
         "office": call.office,
         "district": call.district,
         "first_seen_at": first_seen_at,

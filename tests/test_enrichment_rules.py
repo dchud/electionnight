@@ -300,6 +300,12 @@ def test_a_state_is_stored_as_its_usps_code():
     assert row["state"] == "GA"
 
 
+def test_a_state_can_come_from_the_race_key():
+    call = race_call(state=None, district="NY-17")
+    row = call_row("i", call, "2026-NY-H17", None, AFTER_CLOSE, "p", "1", "x")
+    assert row["state"] == "NY"
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -313,6 +319,8 @@ def test_a_state_is_stored_as_its_usps_code():
         ("Decision Desk HQ", "DDHQ"),
         ("NBC News", "NBC"),
         ("the New York Times", "NYT"),
+        ("Reuters", "Reuters"),
+        ("The Washington Post", "Washington Post"),
         ("Secretary of State", "other"),
         (None, "unspecified"),
         ("unknown", "unspecified"),

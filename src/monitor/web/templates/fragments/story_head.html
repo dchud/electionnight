@@ -10,5 +10,5 @@
     <div class="stat"><span class="kpi-label">Status</span><span class="kpi-value stat-small">{{ story.status }}</span></div>
   </div>
   {% if not totals_copies.n and totals_all_time.n %}<p class="filter-line">No stories from this storyline fall in the {{ WINDOWS[filters.window][0] }} window. Widen it: <a class="text-link" href="?{{ filters.query_string(window='24h') }}">24 h</a>.</p>
-  {% elif not totals.n and totals_copies.n %}<p class="filter-line">The first copy of each story falls before the {{ WINDOWS[filters.window][0] }} window, and later copies fall inside it. <a class="text-link" href="?{{ filters.query_string(copies='all') }}">Show all copies</a>.</p>{% endif %}
+  {% elif not totals.n and totals_copies.n %}<p class="filter-line">No story's first copy matches these filters in the {{ WINDOWS[filters.window][0] }} window, but later copies do. <a class="text-link" href="?{{ filters.query_string(copies='all') }}">Show all copies</a>.</p>{% endif %}
 </header>
