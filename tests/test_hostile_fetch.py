@@ -571,13 +571,14 @@ async def test_a_news_sitemap_may_be_larger_than_a_feed(settings):
 
     assert FEED_MAX_BYTES < SITEMAP_MAX_BYTES
     padding = "<!--" + " " * (FEED_MAX_BYTES + 1000) + "-->"
+    published = datetime.now(UTC) - timedelta(hours=1)
     sitemap = (
         '<?xml version="1.0"?><urlset '
         'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
         'xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">'
         f"{padding}<url><loc>https://example.com/late</loc><news:news>"
         "<news:title>Late story</news:title><news:publication_date>"
-        "2026-11-03T20:00:00Z</news:publication_date></news:news></url>"
+        f"{published.isoformat()}</news:publication_date></news:news></url>"
         "</urlset>"
     ).encode()
 
@@ -588,7 +589,7 @@ async def test_a_news_sitemap_may_be_larger_than_a_feed(settings):
     read = await poller._read_sitemap(
         [source()],
         f"http://{PUBLIC}/news.xml",
-        datetime(2026, 11, 1, tzinfo=UTC),
+        published - timedelta(days=1),
     )
     assert (read.files, read.new) == (1, 1)
     await poller.poll_once(poller.feeds[0])
@@ -776,7 +777,7 @@ async def test_entries_past_the_cap_arrive_on_later_polls(settings):
 
 
 async def test_the_cap_applies_after_the_sitemap_since_filter(settings):
-    since = datetime(2026, 11, 3, 12, tzinfo=UTC)
+    since = datetime.now(UTC) - timedelta(hours=5)
 
     def entry(n: int, at: datetime) -> str:
         return (
