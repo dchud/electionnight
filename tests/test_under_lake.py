@@ -1,13 +1,16 @@
 """The DuckLake view, against a scratch lake."""
 
+import html
 import json
+import re
 import sqlite3
 
 import pytest
 from test_under import NOW, add_rows, app_client, item, seed
 
 from monitor.lake import TABLES, connect
-from monitor.web.under import GATE_BUSY
+from monitor.maintenance import run_maintenance
+from monitor.web.under import GATE_BUSY, Disclosed, Ran
 from monitor.web.under_lake import (
     CATALOG_TABLES,
     NO_SOURCE,
@@ -85,6 +88,11 @@ def under(client):
     return client.app.state.web.under
 
 
+def page_text(page):
+    """A page's text as read, with tags and escapes gone."""
+    return html.unescape(re.sub(r"<[^>]+>", "", page))
+
+
 def direct(settings, sql, params=None):
     conn = connect(settings, read_only=True)
     try:
@@ -150,10 +158,96 @@ def test_counts_match_direct_queries(lake_settings, under):
     assert detail["row"]["total_rows"] == rows[0]
     assert detail["key_scan"].first["n_rows"] == rows[0]
     assert detail["key_scan"].first["n_keys"] == rows[1]
-    assert (
-        detail["row"]["inlined_rows"] + detail["row"]["parquet_rows"]
-        == rows[0]
+
+
+def stored_where(settings, table):
+    """Rows in the catalog and in files, from each row's own `filename`."""
+    return direct(
+        settings,
+        "SELECT count(*) FILTER "
+        "(WHERE filename LIKE 'ducklake_inlined_data%'), "
+        "count(*) FILTER (WHERE filename LIKE '%.parquet') "
+        f"FROM lake.{table}",
+    )[0]
+
+
+def test_inlined_and_file_rows_match_where_rows_sit(settings):
+    conn = connect(settings)
+    conn.execute(
+        "INSERT INTO lake.raw.fetches BY NAME "
+        "SELECT 'small-' || i AS fetch_id, now() AS created_at "
+        "FROM range(5) t(i)"
     )
+    conn.execute(
+        "INSERT INTO lake.raw.fetches BY NAME "
+        "SELECT 'large-' || i AS fetch_id, now() AS created_at "
+        "FROM range(2500) t(i)"
+    )
+    conn.close()
+    with app_client(settings) as test_client:
+        under = test_client.app.state.web.under
+        row = lake_view(under, {"table": "raw.fetches"})["detail"]["row"]
+        assert stored_where(settings, "raw.fetches") == (5, 2500)
+        assert (row["inlined_rows"], row["parquet_rows"]) == (5, 2500)
+        assert row["total_rows"] == 2505
+        conn = connect(settings)
+        run_maintenance(conn)
+        conn.close()
+        under._cache.clear()
+        row = lake_view(under, {"table": "raw.fetches"})["detail"]["row"]
+    assert stored_where(settings, "raw.fetches") == (0, 2505)
+    assert (row["inlined_rows"], row["parquet_rows"]) == (0, 2505)
+
+
+def test_nulls_on_a_list_element_count_null_and_empty_lists(settings):
+    conn = connect(settings)
+    conn.execute(
+        "INSERT INTO lake.raw.items BY NAME "
+        "SELECT 'i' || i AS item_id, CASE i % 3 WHEN 0 THEN NULL "
+        "WHEN 1 THEN []::VARCHAR[] ELSE ['a', 'b'] END AS feed_categories, "
+        "now() AS created_at FROM range(3000) t(i)"
+    )
+    conn.close()
+    with app_client(settings) as test_client:
+        under = test_client.app.state.web.under
+        detail = lake_view(under, {"table": "raw.items"})["detail"]
+        html_page = test_client.get("/under/lake?table=raw.items").text
+    by_name = {c["column_name"]: c for c in detail["schema"]}
+    element = by_name["element"]
+    # 1,000 NULL lists, 1,000 empty lists, and 1,000 lists of two values.
+    assert element["n_values"] == 2000
+    assert element["n_nulls"] == 2000
+    assert not by_name["feed_categories"]["has_stats"]
+    assert (
+        "Nulls counts NULL lists, empty lists, and null elements" in html_page
+    )
+    assert "not by these totals" in html_page
+
+
+def test_a_table_with_no_list_has_no_note_on_lists(client):
+    page = client.get("/under/lake?table=raw.fetch_details").text
+    assert "Nulls counts NULL lists" not in page
+    assert "not by these totals" in page
+
+
+def test_a_failed_column_read_says_the_scan_did_not_finish(client, under):
+    real = under.catalog
+
+    def failing(sql, params=None):
+        if "column_order, column_name" in sql:
+            return Ran([], Disclosed(sql, "catalog", params), "disk I/O error")
+        return real(sql, params)
+
+    under.catalog = failing
+    try:
+        response = client.get("/under/lake?table=raw.items")
+    finally:
+        under.catalog = real
+    assert response.status_code == 200
+    assert "A scan did not finish" in response.text
+    assert "disk I/O error" in response.text
+    assert "This table has no rows." not in response.text
+    assert ">Retry</button>" in response.text
 
 
 def test_a_catalog_count_matches_a_direct_query(lake_settings, under):
@@ -243,11 +337,14 @@ def test_sample_cell_formats_a_list_and_a_float():
         "2 values; first: 0.1235, 1.5"
     )
     assert sample_cell(None) == "NULL"
+    assert sample_cell({"length": None, "first": None}) == "NULL"
+    assert sample_cell({"length": 0, "first": []}) == "0 values; first: "
     assert len(sample_cell("x" * 900)) == 160
 
 
 def test_each_query_is_disclosed(client):
-    html = client.get("/under/lake?table=nlp.embeddings").text
+    page = client.get("/under/lake?table=nlp.embeddings").text
+    text = page_text(page)
     for part in (
         "ducklake_file_column_stats",
         "parent_column",
@@ -255,8 +352,8 @@ def test_each_query_is_disclosed(client):
         "ducklake_snapshot_changes",
         "count(DISTINCT item_id)",
     ):
-        assert part in html, part
-    assert html.count("Show query") >= 4
+        assert part in text, part
+    assert page.count("Show query") >= 4
 
 
 def test_a_table_name_outside_the_catalog_is_ignored(client):

@@ -14,6 +14,7 @@
       <div class="u-form"><button class="button" type="submit">Run</button><span class="u-note">Tables are <code>lake.raw.items</code>, <code>lake.nlp.classify_a</code>, and so on. See <a class="text-link" href="/under/data-model">Data model</a>. A <code>count(*)</code> here counts rows, not records: tables are append-only.</span></div>
     </form>
     {% if result %}
+      {% if result.sql %}<pre class="u-sql">{{ result.sql|u_sql }}</pre>{% endif %}
       {% if result.rejected %}
       <p class="banner-warn u-error">Rejected before it ran: {{ result.rejected }}</p>
       {% elif result.error %}

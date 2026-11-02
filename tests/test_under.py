@@ -1,6 +1,7 @@
 """The under-the-hood views, against a scratch lake."""
 
 import hashlib
+import html
 import json
 import re
 import sqlite3
@@ -81,6 +82,11 @@ Generated 2026-11-01 18:10 UTC.
 |---|---|
 | state | 2 |
 """
+
+
+def page_text(page):
+    """A page's text as read, with tags and escapes gone."""
+    return html.unescape(re.sub(r"<[^>]+>", "", page))
 
 
 def source(source_id, name, **fields):
@@ -714,12 +720,12 @@ def lake_state(settings):
     return rows, files
 
 
-def test_home_has_one_footer_link_and_no_header_entry(client):
+def test_home_links_the_teaching_views_from_the_header_and_footer(client):
     html = client.get("/").text
-    assert html.count('href="/under"') == 1
-    assert html.index('href="/under"') > html.index('id="band-5"')
+    assert html.count('href="/under"') == 2
+    assert html.rindex('href="/under"') > html.index('id="band-5"')
     header = client.get("/status").text.split("<main")[0]
-    assert "/under" not in header
+    assert 'href="/under"' in header
 
 
 @pytest.mark.parametrize("path", VIEWS)
@@ -987,7 +993,7 @@ def test_time_travel_compares_two_snapshots(settings):
         ).text
     assert newer > older
     assert "2 rows were added between them" in html
-    assert f"AT (VERSION =&gt; {older})" in html
+    assert f"AT (VERSION => {older})" in page_text(html)
     assert "0 rows were added between them" in same
 
 
@@ -1728,14 +1734,14 @@ def test_a_move_around_a_gap_is_not_called_backlog(settings):
 
 
 def test_trace_discloses_every_query_it_ran(client):
-    html = client.get("/under/trace/cap1").text
+    text = page_text(client.get("/under/trace/cap1").text)
     for sql in (
         "One item with its outlet.",
         "min(created_at) AS first_row",
         "f.dup_group_id = $group",
         "FROM storylines WHERE storyline_id = $id",
     ):
-        assert sql in html, sql
+        assert sql in " ".join(text.split()), sql
 
 
 # Records
@@ -1878,8 +1884,8 @@ def test_no_current_status_is_never_good_news(settings, state):
             test_client.app.state.web.under, Filters.parse({}, "24h")
         )
     assert data["working"] is None
-    for html in (feeds, page, index, costs):
-        assert "Status unavailable" in html
+    for shown in (feeds, page, index, costs):
+        assert "Status unavailable" in shown
     assert "Every feed is ok" not in feeds
     assert "HTTP 429" not in feeds
     assert re.search(r"\d+ ok, \d+ failing", feeds) is None

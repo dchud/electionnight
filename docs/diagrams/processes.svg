@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 575" role="img" aria-labelledby="proc-title">
-  <title id="proc-title">The pipeline process is the only writer to DuckLake. The web process and its child processes read it, and each other process reaches the pipeline through files.</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 545" role="img" aria-labelledby="proc-title">
+  <title id="proc-title">The pipeline process holds the writer lock and writes to DuckLake while it runs. A monitor command writes directly only when it holds the lock with no pipeline running, and otherwise goes through data/control/. The web process and its child processes read the lake.</title>
   <style>
     .pr-bg { fill: var(--surface-1, #fcfcfb); }
     .pr-proc { fill: var(--surface-2, #efefec); stroke: var(--text-3, #6f6e69); stroke-width: 2; }
@@ -20,92 +20,106 @@
       <path class="pr-head-write" d="M0 0 L10 5 L0 10 Z"/>
     </marker>
   </defs>
-  <rect class="pr-bg" width="960" height="575"/>
+  <rect class="pr-bg" width="960" height="545"/>
 
-  <rect class="pr-proc" x="20" y="16" width="200" height="66" rx="6"/>
-  <text class="pr-name" x="32" y="40">monitor command</text>
-  <text class="pr-note" x="32" y="62">a one-off CLI process</text>
+  <rect class="pr-proc" x="50" y="16" width="180" height="66" rx="6"/>
+  <text class="pr-name" x="62" y="40">monitor command</text>
+  <text class="pr-note" x="62" y="62">a one-off CLI process</text>
 
-  <rect class="pr-file" x="280" y="16" width="170" height="66" rx="6"/>
-  <text class="pr-name" x="292" y="40">data/control/</text>
-  <text class="pr-note" x="292" y="62">request files</text>
+  <rect class="pr-file" x="320" y="16" width="170" height="66" rx="6"/>
+  <text class="pr-name" x="332" y="40">data/control/</text>
+  <text class="pr-note" x="332" y="62">request, result files</text>
 
-  <rect class="pr-writer" x="20" y="130" width="300" height="240" rx="8"/>
-  <text class="pr-name" x="36" y="158">pipeline process</text>
-  <text class="pr-note" x="36" y="184">The only writer to the lake.</text>
-  <text class="pr-note" x="36" y="212">Runs the poller, the parser stages,</text>
-  <text class="pr-note" x="36" y="232">the commit job, rollups, briefs,</text>
-  <text class="pr-note" x="36" y="252">and maintenance.</text>
-
-  <rect class="pr-file" x="36" y="282" width="268" height="72" rx="6"/>
-  <text class="pr-name" x="48" y="306">data/writer.lock</text>
-  <text class="pr-note" x="48" y="326">held while the process lives;</text>
-  <text class="pr-note" x="48" y="344">a second writer cannot start</text>
-
-  <rect class="pr-file" x="400" y="130" width="190" height="66" rx="6"/>
-  <text class="pr-name" x="412" y="154">data/status.json</text>
-  <text class="pr-note" x="412" y="176">written every 10 s</text>
-
-  <rect class="pr-file" x="400" y="222" width="190" height="96" rx="6"/>
-  <text class="pr-name" x="412" y="248">DuckLake</text>
-  <text class="pr-note" x="412" y="270">data/catalog.sqlite</text>
-  <text class="pr-note" x="412" y="290">data/lake/</text>
-
-  <rect class="pr-file" x="400" y="352" width="190" height="66" rx="6"/>
-  <text class="pr-name" x="412" y="376">data/archive/</text>
-  <text class="pr-note" x="412" y="398">feed and page bytes</text>
-
-  <rect class="pr-proc" x="670" y="130" width="270" height="170" rx="8"/>
-  <text class="pr-name" x="686" y="158">web process</text>
-  <text class="pr-note" x="686" y="184">Attaches the lake read-only.</text>
-  <text class="pr-note" x="686" y="212">Read model, dashboard panels,</text>
-  <text class="pr-note" x="686" y="232">SSE hub, and these teaching</text>
-  <text class="pr-note" x="686" y="252">views.</text>
-
-  <rect class="pr-proc" x="670" y="352" width="270" height="110" rx="8"/>
-  <text class="pr-name" x="686" y="378">child process</text>
-  <text class="pr-note" x="686" y="402">One at a time, low priority, stopped</text>
-  <text class="pr-note" x="686" y="422">at a time limit. Opens data files for</text>
-  <text class="pr-note" x="686" y="442">the teaching views. Read-only.</text>
-
-  <rect class="pr-proc" x="540" y="16" width="130" height="66" rx="6"/>
-  <text class="pr-name" x="552" y="40">Browser</text>
-  <text class="pr-note" x="552" y="62">pages, SSE</text>
+  <rect class="pr-proc" x="560" y="16" width="130" height="66" rx="6"/>
+  <text class="pr-name" x="572" y="40">Browser</text>
+  <text class="pr-note" x="572" y="62">pages, SSE</text>
 
   <rect class="pr-file" x="740" y="16" width="200" height="66" rx="6"/>
   <text class="pr-name" x="752" y="40">data/ui.sqlite</text>
   <text class="pr-note" x="752" y="62">watchlist, overrides</text>
 
-  <path class="pr-line" marker-end="url(#pr-arrow)" d="M220 49 H280"/>
-  <path class="pr-line" marker-end="url(#pr-arrow)" d="M300 82 V130"/>
-  <text class="pr-note" x="310" y="112">read every 2 s</text>
-  <path class="pr-line" marker-end="url(#pr-arrow)" stroke-dasharray="6 4" d="M20 70 H8 V318 H36"/>
-  <text class="pr-note" x="28" y="108">tries this lock first</text>
+  <rect class="pr-writer" x="50" y="130" width="310" height="160" rx="8"/>
+  <text class="pr-name" x="66" y="158">pipeline process</text>
+  <text class="pr-note" x="66" y="184">Writes to the lake whenever it runs.</text>
+  <text class="pr-note" x="66" y="212">Runs the poller, the parser stages,</text>
+  <text class="pr-note" x="66" y="232">the commit job, rollups, briefs,</text>
+  <text class="pr-note" x="66" y="252">and maintenance.</text>
 
-  <path class="pr-line" marker-end="url(#pr-arrow)" d="M320 163 H400"/>
-  <text class="pr-note" x="334" y="153">writes</text>
-  <path class="pr-write" marker-start="url(#pr-arrow-write)" marker-end="url(#pr-arrow-write)" d="M320 268 H400"/>
-  <text class="pr-note" x="324" y="258">read, write</text>
-  <path class="pr-line" marker-end="url(#pr-arrow)" d="M320 340 H360 V385 H400"/>
-  <text class="pr-note" x="334" y="404">writes</text>
+  <rect class="pr-file" x="50" y="320" width="310" height="72" rx="6"/>
+  <text class="pr-name" x="62" y="344">data/writer.lock</text>
+  <text class="pr-note" x="62" y="364">held while the writer lives;</text>
+  <text class="pr-note" x="62" y="382">a second writer cannot start</text>
 
-  <path class="pr-line" marker-end="url(#pr-arrow)" d="M590 163 H670"/>
-  <text class="pr-note" x="608" y="153">reads</text>
-  <path class="pr-line" marker-end="url(#pr-arrow)" d="M590 250 H670"/>
-  <text class="pr-note" x="597" y="240">read only</text>
-  <path class="pr-line" marker-end="url(#pr-arrow)" d="M590 298 L670 372"/>
-  <text class="pr-note" x="597" y="358">reads</text>
-  <path class="pr-line" marker-end="url(#pr-arrow)" d="M590 400 H670"/>
-  <text class="pr-note" x="608" y="390">reads</text>
+  <rect class="pr-file" x="436" y="130" width="190" height="66" rx="6"/>
+  <text class="pr-name" x="448" y="154">data/status.json</text>
+  <text class="pr-note" x="448" y="176">written every 10 s</text>
+
+  <rect class="pr-file" x="436" y="222" width="190" height="96" rx="6"/>
+  <text class="pr-name" x="448" y="248">DuckLake</text>
+  <text class="pr-note" x="448" y="270">data/catalog.sqlite</text>
+  <text class="pr-note" x="448" y="290">data/lake/</text>
+
+  <rect class="pr-file" x="436" y="352" width="190" height="66" rx="6"/>
+  <text class="pr-name" x="448" y="376">data/archive/</text>
+  <text class="pr-note" x="448" y="398">feed and page bytes</text>
+
+  <rect class="pr-proc" x="680" y="130" width="270" height="170" rx="8"/>
+  <text class="pr-name" x="696" y="158">web process</text>
+  <text class="pr-note" x="696" y="184">Attaches the lake read-only.</text>
+  <text class="pr-note" x="696" y="212">Read model, dashboard panels,</text>
+  <text class="pr-note" x="696" y="232">SSE hub, and these teaching</text>
+  <text class="pr-note" x="696" y="252">views.</text>
+
+  <rect class="pr-proc" x="680" y="352" width="270" height="118" rx="8"/>
+  <text class="pr-name" x="696" y="376">child process</text>
+  <text class="pr-note" x="696" y="398">Low priority, read-only, stopped at</text>
+  <text class="pr-note" x="696" y="418">a time limit. One scan at a time, and</text>
+  <text class="pr-note" x="696" y="438">one console query at a time beside</text>
+  <text class="pr-note" x="696" y="458">it. Opens data files for these views.</text>
+
+  <path class="pr-line" marker-end="url(#pr-arrow)" d="M230 36 H320"/>
+  <text class="pr-note" x="250" y="30">request</text>
+  <path class="pr-line" marker-end="url(#pr-arrow)" d="M320 62 H230"/>
+  <text class="pr-note" x="256" y="78">result</text>
+
+  <path class="pr-line" marker-end="url(#pr-arrow)" d="M330 130 V82"/>
+  <path class="pr-line" marker-end="url(#pr-arrow)" d="M350 82 V130"/>
+  <text class="pr-note" x="360" y="100">read every 2 s;</text>
+  <text class="pr-note" x="360" y="118">result written back</text>
+
+  <path class="pr-line" marker-end="url(#pr-arrow)" stroke-dasharray="6 4" d="M50 66 H34 V356 H50"/>
+  <text class="pr-note" x="42" y="108">tries this lock first</text>
+  <path class="pr-write" marker-end="url(#pr-arrow-write)" d="M50 40 H16 V430 H385 V300 H436"/>
+  <text class="pr-note" x="42" y="424">direct write with the lock, when no pipeline runs</text>
+
+  <path class="pr-line" marker-end="url(#pr-arrow)" d="M200 290 V320"/>
+  <text class="pr-note" x="208" y="310">holds</text>
+
+  <path class="pr-line" marker-end="url(#pr-arrow)" d="M360 163 H436"/>
+  <text class="pr-note" x="378" y="155">writes</text>
+  <path class="pr-write" marker-start="url(#pr-arrow-write)" marker-end="url(#pr-arrow-write)" d="M360 268 H436"/>
+  <text class="pr-note" x="364" y="258">read, write</text>
+  <path class="pr-line" marker-end="url(#pr-arrow)" d="M360 282 H405 V385 H436"/>
+  <text class="pr-note" x="412" y="340">writes</text>
+
+  <path class="pr-line" marker-end="url(#pr-arrow)" d="M626 163 H680"/>
+  <text class="pr-note" x="636" y="153">reads</text>
+  <path class="pr-line" marker-end="url(#pr-arrow)" d="M626 250 H680"/>
+  <text class="pr-note" x="636" y="240">reads</text>
+  <path class="pr-line" marker-end="url(#pr-arrow)" d="M626 298 L680 372"/>
+  <text class="pr-note" x="628" y="350">reads</text>
+  <path class="pr-line" marker-end="url(#pr-arrow)" d="M626 400 H680"/>
+  <text class="pr-note" x="636" y="390">reads</text>
 
   <path class="pr-line" marker-end="url(#pr-arrow)" d="M805 300 V352"/>
   <text class="pr-note" x="815" y="332">starts, stops</text>
 
-  <path class="pr-line" marker-start="url(#pr-arrow)" marker-end="url(#pr-arrow)" d="M605 82 L705 130"/>
+  <path class="pr-line" marker-start="url(#pr-arrow)" marker-end="url(#pr-arrow)" d="M625 82 L725 130"/>
   <path class="pr-line" marker-start="url(#pr-arrow)" marker-end="url(#pr-arrow)" d="M840 82 V130"/>
   <text class="pr-note" x="830" y="112" text-anchor="end">own preferences</text>
 
-    <text class="pr-name" x="20" y="512">The single-writer rule</text>
-  <text class="pr-note" x="20" y="536">Only pipeline writes to the lake. A monitor command that writes takes the lock itself when no pipeline</text>
-  <text class="pr-note" x="20" y="556">runs, and otherwise leaves a request in data/control/ for the pipeline to carry out.</text>
+  <text class="pr-name" x="20" y="470">The single-writer rule</text>
+  <text class="pr-note" x="20" y="494">One process at a time writes to the lake, and it holds the lock. While pipeline runs, it is that process.</text>
+  <text class="pr-note" x="20" y="514">A monitor command that writes takes the lock itself when no pipeline runs, and writes directly. Otherwise it</text>
+  <text class="pr-note" x="20" y="534">leaves a request in data/control/, the pipeline carries it out, and a result file comes back there.</text>
 </svg>

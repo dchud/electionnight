@@ -68,19 +68,23 @@ End on "Conclusions this data cannot support". Ask the class to add one.
 
 Open `/methods`. The left navigation follows the section in view. Walk through
 the three diagrams: feed to screen, the processes and the single-writer rule,
-and DuckLake. Point out that `classify_a` feeds two branches, and that every
-writer goes through one batch writer. Each section links to its live view.
-The table at the end names the setting or constant behind each value, and a
-test compares them.
+and DuckLake. Point out that `classify_a` feeds two branches, that every row
+the pipeline writes goes through one batch writer, and that maintenance runs
+flush and merge directly on the same connection. Each section links to its live
+view. The table at the end names the setting or constant behind each value, and
+a test compares them.
 
 ### DuckLake
 
-Open `/under/lake`. The catalog is plain SQL, so read a row count aloud and
-open its query. Choose `nlp.embeddings` in the table browser. `ducklake_column`
-holds `vec` as a list with a child `element`, and the statistics sit on the
-child. Compare the rows in Parquet with the inlined rows. Statistics cover only
-the first of those. A sample row shows a vector's length and first values, and
-article text is cut to an excerpt in the query.
+Open `/under/lake`. Start at the table map: it shows the overall shape, and the
+lines are shared keys the code maintains, because DuckLake has no foreign keys.
+The catalog is plain SQL, so read a row count aloud and open its query. Choose
+`nlp.embeddings` in the table browser. `ducklake_column` holds `vec` as a list
+with a child `element`, and the statistics sit on the child. On that row, Nulls
+counts NULL lists, empty lists, and null elements. This table never inlines, so
+choose `raw.items` to compare the rows in Parquet with the inlined rows.
+Statistics cover only the first of those. A sample row shows a vector's length
+and first values, and article text is cut to an excerpt in the query.
 
 Inventory compares rows with keys for every table. Storage has compression and
 time travel, and Data model has the table as the code declares it.
@@ -202,7 +206,7 @@ uv run pytest tests/test_under_sql.py --basetemp=tmp/pytest-under
 
 | What you see | What it means | What to do |
 |---|---|---|
-| "These figures were scanned ... ago" | A result is kept for 2 minutes, or 10 minutes for Parquet footers, time travel, and capture start. If a new scan does not finish, the last result stands in | Nothing |
+| "These figures were scanned ... ago" | A result is kept for 2 minutes, or 10 minutes for Parquet footers, time travel, capture start, and the query gallery. If a new scan does not finish, the last result stands in | Nothing |
 | "This scan did not finish" or "A scan did not finish" | A figure on that page is not known. It does not mean zero | Press Retry |
 | "Not finished when the child process stopped" | A scan reached its 10-second limit in its own process. What finished is kept | Press Retry. The next run continues with what is left |
 | "Another scan is running" | Scans run one at a time, and a page does not wait for one | Press Retry in a moment |

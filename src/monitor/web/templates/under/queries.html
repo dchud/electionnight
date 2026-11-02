@@ -23,10 +23,11 @@
     <div class="u-call" id="query-{{ member.query.key }}">
       <h3 class="u-chart-title">{{ member.query.question }}</h3>
       <p class="u-note"><strong>Why it is interesting:</strong> {{ member.query.interesting }} <strong>What it does not mean:</strong> {{ member.query.not_mean }}</p>
+      {% if member.note %}<p class="u-note">{{ member.note }}</p>{% endif %}
       <details class="u-query" data-key="gallery-{{ member.query.key }}" open>
         <summary>Show query</summary>
-        <pre class="u-sql">{{ ran.query.sql }}</pre>
-        <p class="u-query-meta">Ran on: {{ ran.query.where }}{% if ran.query.ms is not none %}; {{ ran.query.ms }} ms{% endif %}{% if ran.query.rows is not none %}; {{ ran.query.rows }} rows{% endif %}. <a class="text-link" href="/under/sql?sql={{ ran.query.sql|urlencode }}">Open in the SQL console</a></p>
+        <pre class="u-sql">{{ ran.query.sql|u_sql }}</pre>
+        <p class="u-query-meta">Ran on: {{ ran.query.where }}{% if ran.query.ms is not none %}; {{ ran.query.ms }} ms{% endif %}{% if ran.query.rows is not none %}; {{ ran.query.rows }} rows{% endif %}.{% if ran.query.where != 'not run' %} <a class="text-link" href="/under/sql?sql={{ ran.query.sql|urlencode }}">Open in the SQL console</a>{% endif %}</p>
       </details>
       {{ u.ran_note(ran) }}
       {% if ran.ok %}

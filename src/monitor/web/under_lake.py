@@ -12,7 +12,15 @@ from pathlib import Path
 from typing import Any
 
 from monitor.web.methods_doc import diagram
-from monitor.web.under import Under, failure_lines, key_sql, table_key
+from monitor.web.under import (
+    Disclosed,
+    Ran,
+    Under,
+    failure_lines,
+    key_sql,
+    table_key,
+)
+from monitor.web.under_map import relation_rows, table_map
 
 CATALOG = "__ducklake_metadata_lake.main"
 SAMPLE_ROWS = 3
@@ -22,6 +30,7 @@ LIST_VALUES_SHOWN = 3
 SAFE_TABLE_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 NUMBER_TYPE_RE = re.compile(r"^(u?int|float|decimal)")
 TEXT_TYPES = {"varchar", "json", "blob"}
+NOT_SAMPLED = "-- Not run, because the column list could not be read."
 
 # Every table in the catalog, and what one row in it is. A test compares this
 # list with a new catalog.
@@ -226,6 +235,8 @@ def sample_sql(table: str, columns: list[dict[str, Any]]) -> str:
 def sample_cell(value: Any) -> str:
     """One stored value, as text a person can read on a projector."""
     if isinstance(value, dict) and "length" in value and "first" in value:
+        if value["length"] is None:
+            return "NULL"
         first = ", ".join(_short(part) for part in value["first"] or [])
         return f"{value['length']} values; first: {first}"
     return _short(value)
@@ -270,7 +281,6 @@ def table_detail(under: Under, row: dict[str, Any]) -> dict[str, Any]:
         f"SELECT count(*) AS n_rows, count(DISTINCT {key_sql(table)}) "
         f"AS n_keys FROM lake.{table}"
     )
-    scans: dict[str, Any] = {}
     if columns.ok:
         scans = under.scan(
             f"lake:{table}",
@@ -279,7 +289,13 @@ def table_detail(under: Under, row: dict[str, Any]) -> dict[str, Any]:
                 ("sample", sample_sql(table, columns.rows), None),
             ],
         )
-    sample = scans.get("sample")
+    else:
+        reason = columns.error or "The column list could not be read."
+        scans = {
+            "keys": Ran([], Disclosed(keys_sql, "not run"), reason),
+            "sample": Ran([], Disclosed(NOT_SAMPLED, "not run"), reason),
+        }
+    sample = scans["sample"]
     return {
         "table": table,
         "row": row,
@@ -289,7 +305,8 @@ def table_detail(under: Under, row: dict[str, Any]) -> dict[str, Any]:
         "columns": columns,
         "stats": stats,
         "schema": with_stats(columns.rows, stats.rows),
-        "key_scan": scans.get("keys"),
+        "has_lists": any(c["column_type"] == "list" for c in columns.rows),
+        "key_scan": scans["keys"],
         "sample": sample,
         "sample_rows": [
             [
@@ -301,7 +318,7 @@ def table_detail(under: Under, row: dict[str, Any]) -> dict[str, Any]:
                 )
                 for name, value in entry.items()
             ]
-            for entry in (sample.rows if sample else [])
+            for entry in sample.rows
         ],
         "failures": failure_lines(
             {"schema": columns, "statistics": stats, **scans}
@@ -331,6 +348,8 @@ def lake_view(under: Under, params: Any) -> dict[str, Any]:
         chosen = next(iter(choices), "")
     catalog = catalog_rows(under)
     return {
+        "table_map": table_map(),
+        "relations": relation_rows(),
         "diagram": diagram("ducklake"),
         "catalog": catalog,
         "tables_query": tables.query,

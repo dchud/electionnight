@@ -45,6 +45,7 @@ from monitor.web.reference import (
     Reference,
     feed_state,
 )
+from monitor.web.sql_format import render_sql
 
 log = get(__name__)
 
@@ -426,6 +427,7 @@ def register_filters(env: Any) -> None:
     env.filters["u_pct"] = percent
     env.filters["u_et"] = et_label
     env.filters["u_secs"] = seconds_label
+    env.filters["u_sql"] = render_sql
 
 
 def quoted(text: str) -> str:

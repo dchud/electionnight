@@ -11,11 +11,12 @@ Live view: [trace one article](/under/trace).
 ![From a news feed to the screen](diagrams/feed-to-screen.svg)
 
 The poller reads each outlet's feeds and hands new items to the parser stages.
-The poller, the stages, and the periodic jobs all write through one
-`BatchWriter`, which commits a batch to DuckLake every 30 s. The web process
-polls the catalog every 3 s, copies what changed into an in-memory fact table,
-and tells connected browsers over server-sent events. The browser then asks for
-new fragments and chart data.
+Every row the pipeline writes goes through one `BatchWriter`, which commits a
+batch to DuckLake every 30 s. Maintenance runs flush and merge directly on the
+same connection, with no `BatchWriter`. The web process polls the catalog every
+3 s, copies what changed into an in-memory fact table, and tells connected
+browsers over server-sent events. The browser then asks for new fragments and
+chart data.
 
 `classify_a` feeds two branches. Every item goes on to `embed`, `dedupe`, and
 `storylines`, and `storylines` keeps only relevant, canonical items. Relevant
@@ -32,17 +33,24 @@ Live views: [feeds](/under/feeds) and [storage](/under/storage).
 
 ![The processes and the files between them](diagrams/processes.svg)
 
-One process, `pipeline`, writes to the lake, and it holds `data/writer.lock`
-while it runs. The dashboard process, `web`, attaches the lake read-only and
-refreshes when a new snapshot appears. It never writes to the lake. Its only
-database of its own is `data/ui.sqlite`, which holds the watchlist and the
-battleground overrides.
+One process at a time writes to the lake, and it holds `data/writer.lock` while
+it does. While `pipeline` runs, it is that process. A `monitor` command that
+writes tries the same lock first. With no pipeline running, the command holds
+the lock and writes directly. With a pipeline running, the command leaves a
+request file in `data/control/`, the pipeline reads it within 2 s and carries
+it out, and a result file comes back there.
+
+The dashboard process, `web`, attaches the lake read-only and refreshes when a
+new snapshot appears. It never writes to the lake. Its only database file is
+`data/ui.sqlite`, which holds the watchlist and the battleground overrides.
 
 The teaching views run anything that opens a data file in a short-lived child
-process: one at a time, at a lowered priority, stopped at a time limit, and
-attached read-only. A busy scan makes a page say so at once and offer a retry.
-The pipeline reports its state through `data/status.json` every 10 s, because
-the web process cannot read another process's memory.
+process: at a lowered priority, stopped at a time limit, and attached
+read-only. Scans run one at a time. The SQL console runs its own queries one at
+a time, so a console query can run beside a scan. A busy scan makes a page say
+so at once and offer a retry. The pipeline reports its state through
+`data/status.json` every 10 s, because the web process cannot read another
+process's memory.
 
 ## Collection
 
@@ -133,15 +141,18 @@ An item is compared with items seen within 36 hours.
    because short titles such as "Live updates" repeat across unrelated stories.
 2. **Title match.** Two hashes match at a Hamming distance of 3 or less. An
    identical title matches even when each copy is tagged with its own state. A
-   near-identical title must also share a place, because a template can change
-   only the state.
+   near-identical title must also pass a place check, because a template can
+   change only the state. Two items fail that check only when both name states
+   and share none, so an item with no state passes it.
 3. **Embedding match.** Otherwise an item matches at a cosine of at least 0.95,
-   on the same published day and in the same place.
+   on the same published day, if the two also pass the place check.
 
 A relevant item joins only groups a relevant item started, so the canonical
 copy of a relevant story is relevant. `nlp.dup_groups.method` says
-`title_hash`, `embedding`, or `none`. A `similarity` of 1.0 on a `title_hash`
-row is a placeholder, because no cosine decided that match.
+`title_hash`, `embedding`, or `none`. A row saying `url` was written by an
+earlier parser and means no match was found; no URL was compared. A
+`similarity` of 1.0 on a `title_hash` row is a placeholder, because no cosine
+decided that match.
 `nlp.cluster_decisions` keeps the nearest similarity and the SimHash distance
 for each decision.
 
@@ -172,9 +183,10 @@ characters of extracted text. A status of 401, 402, or 403 counts as paywalled.
 ### Extraction
 
 The bulk model reads the title and at most 6,000 tokens of text, cut at a
-paragraph, and returns at most 4,000 tokens. `text_basis` records whether it
-read `full_text` or `summary`. A truncated answer is retried once with twice
-the output limit. Tone is clamped to -2 to +2.
+paragraph, and returns at most 4,000 tokens. `text_basis` records what it read:
+`full_text`, `summary` when no text was fetched, or `summary+text` when a short
+or paywalled page went in with the feed summary. A truncated answer is retried
+once with twice the output limit. Tone is clamped to -2 to +2.
 
 ### Entity and place resolution
 
@@ -272,10 +284,10 @@ copies.
 
 ### Velocity and rising
 
-For a storyline or entity, *o* is the count in the
-last 15 minutes and *e* is the count in the 120 minutes before that, times
-15/120. The score is (*o* - *e*) / sqrt(*e* + 1). An entry is rising when the
-score is at least 2 and *o* is at least 3. A storyline is new when its
+For a storyline, *o* is the count in the last 15 minutes and *e* is the count
+in the 120 minutes before that, times 15/120. The score is (*o* - *e*) /
+sqrt(*e* + 1). A storyline is rising when the score is at least 2 and *o* is at
+least 3. Entities get no velocity score. A storyline is new when its
 `first_seen_at` is within 30 minutes. Rising Storylines lists only storylines
 that meet the rule.
 
@@ -435,9 +447,9 @@ dashboard counts for those items.
 The specification shrinks a mean toward 0 with 5 pseudo-observations
 and gives it a 95% interval from the standard error. An interval around the
 shrunk mean does not cover the true mean 95% of the time: in simulation with a
-true mean of -1.0 and a standard deviation of 0.5, it covered 32% at *n* of 6
-and 83% at *n* of 100. The dashboard draws the unshrunk mean with a
-*t*-interval, and the low-n flag marks small counts.
+true mean of -1.0, a standard deviation of 0.5, and tone clamped to the scale,
+it covered 32% at *n* of 6 and 83% at *n* of 100. The dashboard draws the
+unshrunk mean with a *t*-interval, and the low-n flag marks small counts.
 
 ### Replay
 
@@ -481,15 +493,21 @@ with a target size of 128MB. Embeddings, prompts, traces, and article text set
 that limit to 0, because their rows are long.
 
 Every 15 minutes, maintenance flushes inlined rows to Parquet, merges small
-adjacent files, and deletes replaced files once they are 2 hours old. A merged
-file keeps each row's snapshot in `_ducklake_internal_snapshot_id`, so
-`AT (VERSION => n)` stays exact after the replaced files are gone. Catalog
-backups run every 15 minutes. The newest 12 are kept, and one per earlier hour.
+adjacent files, and deletes each replaced file 2 hours after it was replaced.
+The clock starts when a merge or flush replaces the file, not when the file was
+written. A merged file keeps each row's snapshot in
+`_ducklake_internal_snapshot_id`, so `AT (VERSION => n)` stays exact after the
+replaced files are gone. Catalog backups run every 15 minutes. The newest 12
+are kept, and one per earlier hour.
 
 A query reads the catalog first. `ducklake_file_column_stats` holds each file's
 minimum, maximum, and null count per column, so a filter on `created_at` opens
-only the files that can match. Inlined rows have no such statistics and are
-always read.
+only the files that can match. Inlined rows have no per-file statistics. They
+are read unless the table-wide range in `ducklake_table_column_stats` rules out
+the whole table.
+
+[The table map](/under/lake#map) shows how the tables relate. DuckLake has no
+foreign keys, so these are shared keys the code maintains.
 
 ## The read model
 
@@ -524,7 +542,7 @@ all LLM calls except briefs at the hard cap.
 Each call marks its system prompt with `cache_control: ephemeral`. A cache
 entry lasts 5 minutes from its last use, and a request sent before the first
 response starts cannot read it. So when a purpose has had no success for 270 s,
-one request goes out alone, and the others wait for it.
+one request goes out alone, and the others wait for it, for at most 15 s.
 
 *usd* = (*input* + 0.1 *cache read* + 1.25 *cache write*) *input price* +
 *output* *output price*, with prices per token. The saving on the costs view
@@ -608,7 +626,8 @@ its module.
 | Share of the daily cap that moves sources to keywords | `monitor.llm.budget.SOFT_FRACTION` | 0.8 |
 | Cache read price multiplier | `llm.cache_read_multiplier` | 0.1 |
 | Cache write price multiplier | `llm.cache_write_multiplier` | 1.25 |
-| Seconds a cold cache gate holds requests | `monitor.llm.client.CACHE_COLD_SECONDS` | 270.0 |
+| Seconds with no success before a cache counts as cold | `monitor.llm.client.CACHE_COLD_SECONDS` | 270.0 |
+| Seconds others wait for a cold request | `monitor.llm.client.COLD_WAIT_SECONDS` | 15.0 |
 | Snapshot poll, seconds | `web.snapshot_poll_seconds` | 3.0 |
 | Watermark overlap | `monitor.web.readmodel.WATERMARK_OVERLAP` | 0:03:00 |
 | Storyline merges followed | `monitor.web.readmodel.MERGE_HOPS` | 8 |

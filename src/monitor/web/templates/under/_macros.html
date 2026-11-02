@@ -8,7 +8,7 @@
     <p class="u-query-meta">Ran on: {{ q.where }}{% if q.ms is not none %}; {{ q.ms }} ms{% endif %}{% if q.rows is not none %}; {{ q.rows }} rows{% endif %}.</p>
     {% if q.note %}<p class="u-query-meta">{{ q.note }}</p>{% endif %}
     {% if q.params_text %}<p class="u-query-meta">Parameters: <code>{{ q.params_text }}</code></p>{% endif %}
-    <pre class="u-sql">{{ q.sql }}</pre>
+    <pre class="u-sql">{{ q.sql|u_sql }}</pre>
   </div>
   {% endfor %}
 </details>

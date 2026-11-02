@@ -14,10 +14,11 @@ import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
+import duckdb
 import pytest
 from conftest import clone_lake
 
-from monitor.lake import BatchWriter, connect
+from monitor.lake import TABLES, BatchWriter, connect
 
 pytestmark = [pytest.mark.slow, pytest.mark.enable_socket]
 
@@ -594,3 +595,213 @@ def test_chips_explain_themselves_at_once(scratch, browser):
     assert tip.is_visible()
     assert tip.inner_text() == "Georgia"
     context.close()
+
+
+def open_methods(browser, projector=False, width=1280, height=720):
+    page = browser.new_page(viewport={"width": width, "height": height})
+    page.goto(f"{BASE}/methods")
+    if projector:
+        page.keyboard.press("p")
+    page.wait_for_selector("[data-doc-nav]")
+    return page
+
+
+def marked(page):
+    return page.eval_on_selector_all(
+        '[data-doc-nav] a[aria-current="true"]',
+        "links => links.map(link => link.getAttribute('href'))",
+    )
+
+
+def choose(page, href):
+    page.evaluate(
+        "href => document.querySelector("
+        '`[data-doc-nav] a[href="${href}"]`).click()',
+        href,
+    )
+    page.wait_for_timeout(150)
+
+
+def in_view(page):
+    """The heading at the line the script marks by, read from the page."""
+    return page.evaluate(
+        """() => {
+          const line = document.querySelector('.app-header')
+            .getBoundingClientRect().bottom + 40;
+          let current = null;
+          for (const link of document.querySelectorAll('[data-doc-nav] a')) {
+            const element = document.getElementById(link.hash.slice(1));
+            if (element && element.getBoundingClientRect().top <= line) {
+              current = link.getAttribute('href');
+            }
+          }
+          return current;
+        }"""
+    )
+
+
+@pytest.mark.parametrize("projector", [False, True])
+def test_methods_navigation_marks_the_section_in_view(
+    scratch, browser, projector
+):
+    _, server = scratch
+    server.start()
+    page = open_methods(browser, projector)
+    page.mouse.move(800, 300)
+    for _ in range(12):
+        page.mouse.wheel(0, 900)
+        page.wait_for_timeout(100)
+        assert marked(page) == [in_view(page)]
+    assert page.evaluate(
+        "document.documentElement.scrollWidth "
+        "<= document.documentElement.clientWidth"
+    )
+
+
+def test_methods_navigation_reaches_every_heading_below_the_header(
+    scratch, browser
+):
+    _, server = scratch
+    server.start()
+    page = open_methods(browser)
+    hrefs = page.eval_on_selector_all(
+        "[data-doc-nav] a",
+        "links => links.map(link => link.getAttribute('href'))",
+    )
+    assert len(hrefs) > 30
+    for href in hrefs:
+        choose(page, href)
+        assert marked(page) == [href]
+        top, header = page.evaluate(
+            """href => [
+              document.getElementById(href.slice(1))
+                .getBoundingClientRect().top,
+              document.querySelector('.app-header')
+                .getBoundingClientRect().bottom,
+            ]""",
+            href,
+        )
+        assert top >= header - 1, href
+
+
+def test_a_chosen_section_lets_go_when_the_page_moves(scratch, browser):
+    _, server = scratch
+    server.start()
+    page = open_methods(browser)
+    choose(page, "#storylines")
+    assert marked(page) == ["#storylines"]
+    # A scrollbar drag moves the page with no wheel or key event.
+    page.evaluate("window.scrollTo(0, 0)")
+    page.wait_for_timeout(200)
+    assert marked(page) == ["#from-feed-to-screen"]
+
+
+def test_a_section_at_the_end_stays_marked_after_a_click(scratch, browser):
+    _, server = scratch
+    server.start()
+    page = open_methods(browser)
+    choose(page, "#in-service")
+    page.wait_for_timeout(200)
+    assert marked(page) == ["#in-service"]
+
+
+def test_the_back_button_moves_the_mark_with_the_hash(scratch, browser):
+    _, server = scratch
+    server.start()
+    page = open_methods(browser)
+    choose(page, "#dedupe")
+    choose(page, "#cost")
+    assert marked(page) == ["#cost"]
+    page.go_back()
+    page.wait_for_timeout(300)
+    assert page.evaluate("window.location.hash") == "#dedupe"
+    assert marked(page) == ["#dedupe"]
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("projector", [False, True])
+def test_the_table_map_reads_at_a_glance(scratch, browser, theme, projector):
+    _, server = scratch
+    server.start()
+    page = browser.new_page(viewport={"width": 1280, "height": 720})
+    page.goto(f"{BASE}/under")
+    page.evaluate(
+        """([theme, projector]) => {
+          localStorage.setItem('theme', theme);
+          localStorage.setItem('projector', projector ? '1' : '0');
+        }""",
+        [theme, projector],
+    )
+    page.goto(f"{BASE}/under/lake")
+    found = page.evaluate(
+        """() => {
+          const svg = document.querySelector('.tm-wrap svg');
+          const box = svg.getBoundingClientRect();
+          const scale = box.width / svg.viewBox.baseVal.width;
+          const texts = [...svg.querySelectorAll('text')].map((t) => ({
+            text: t.textContent, box: t.getBBox(),
+            size: parseFloat(getComputedStyle(t).fontSize) * scale,
+          }));
+          const overlaps = [];
+          for (let i = 0; i < texts.length; i++) {
+            for (let j = i + 1; j < texts.length; j++) {
+              const a = texts[i].box, b = texts[j].box;
+              if (a.x < b.x + b.width && b.x < a.x + a.width
+                  && a.y < b.y + b.height - 2 && b.y < a.y + a.height - 2) {
+                overlaps.push([texts[i].text, texts[j].text]);
+              }
+            }
+          }
+          const names = texts.filter((t) => !t.text.includes(' '));
+          return {
+            overlaps,
+            height: box.height,
+            viewport: innerHeight,
+            smallest: Math.min(...texts.map((t) => t.size)),
+            tableName: Math.min(...[...svg.querySelectorAll('.tm-name')]
+              .map((t) => parseFloat(getComputedStyle(t).fontSize) * scale)),
+            pageWide: document.documentElement.scrollWidth
+              <= document.documentElement.clientWidth,
+            links: svg.querySelectorAll('a').length,
+            names: names.length,
+          };
+        }"""
+    )
+    assert found["overlaps"] == []
+    assert found["height"] <= found["viewport"]
+    assert found["tableName"] >= 14
+    assert found["pageWide"]
+    assert found["links"] == len(TABLES)
+
+
+def test_a_map_row_opens_the_table_browser_entry(scratch, browser):
+    _, server = scratch
+    server.start()
+    page = browser.new_page(viewport={"width": 1280, "height": 720})
+    page.goto(f"{BASE}/under/lake")
+    page.locator('.tm-wrap a[aria-label="nlp.mentions"]').click()
+    page.wait_for_load_state()
+    assert "table=nlp.mentions" in page.url
+    assert page.locator("#detail h2").first.inner_text() == "nlp.mentions"
+
+
+def test_a_copied_sql_block_is_the_statement_that_ran(scratch, browser):
+    _, server = scratch
+    server.start()
+    page = browser.new_page(viewport={"width": 1280, "height": 720})
+    page.goto(f"{BASE}/under/lake?table=raw.items")
+    copied = page.evaluate(
+        """() => {
+          const block = document.querySelector('pre.u-sql');
+          const details = block.closest('details');
+          if (details) details.open = true;
+          const range = document.createRange();
+          range.selectNodeContents(block);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          return selection.toString();
+        }"""
+    )
+    assert copied.strip().startswith("SELECT")
+    assert len(duckdb.connect().extract_statements(copied)) == 1

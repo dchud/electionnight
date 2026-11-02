@@ -95,7 +95,7 @@
     <ul class="u-list">
       <li><strong>Flush</strong> moves inlined rows from the catalog into Parquet. <strong>Merge</strong> rewrites small adjacent files as one file. Neither changes what any query returns, at any snapshot.</li>
       <li>A merged file keeps each row's snapshot range, in <code>_ducklake_internal_snapshot_id</code>. So <code>AT (VERSION =&gt; n)</code> stays exact after the replaced files are gone. This was checked on a scratch lake.</li>
-      <li><strong>Cleanup</strong> deletes replaced files from disk once they are 2 hours old, which leaves any query still reading them time to finish. Right now {{ scheduled.first.n_files|u_int }} are scheduled{% if scheduled.first.oldest %}, the oldest since {{ scheduled.first.oldest|u_et }}{% endif %}. They hold {{ '%.3f' % (disk.awaiting_cleanup or 0) }} GB, against {{ '%.3f' % (disk.lake_live or 0) }} GB of live data.</li>
+      <li><strong>Cleanup</strong> deletes each replaced file from disk 2 hours after it was replaced, which leaves any query still reading it time to finish. Right now {{ scheduled.first.n_files|u_int }} are scheduled{% if scheduled.first.oldest %}, the oldest since {{ scheduled.first.oldest|u_et }}{% endif %}. They hold {{ '%.3f' % (disk.awaiting_cleanup or 0) }} GB, against {{ '%.3f' % (disk.lake_live or 0) }} GB of live data.</li>
     </ul>
     {{ u.ran_note(maintenance) }}
     <div class="u-scroll">

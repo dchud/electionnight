@@ -10,9 +10,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from monitor.web.under import SLOW_SCAN_TTL_SECONDS, Under, failure_lines
+from monitor.web.under import (
+    SLOW_SCAN_TTL_SECONDS,
+    Disclosed,
+    Ran,
+    Under,
+    failure_lines,
+)
 
 RESULT_ROWS = 15
+# The time-travel queries compare the newest snapshot with up to this many
+# snapshots before it.
+SNAPSHOTS_BACK = 100
 
 # Two groupings, because "model types" can mean either.
 SHAPES = {
@@ -30,6 +39,7 @@ PRODUCERS = {
     "lang": "The local language detector",
     "embed": "The local embedding model",
     "classify": "Classification by the bulk model",
+    "labels": "Storyline labels by the bulk model",
     "extract": "Extraction by the bulk model",
     "briefs": "Briefs by the brief model",
     "keywords": "The keyword path",
@@ -48,13 +58,18 @@ class GalleryQuery:
     interesting: str
     not_mean: str
 
-    def text(self, older: int, newer: int) -> str:
-        """The SQL as it runs, with any snapshot numbers filled in."""
+    def text(self, older: int, newer: int, threshold: float) -> str:
+        """The SQL as it runs, with any settings and snapshots filled in."""
         return (
             self.sql.replace("{older}", str(older))
             .replace("{newer}", str(newer))
+            .replace("{threshold}", str(threshold))
             .strip()
         )
+
+    @property
+    def reads_snapshots(self) -> bool:
+        return "{older}" in self.sql
 
 
 QUERIES = (
@@ -62,7 +77,7 @@ QUERIES = (
         key="feed_fields",
         shape="json",
         producer="feeds",
-        question="Which fields do feed entries carry, and how often is each "
+        question="Which fields does raw_entry keep, and how often is each "
         "one filled?",
         sql="""
 -- raw_entry is JSON. json_keys lists the top-level names in each row.
@@ -78,12 +93,17 @@ SELECT field, count(*) AS entries,
 FROM fields
 GROUP BY field
 ORDER BY entries DESC, field
-LIMIT 12
+LIMIT 15
 """,
-        interesting="One JSON column keeps whatever a feed sent, so a field "
-        "the parser ignores can still be read here, with no schema change.",
-        not_mean="A filled field is not a correct one. An outlet decides what "
-        "goes in it.",
+        interesting="raw_entry holds a fixed set of fields that the poller "
+        "chooses: nine from a feed entry, four from a sitemap row, and "
+        "`truncated` when an entry is cut to the size cap. Every other field "
+        "a feed sends is dropped here. The original bytes, with every field, "
+        "are in the archive files, and the Trace view opens them for one "
+        "item.",
+        not_mean="These names come from the poller's code, so this does not "
+        "show which fields feeds send. A filled field is not a correct one. "
+        "An outlet decides what goes in it.",
     ),
     GalleryQuery(
         key="feed_tags",
@@ -157,15 +177,19 @@ LIMIT 10
         question="Which topics do relevant stories carry?",
         sql="""
 -- Take each item's newest classification, then unnest its list of topics.
+-- Relevant means election_relevant is true and relevance_conf is at least
+-- {threshold}.
 WITH latest AS (
-    SELECT item_id, election_relevant, topics
+    SELECT item_id, election_relevant, relevance_conf, topics
     FROM lake.nlp.classify_a
     QUALIFY row_number() OVER (
         PARTITION BY item_id ORDER BY created_at DESC) = 1
 )
 SELECT topic, count(*) AS items
 FROM (
-    SELECT unnest(topics) AS topic FROM latest WHERE election_relevant
+    SELECT unnest(topics) AS topic
+    FROM latest
+    WHERE election_relevant AND relevance_conf >= {threshold}
 )
 GROUP BY topic
 ORDER BY items DESC, topic
@@ -182,8 +206,10 @@ LIMIT 12
         producer="classify",
         question="Which pairs of states appear together in one story?",
         sql="""
+-- Relevant means election_relevant is true and relevance_conf is at least
+-- {threshold}.
 WITH latest AS (
-    SELECT item_id, election_relevant, states
+    SELECT item_id, election_relevant, relevance_conf, states
     FROM lake.nlp.classify_a
     QUALIFY row_number() OVER (
         PARTITION BY item_id ORDER BY created_at DESC) = 1
@@ -191,7 +217,7 @@ WITH latest AS (
 tagged AS (
     SELECT item_id, unnest(states) AS state
     FROM latest
-    WHERE election_relevant
+    WHERE election_relevant AND relevance_conf >= {threshold}
 )
 SELECT a.state AS first_state, b.state AS second_state, count(*) AS items
 FROM tagged a
@@ -229,61 +255,84 @@ ORDER BY n_rows DESC
         key="vector_neighbors",
         shape="vectors",
         producer="embed",
-        question="Which stories sit closest to the newest story?",
+        question="Which other stories sit closest to the newest story?",
         sql="""
--- Compare one vector with the newest 5,000, by cosine similarity.
-WITH newest AS (
-    SELECT item_id, vec
+-- Compare the newest story's vector with the newest 5,000 others, by cosine
+-- similarity. Rows are chosen before any vector is held, and an item that was
+-- embedded twice counts once, with its newest vector.
+WITH newest_ids AS (
+    SELECT item_id, max(created_at) AS stamped
     FROM lake.nlp.embeddings
-    ORDER BY created_at DESC
-    LIMIT 5000
+    GROUP BY item_id
+    ORDER BY stamped DESC, item_id
+    LIMIT 5001
 ),
-target AS (SELECT item_id, vec FROM newest LIMIT 1)
-SELECT round(list_cosine_similarity(t.vec, n.vec), 3) AS cosine,
-       n.item_id, left(i.title, 90) AS title
-FROM target t, newest n
-JOIN lake.raw.items i ON i.item_id = n.item_id
-ORDER BY cosine DESC, n.item_id
+vectors AS (
+    SELECT n.item_id, n.stamped, e.vec
+    FROM newest_ids n
+    JOIN lake.nlp.embeddings e
+        ON e.item_id = n.item_id AND e.created_at = n.stamped
+    QUALIFY row_number() OVER (PARTITION BY n.item_id) = 1
+),
+target AS (
+    SELECT item_id, vec FROM vectors ORDER BY stamped DESC, item_id LIMIT 1
+)
+SELECT round(list_cosine_similarity(t.vec, o.vec), 3) AS cosine,
+       o.item_id, left(i.title, 90) AS title
+FROM target t
+JOIN vectors o ON o.item_id <> t.item_id
+JOIN lake.raw.items i ON i.item_id = o.item_id
+ORDER BY cosine DESC, o.item_id
 LIMIT 8
 """,
         interesting="Nearest neighbors in plain SQL, with no index, because a "
         "bounded set of vectors is small enough to scan.",
         not_mean="Close in meaning is not the same event, and not true. The "
-        "vector covers the title and summary, not the full text.",
+        "newest story is left out of its own list. The vector covers the "
+        "title and summary, not the full text.",
     ),
     GalleryQuery(
         key="vector_english_spanish",
         shape="vectors",
         producer="embed",
-        question="Which Spanish stories are closest in meaning to English "
-        "stories?",
+        question="Among the newest 500 items in each language, which Spanish "
+        "stories are closest in meaning to English stories?",
         sql="""
 -- Each item's newest language row decides which side it is on. A Spanish
 -- item's vector comes from the English the classifier wrote, if it wrote any.
+-- Each side is limited to 500 items before any vector is held, so this needs
+-- about the same memory at any table size.
 WITH language AS (
     SELECT item_id, language
     FROM lake.nlp.lang
     QUALIFY row_number() OVER (
         PARTITION BY item_id ORDER BY created_at DESC) = 1
 ),
-vectors AS (
-    SELECT e.item_id, e.vec, l.language, e.created_at
-    FROM lake.nlp.embeddings e
+stamped AS (
+    SELECT item_id, max(created_at) AS stamped
+    FROM lake.nlp.embeddings
+    GROUP BY item_id
+),
+picked AS (
+    SELECT s.item_id, s.stamped, l.language
+    FROM stamped s
     JOIN language l USING (item_id)
     WHERE l.language IN ('en', 'es')
+    QUALIFY row_number() OVER (
+        PARTITION BY l.language ORDER BY s.stamped DESC, s.item_id) <= 500
 ),
-english AS (
-    SELECT item_id, vec FROM vectors WHERE language = 'en'
-    ORDER BY created_at DESC LIMIT 500
-),
-spanish AS (
-    SELECT item_id, vec FROM vectors WHERE language = 'es'
-    ORDER BY created_at DESC LIMIT 500
+vectors AS (
+    SELECT p.item_id, p.language, e.vec
+    FROM picked p
+    JOIN lake.nlp.embeddings e
+        ON e.item_id = p.item_id AND e.created_at = p.stamped
+    QUALIFY row_number() OVER (PARTITION BY p.item_id) = 1
 ),
 pairs AS (
     SELECT en.item_id AS en_id, es.item_id AS es_id,
            list_cosine_similarity(en.vec, es.vec) AS cosine
-    FROM english en, spanish es
+    FROM vectors en
+    JOIN vectors es ON en.language = 'en' AND es.language = 'es'
     ORDER BY cosine DESC
     LIMIT 8
 )
@@ -298,9 +347,10 @@ ORDER BY cosine DESC
         "land near each other. The classifier's English translation gets them "
         "there, and the model handles Spanish directly when a search is typed "
         "in Spanish.",
-        not_mean="A high cosine here rests partly on that translation. It "
-        "does not show that the two stories agree, and the top pairs can be "
-        "copies of one wire story.",
+        not_mean="This searches only the newest 500 items on each side, so an "
+        "older match is not considered. A high cosine here rests partly on "
+        "the translation. It does not show that the two stories agree, and "
+        "the top pairs can be copies of one wire story.",
     ),
     GalleryQuery(
         key="vector_decisions",
@@ -330,18 +380,19 @@ LIMIT 15
         question="Which entities are named together most often?",
         sql="""
 -- Join mentions to themselves on item_id to get an edge list.
-WITH named AS (
+-- Take each mention's newest row first, then keep the resolved ones, so a
+-- mention whose newest row has no entity does not count.
+WITH latest AS (
     SELECT item_id, entity_id
     FROM lake.nlp.mentions
-    WHERE entity_id IS NOT NULL
     QUALIFY row_number() OVER (
         PARTITION BY mention_id ORDER BY created_at DESC) = 1
 ),
 edges AS (
     SELECT a.entity_id AS first_id, b.entity_id AS second_id,
            count(DISTINCT a.item_id) AS items
-    FROM named a
-    JOIN named b ON a.item_id = b.item_id AND a.entity_id < b.entity_id
+    FROM latest a
+    JOIN latest b ON a.item_id = b.item_id AND a.entity_id < b.entity_id
     GROUP BY ALL
 ),
 names AS (
@@ -370,7 +421,8 @@ LIMIT 10
         question="Which entity is named alongside the most other entities?",
         sql="""
 -- gold.comention_edges holds the edges per 5-minute bin. Take each bin's
--- newest row, list each edge both ways, and count distinct neighbors.
+-- newest row and drop zero rows, which mean the edge vanished from that bin.
+-- Then list each edge both ways and count distinct neighbors.
 WITH newest AS (
     SELECT entity_a, entity_b, n
     FROM lake.gold.comention_edges
@@ -379,9 +431,11 @@ WITH newest AS (
         ORDER BY created_at DESC) = 1
 ),
 both_ways AS (
-    SELECT entity_a AS entity_id, entity_b AS neighbor, n FROM newest
+    SELECT entity_a AS entity_id, entity_b AS neighbor, n
+    FROM newest WHERE n > 0
     UNION ALL
-    SELECT entity_b, entity_a, n FROM newest
+    SELECT entity_b, entity_a, n
+    FROM newest WHERE n > 0
 ),
 names AS (
     SELECT entity_id, canonical_name
@@ -408,7 +462,8 @@ LIMIT 10
         producer="system",
         question="What happens if a query ignores the latest-row rule?",
         sql="""
--- A recomputed bin is a new row, so a plain sum counts every recompute.
+-- A recomputed bin is a new row, so a plain sum counts every recompute. A
+-- newest row of zero means the bin vanished, so it is not counted as a bin.
 WITH newest AS (
     SELECT n_items
     FROM lake.gold.source_bins
@@ -416,7 +471,7 @@ WITH newest AS (
         PARTITION BY bin_start, source_id ORDER BY created_at DESC) = 1
 )
 SELECT (SELECT count(*) FROM lake.gold.source_bins) AS rows_stored,
-       (SELECT count(*) FROM newest) AS distinct_bins,
+       (SELECT count(*) FROM newest WHERE n_items > 0) AS distinct_bins,
        (SELECT sum(n_items) FROM lake.gold.source_bins) AS naive_sum,
        (SELECT sum(n_items) FROM newest) AS latest_row_sum,
        (SELECT count(*) FROM lake.raw.items) AS items_in_raw
@@ -429,7 +484,7 @@ SELECT (SELECT count(*) FROM lake.gold.source_bins) AS rows_stored,
     GalleryQuery(
         key="latest_versions",
         shape="latest",
-        producer="classify",
+        producer="labels",
         question="How many versions of a storyline does the lake keep?",
         sql="""
 -- Each growth or relabel appends a version. arg_max reads the newest label.
@@ -486,7 +541,9 @@ FROM lake.nlp.storylines AT (VERSION => {newer})
         interesting="An old answer stays exact, even after maintenance "
         "rewrote the files it came from.",
         not_mean="A snapshot is a commit, so its number says nothing about "
-        "wall-clock time, and rows are not records in this table.",
+        "wall-clock time, and rows are not records in this table. A pruned "
+        "snapshot can no longer be read, so this reads only snapshots that "
+        "still exist.",
     ),
     GalleryQuery(
         key="time_changes",
@@ -494,18 +551,21 @@ FROM lake.nlp.storylines AT (VERSION => {newer})
         producer="system",
         question="Which rows did the last snapshots add to one table?",
         sql="""
--- table_changes lists rows written between two snapshots, without a scan of
--- the whole table.
+-- table_changes lists rows written between two snapshots. A file written by
+-- one commit belongs to that commit. A merged file holds many commits, so this
+-- opens it and filters on the snapshot stored with each row.
 SELECT snapshot_id, change_type, left(storyline_id, 12) AS storyline, version,
        left(label, 60) AS label
 FROM ducklake_table_changes('lake', 'nlp', 'storylines', {older}, {newer})
 ORDER BY snapshot_id DESC, storyline
 LIMIT 10
 """,
-        interesting="Change data with no extra machinery, because each row "
-        "records its snapshot.",
+        interesting="Change data with no extra machinery, because the catalog "
+        "records each file's snapshot and a merged file records each row's.",
         not_mean="In this append-only table every change is an insert. An "
-        "insert here can be a new version of a storyline, not a new one.",
+        "insert here can be a new version of a storyline, not a new one. "
+        "After a merge this opens the merged file, which can hold the whole "
+        "table, so it is not always cheaper than a scan.",
     ),
     GalleryQuery(
         key="catalog_nested",
@@ -646,6 +706,8 @@ LIMIT 12
         producer="classify",
         question="How is the model's relevance confidence spread?",
         sql="""
+-- This reads the model's flag and its score apart. An item counts as relevant
+-- only when the flag is true and the score is at least {threshold}.
 WITH latest AS (
     SELECT election_relevant, relevance_conf
     FROM lake.nlp.classify_a
@@ -660,7 +722,7 @@ GROUP BY ALL
 ORDER BY election_relevant, conf_from
 """,
         interesting="A model's score has a shape. A pile at the extremes "
-        "shows how often the threshold of 0.5 decides anything.",
+        "shows how often the threshold decides anything.",
         not_mean="The score is the model's own report and is not calibrated. "
         "Most early items are backlog.",
     ),
@@ -671,15 +733,18 @@ ORDER BY election_relevant, conf_from
         question="How many items did each path classify, and how many did it "
         "call relevant?",
         sql="""
+-- Relevant means election_relevant is true and relevance_conf is at least
+-- {threshold}.
 WITH latest AS (
-    SELECT method, election_relevant
+    SELECT method, election_relevant AND relevance_conf >= {threshold}
+               AS relevant
     FROM lake.nlp.classify_a
     QUALIFY row_number() OVER (
         PARTITION BY item_id ORDER BY created_at DESC) = 1
 )
 SELECT method, count(*) AS items,
-       count(*) FILTER (WHERE election_relevant) AS relevant,
-       round(avg(election_relevant::INT), 3) AS relevant_share
+       count(*) FILTER (WHERE relevant) AS relevant,
+       round(avg(relevant::INT), 3) AS relevant_share
 FROM latest
 GROUP BY method
 ORDER BY items DESC
@@ -696,11 +761,21 @@ ORDER BY items DESC
         question="Where one item has both a keyword row and a model row, do "
         "they agree?",
         sql="""
-SELECT k.election_relevant AS keywords_relevant,
-       l.election_relevant AS model_relevant,
-       count(DISTINCT item_id) AS items
-FROM lake.nlp.classify_a k
-JOIN lake.nlp.classify_a l USING (item_id)
+-- Each path's newest row per item, so one item is one count in one cell.
+-- Relevant means election_relevant is true and relevance_conf is at least
+-- {threshold}.
+WITH newest AS (
+    SELECT item_id, method,
+           election_relevant AND relevance_conf >= {threshold} AS relevant
+    FROM lake.nlp.classify_a
+    WHERE method IN ('keywords', 'llm')
+    QUALIFY row_number() OVER (
+        PARTITION BY item_id, method ORDER BY created_at DESC) = 1
+)
+SELECT k.relevant AS keywords_relevant, l.relevant AS model_relevant,
+       count(*) AS items
+FROM newest k
+JOIN newest l USING (item_id)
 WHERE k.method = 'keywords' AND l.method = 'llm'
 GROUP BY ALL
 ORDER BY items DESC
@@ -732,8 +807,10 @@ ORDER BY items DESC
         interesting="The evidence behind a value is itself a column, so a "
         "query can split on it.",
         not_mean="These are different stories, so a gap does not measure "
-        "what reading more text does. The dashboard reports tone per entity "
-        "with an interval, not this mean.",
+        "what reading more text does. `summary+text` is a short or paywalled "
+        "page sent with the feed summary. The state map uses a mean of this "
+        "same value, and leaves out opinion items. Entity tone is a mean over "
+        "mentions, with an interval.",
     ),
     GalleryQuery(
         key="extract_entity_tone",
@@ -741,20 +818,26 @@ ORDER BY items DESC
         producer="extract",
         question="What is the raw mean tone for the most-named entities?",
         sql="""
--- Opinion items are left out, as they are on the dashboard.
+-- Opinion items are left out, as they are on the dashboard. Rank by mentions,
+-- and n counts the mentions that have a tone. Take each mention's newest row
+-- first, then keep the resolved ones.
 WITH opinion AS (
     SELECT item_id, is_opinion
     FROM lake.nlp.classify_a
     QUALIFY row_number() OVER (
         PARTITION BY item_id ORDER BY created_at DESC) = 1
 ),
+newest AS (
+    SELECT item_id, entity_id, tone
+    FROM lake.nlp.mentions
+    QUALIFY row_number() OVER (
+        PARTITION BY mention_id ORDER BY created_at DESC) = 1
+),
 latest AS (
     SELECT m.entity_id, m.tone
-    FROM lake.nlp.mentions m
+    FROM newest m
     JOIN opinion o USING (item_id)
     WHERE m.entity_id IS NOT NULL AND NOT coalesce(o.is_opinion, FALSE)
-    QUALIFY row_number() OVER (
-        PARTITION BY m.mention_id ORDER BY m.created_at DESC) = 1
 ),
 names AS (
     SELECT entity_id, canonical_name
@@ -762,13 +845,13 @@ names AS (
     QUALIFY row_number() OVER (
         PARTITION BY entity_id ORDER BY created_at DESC) = 1
 )
-SELECT n.canonical_name AS entity, count(l.tone) AS n,
+SELECT n.canonical_name AS entity, count(*) AS mentions, count(l.tone) AS n,
        round(avg(l.tone), 2) AS raw_mean, round(stddev_samp(l.tone), 2) AS s
 FROM latest l
 JOIN names n USING (entity_id)
 GROUP BY entity
 HAVING count(l.tone) >= 5
-ORDER BY n DESC, entity
+ORDER BY mentions DESC, entity
 LIMIT 10
 """,
         interesting="Extraction turned sentences into numbers per person, and "
@@ -838,38 +921,97 @@ ORDER BY usd_est DESC, model, purpose
 )
 
 
-def _snapshots(under: Under) -> tuple[int, int]:
-    """Two snapshots to compare: the newest, and up to 100 before it.
+@dataclass(frozen=True)
+class SnapshotPair:
+    """Two snapshots to compare, or why there are none."""
 
-    The older one is never before the table the queries read existed.
+    older: int = 0
+    newer: int = 0
+    note: str = ""
+    error: str | None = None
+
+
+def choose_snapshots(ids: list[int]) -> SnapshotPair:
+    """The newest snapshot, and the oldest within reach, from those that exist.
+
+    `ids` holds the snapshots that exist, newest first. A prune can remove any
+    but the newest, so numbers are read from the catalog, not computed.
     """
-    newer = under.snapshot_id
-    row = under.catalog(
-        "SELECT t.begin_snapshot AS created "
+    if not ids:
+        return SnapshotPair(error="The catalog lists no snapshot to read.")
+    older, newer = ids[-1], ids[0]
+    if older == newer:
+        return SnapshotPair(
+            older,
+            newer,
+            f"Only snapshot {newer} still exists for this table, because "
+            "older ones were pruned or never existed, so this reads one "
+            "snapshot twice and compares nothing.",
+        )
+    return SnapshotPair(
+        older,
+        newer,
+        f"This compares snapshot {older} with snapshot {newer}: the newest "
+        f"and up to {SNAPSHOTS_BACK} before it, among snapshots that still "
+        "exist.",
+    )
+
+
+def _snapshots(under: Under) -> SnapshotPair:
+    """Snapshots that exist, never from before the table the queries read."""
+    ran = under.catalog(
+        "SELECT snapshot_id "
+        "FROM __ducklake_metadata_lake.main.ducklake_snapshot "
+        "WHERE snapshot_id >= ("
+        "SELECT t.begin_snapshot "
         "FROM __ducklake_metadata_lake.main.ducklake_table t "
-        "JOIN __ducklake_metadata_lake.main.ducklake_schema s USING "
-        "(schema_id) WHERE s.schema_name = 'nlp' AND t.table_name = "
-        "'storylines' AND t.end_snapshot IS NULL"
-    ).first
-    created = int(row.get("created") or 0)
-    return max(created, newer - 100), newer
+        "JOIN __ducklake_metadata_lake.main.ducklake_schema s "
+        "USING (schema_id) WHERE s.schema_name = 'nlp' "
+        "AND t.table_name = 'storylines' AND t.end_snapshot IS NULL) "
+        f"ORDER BY snapshot_id DESC LIMIT {SNAPSHOTS_BACK + 1}"
+    )
+    if ran.error:
+        return SnapshotPair(
+            error=f"The list of snapshots could not be read. {ran.error}"
+        )
+    return choose_snapshots([row["snapshot_id"] for row in ran.rows])
 
 
 def gallery(under: Under, by: str) -> dict[str, Any]:
     """Every query with a bounded live result, grouped one way or the other."""
     group_by = "producer" if by == "producer" else "shape"
     names = PRODUCERS if group_by == "producer" else SHAPES
-    older, newer = _snapshots(under)
+    pair = _snapshots(under)
+    threshold = under.settings.nlp.relevance_threshold
+    runnable = [
+        query
+        for query in QUERIES
+        if pair.error is None or not query.reads_snapshots
+    ]
     results = under.scan(
         "gallery",
-        [(query.key, query.text(older, newer), None) for query in QUERIES],
+        [
+            (query.key, query.text(pair.older, pair.newer, threshold), None)
+            for query in runnable
+        ],
         ttl=SLOW_SCAN_TTL_SECONDS,
         max_rows=RESULT_ROWS,
     )
+    for query in QUERIES:
+        if query.key not in results:
+            results[query.key] = Ran(
+                [],
+                Disclosed(query.sql.strip(), "not run", None),
+                pair.error,
+            )
     groups = []
     for key, title in names.items():
         members = [
-            {"query": query, "ran": results[query.key]}
+            {
+                "query": query,
+                "ran": results[query.key],
+                "note": pair.note if query.reads_snapshots else "",
+            }
             for query in QUERIES
             if getattr(query, group_by) == key
         ]

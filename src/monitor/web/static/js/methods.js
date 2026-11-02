@@ -2,6 +2,7 @@
 (function () {
   "use strict";
 
+  const MOVED_PIXELS = 2;
   const nav = document.querySelector("[data-doc-nav]");
   if (!nav) return;
   const links = [...nav.querySelectorAll("a[href^='#']")];
@@ -17,9 +18,20 @@
     return header ? header.getBoundingClientRect().bottom : 0;
   }
 
-  /* A section chosen in the navigation stays marked until the reader scrolls,
-     because a short section at the end of the page cannot reach the top. */
+  /* A section chosen in the navigation stays marked until the page moves from
+     where the jump left it, because a short section at the end of the page
+     cannot reach the top. */
   let chosen = null;
+  let leftAt = null;
+
+  function choose(target) {
+    chosen = target;
+    leftAt = null;
+    mark();
+    window.requestAnimationFrame(() => {
+      leftAt = window.scrollY;
+    });
+  }
 
   function inView() {
     const line = offset() + 40;
@@ -60,18 +72,20 @@
 
   nav.addEventListener("click", (event) => {
     const link = event.target.closest("a");
-    chosen = targets.find((target) => target.link === link) || null;
-    mark();
+    const target = targets.find((entry) => entry.link === link);
+    if (target) choose(target);
   });
-  for (const name of ["wheel", "touchmove", "keydown"]) {
-    window.addEventListener(
-      name,
-      () => {
-        chosen = null;
-      },
-      { passive: true }
-    );
-  }
+  /* The Back and Forward buttons change the hash without a click. */
+  window.addEventListener("hashchange", () => {
+    const hash = window.location.hash.slice(1);
+    const target = targets.find((entry) => entry.link.hash.slice(1) === hash);
+    if (target) {
+      choose(target);
+    } else {
+      chosen = null;
+      mark();
+    }
+  });
 
   let waiting = false;
   window.addEventListener(
@@ -81,6 +95,13 @@
       waiting = true;
       window.requestAnimationFrame(() => {
         waiting = false;
+        if (
+          chosen &&
+          leftAt !== null &&
+          Math.abs(window.scrollY - leftAt) > MOVED_PIXELS
+        ) {
+          chosen = null;
+        }
         mark();
       });
     },
