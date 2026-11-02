@@ -251,11 +251,15 @@ are current, and the replay header says so. Feed health is not shown for a past
 moment.
 
 **Catching up after a gap.** Collection reads RSS and Atom feeds. After a gap
-of 5 minutes or more, it also reads each listed outlet's Google News sitemap
-once, because a sitemap lists about two days of stories and a feed lists fewer.
-Only stories published since shortly before the gap are added. They have no
-feed summary and may come from sections the outlet's feed omits, so that outlet
-can show more stories for that period than it would otherwise.
+of 5 minutes or more, it also reads each listed outlet's Google News sitemap,
+because a sitemap lists about two days of stories and a feed lists fewer. It
+reads each one until it has an answer, starting over if the network drops
+during the read, and gives up on a sitemap that keeps failing. Only stories
+published since 20 minutes before the gap are added, and a date with no time of
+day counts if it falls within a day of that. One sitemap read adds at most 500
+stories. These stories have no feed summary and may come from sections the
+outlet's feed omits, so that outlet can show more stories for that period than
+it would otherwise.
 
 **Storyline thresholds.** The specification sets a join threshold of 0.82 and a
 merge threshold of 0.88. Baseline pairwise similarity over relevant items has a
