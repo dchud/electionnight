@@ -548,6 +548,7 @@
       clearInterval(replayTimer);
       const live = new URL(window.location.href);
       live.searchParams.delete("as_of");
+      live.hash = "";
       window.location.assign(live);
     } else {
       startReplay();
@@ -557,8 +558,14 @@
   function resumeReplay() {
     if (window.location.pathname !== "/") return;
     const moment = new URLSearchParams(window.location.search).get("as_of");
-    const from = moment ? Date.parse(moment.replace(" ", "+")) : NaN;
+    const from = moment ? parseMoment(moment) : NaN;
     if (!Number.isNaN(from)) startReplay(from);
+  }
+  /* The server reads a time with no zone as UTC, so this does too. */
+  function parseMoment(text) {
+    const iso = text.replace(" ", "+");
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso)) return NaN;
+    return Date.parse(/(Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`);
   }
   resumeReplay();
   document.addEventListener("input", (event) => {

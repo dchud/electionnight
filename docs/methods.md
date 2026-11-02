@@ -150,8 +150,8 @@ An item is compared with items seen within 36 hours.
 3. **Embedding match.** Otherwise an item matches at a cosine of at least 0.95,
    on the same published day, if the two also pass the place check.
 
-Formula (1) is the title hash, (2) is the title match, where $d$ counts the bits
-that differ, and (3) is the embedding match, where $u$ and $v$ are the two
+Formula (1) is the title hash, (2) is the title match, where $d$ counts the
+bits that differ, and (3) is the embedding match, where $u$ and $v$ are the two
 items' vectors.
 
 $$
@@ -365,10 +365,10 @@ $$
 
 ### States rising
 
-The attention index of the last 15 minutes, with the 120
-minutes before them as the baseline. So $n_s$ and $N$ count the last 15 minutes,
-and $b_s$ and $B$ count the 120 before them. A state is listed when its value is
-above 1, largest first. A rise that every state shares leaves each state at 1.
+The attention index of the last 15 minutes, with the 120 minutes before them as
+the baseline. So $n_s$ and $N$ count the last 15 minutes, and $b_s$ and $B$
+count the 120 before them. A state is listed when its value is above 1, largest
+first. A rise that every state shares leaves each state at 1.
 
 ### Tone aggregates
 

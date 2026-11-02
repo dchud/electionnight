@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -1427,6 +1427,45 @@ def start_replay(page):
 def as_of_in(url):
     text = parse_qs(urlsplit(url).query)["as_of"][0]
     return datetime.fromisoformat(text.replace("Z", "+00:00"))
+
+
+@pytest.mark.parametrize("value", ["1", "2026", "not-a-time"])
+def test_a_value_that_is_not_a_moment_starts_no_replay(
+    scratch, browser, value
+):
+    _, server = scratch
+    server.start()
+    _, page = open_page(browser, f"/?window=3h&as_of={value}")
+    page.wait_for_timeout(500)
+    assert page.evaluate("() => window.Monitor.replay.active") is False
+
+
+def test_a_moment_with_no_zone_replays_it_as_utc(scratch, browser):
+    _, server = scratch
+    server.start()
+    at = (datetime.now(UTC) - timedelta(hours=1)).replace(microsecond=0)
+    text = at.strftime("%Y-%m-%dT%H:%M:%S")
+    _, page = open_page(browser, f"/?window=3h&as_of={text}")
+    page.wait_for_function(
+        "() => window.Monitor && window.Monitor.replay.active"
+    )
+    resumed = page.evaluate("() => window.Monitor.replay.asOf")
+    assert 0 <= resumed - at.timestamp() * 1000 < 60_000
+
+
+def test_exit_replay_reloads_from_a_page_with_a_hash(scratch, browser):
+    _, server = scratch
+    server.start()
+    _, page = open_page(browser, "/?window=3h#band-3")
+    start_replay(page)
+    page.evaluate(
+        "() => document.querySelector('[data-toggle-replay]').click()"
+    )
+    page.wait_for_function(
+        "() => window.Monitor && !window.Monitor.replay.active"
+    )
+    assert "#band-3" not in page.url
+    assert page.locator("#mode-pill").inner_text() != "REPLAY"
 
 
 def test_a_card_link_in_a_replay_carries_the_moment_and_back_returns_to_it(

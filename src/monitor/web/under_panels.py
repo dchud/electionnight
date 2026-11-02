@@ -276,10 +276,11 @@ CARDS: tuple[Card, ...] = (
             "The bulk model extracted each claim from an article and decided "
             "what its sentence means. Code then requires the evidence to "
             "appear verbatim, the article to name the candidate, the contest "
-            "not to be labeled a primary, and the item to come from after "
-            "polls closed in that state. The query also drops items from "
-            "before the first close, and once a race has a final claim it "
-            "shows only that race's final claims.",
+            "not to be labeled a primary, and the item to come from after the "
+            "first polls closed in that state. The query also drops items "
+            "from before the first close nationally. Once a final claim names "
+            "a caller or comes from two outlets, the race shows only its "
+            "final claims, whatever filters are on.",
             "These are claims in news articles, not official results.",
         ),
         (CodeRef("monitor.parsers.race_calls", "call_problem"),),

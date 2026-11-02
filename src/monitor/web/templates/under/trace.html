@@ -156,7 +156,7 @@
       {% for row in story_rows %}
       <li>Storyline: <code>{{ row.storyline_id }}</code>, stored similarity {{ '%.3f' % row.similarity if row.similarity is not none else '—' }}.{% if row.placeholder %} <span class="u-tag u-tag-warn">placeholder</span> 1.0 means this item started the storyline, not that it matched anything at 1.0.{% endif %}</li>
       {% else %}<li>{% if story_ran.error %}The storyline scan did not finish.{% else %}No storyline row. Storylines take relevant, canonical items only.{% endif %}</li>{% endfor %}
-      {% if storyline %}<li>Current storyline: <a class="text-link" href="/story/{{ storyline.storyline_id }}">{{ storyline.label or 'Unlabeled' }}</a>, status {{ storyline.status }}, {{ storyline.n_items }} items, {{ storyline.n_sources }} outlets.</li>{% endif %}
+      {% if storyline %}<li>Current storyline: <a class="text-link" href="/story/{{ storyline.storyline_id }}">{{ storyline.label or 'Unlabeled' }}</a>, status {{ storyline.status }}, {{ storyline.n_items }} canonical items, {{ storyline.n_sources }} outlets among them.</li>{% endif %}
     </ul>
     <h3 class="u-chart-title">Recorded decisions</h3>
     {% if decisions %}
