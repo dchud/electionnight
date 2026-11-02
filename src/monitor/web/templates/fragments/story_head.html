@@ -1,5 +1,6 @@
 <header class="page-head">
   <h1>{{ story.label or 'Unlabeled storyline' }}</h1>
+  {% if story.label or story.summary %}<p class="panel-note m-0">Written by a language model.</p>{% endif %}
   {% if story.summary %}<div class="page-lede">{{ story.summary|cited(story.citation_map) }}</div>{% else %}<p class="page-lede panel-note">This storyline has no summary. A storyline is labeled once it has enough items from enough outlets.</p>{% endif %}
   <div class="stat-row">
     <div class="stat" data-evidence="kind=storyline&key={{ page_key }}" role="button" tabindex="0"><span class="kpi-label">Stories, {{ WINDOWS[filters.window][0] }}, {{ 'unique' if filters.copies == 'unique' else 'all copies' }}</span><span class="kpi-value">{{ totals.n }}</span></div>

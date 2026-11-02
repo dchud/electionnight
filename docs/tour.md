@@ -4,8 +4,10 @@ These screens come from the running dashboard on November 2, 2026, the day
 before the election, in a 1280×800 window. No polls had closed, so the charts
 have no poll-closing lines. Select a screen to open it at full size.
 
-Headlines come from the news outlets. Language models produce the storylines,
-topics, and entities, and they can be wrong. [Methods](methods.md) says how
+Headlines come from the news outlets, with translations by a language model.
+Language models write the briefs and the storyline labels and summaries, and
+they produce most of the topics and all of the entities and tone. They can be
+wrong. [Methods](methods.md) says how
 each number is produced, and its limits.
 
 ## The dashboard
@@ -49,7 +51,11 @@ and hover names the others.
 
 Each cell is a storyline's share of one lean bucket's election coverage. The
 columns run from left (L) through center (C) to right (R), followed by non-US
-outlets.
+outlets. Lean labels are AllSides Media Bias Ratings.
+
+The rows sort by the spread between buckets. A wide spread does not show that
+one side of the press covered a story more, because the Left and Right buckets
+hold few outlets.
 
 ### One state
 

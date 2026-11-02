@@ -85,8 +85,14 @@ every operating command.
 | [`docs/walkthrough.md`](docs/walkthrough.md) | The class script for the "Under the hood" pages |
 | [`docs/run_of_show.md`](docs/run_of_show.md) | Operating steps for election night, and what to do when something fails |
 | [`docs/verify_log.md`](docs/verify_log.md) | Facts checked during the build, and where the specification differs |
+| [`docs/colophon.md`](docs/colophon.md) | The tech stack, the data sources, and the published work the monitor uses |
+| [`docs/third_party_notices.md`](docs/third_party_notices.md) | What the MIT license covers, and the licenses of everything else |
 | [`CLAUDE.md`](CLAUDE.md) | Commands, key files, and conventions |
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+The MIT license in [`LICENSE`](LICENSE) covers this project's own code and
+documentation. It does not cover third-party material in this repository:
+vendored frontend code, fonts, map data, lean labels, race ratings, and
+Wikipedia excerpts in test fixtures keep their own terms, listed in
+[`docs/third_party_notices.md`](docs/third_party_notices.md).

@@ -6,7 +6,11 @@ import yaml
 from conftest import clone_lake
 
 from monitor.lake import BatchWriter, connect, latest_sql
-from monitor.ref.loader import poll_close_timestamp, sync_ref_tables
+from monitor.ref.loader import (
+    _differs,
+    poll_close_timestamp,
+    sync_ref_tables,
+)
 from monitor.settings import Settings
 
 SOURCES_HEADER = (
@@ -17,7 +21,7 @@ SOURCES_HEADER = (
 )
 LEAN_HEADER = (
     "source_id,name,lean_label,lean_source,lean_source_url,lean_retrieved_on,"
-    "adfontes_bias,adfontes_reliability,adfontes_url,confirmed,notes\n"
+    "confirmed,notes\n"
 )
 
 
@@ -124,10 +128,10 @@ def write_inputs(settings: Settings) -> None:
     )
     (config / "lean_ratings.csv").write_text(
         LEAN_HEADER
-        + "npr,NPR,LL,AllSides,https://a.example/npr,2026-11-01,-3.5,44.2,"
-        + "https://b.example/npr,true,lean note\n"
-        + "wire,Wire,R,AllSides,https://a.example/wire,2026-11-01,9.0,30.0,"
-        + "https://b.example/wire,false,proposal\n"
+        + "npr,NPR,LL,AllSides,https://a.example/npr,2026-11-01,"
+        + "true,lean note\n"
+        + "wire,Wire,R,AllSides,https://a.example/wire,2026-11-01,"
+        + "false,proposal\n"
     )
 
 
@@ -312,9 +316,9 @@ def test_confirmed_lean_overrides_and_unconfirmed_does_not(
     assert npr["lean_source"] == "AllSides"
     assert npr["lean_source_url"] == "https://a.example/npr"
     assert npr["lean_retrieved_on"] == "2026-11-01"
-    assert npr["adfontes_bias"] == pytest.approx(-3.5)
-    assert npr["adfontes_reliability"] == pytest.approx(44.2)
-    assert npr["adfontes_url"] == "https://b.example/npr"
+    assert npr["adfontes_bias"] is None
+    assert npr["adfontes_reliability"] is None
+    assert npr["adfontes_url"] is None
     assert npr["notes"] == "seed note"
     assert npr["feed_urls"] == "https://npr.org/rss|https://npr.org/two"
     assert npr["enabled"] is True
@@ -326,10 +330,36 @@ def test_confirmed_lean_overrides_and_unconfirmed_does_not(
     assert wire["state_affiliated"] is False
 
 
-def test_float_precision_does_not_trigger_a_reload(conn, writer, settings):
+def test_float_precision_does_not_trigger_a_reload():
+    assert not _differs({"x": 1.00001}, {"x": 1.00002}, ["x"])
+    assert _differs({"x": 1.0}, {"x": 1.1}, ["x"])
+
+
+def test_a_second_sync_of_the_same_files_writes_nothing(
+    conn, writer, settings
+):
     sync_ref_tables(conn, writer, settings, {})
     writer.flush()
     assert sync_ref_tables(conn, writer, settings, {}) == {}
+
+
+def test_ad_fontes_columns_in_a_lean_file_are_not_loaded(
+    conn, writer, settings
+):
+    (settings.paths.config / "lean_ratings.csv").write_text(
+        "source_id,name,lean_label,lean_source,lean_source_url,"
+        "lean_retrieved_on,adfontes_bias,adfontes_reliability,adfontes_url,"
+        "confirmed,notes\n"
+        "npr,NPR,LL,AllSides,https://a.example/npr,2026-11-01,-3.5,44.2,"
+        "https://b.example/npr,true,note\n"
+    )
+    sync_ref_tables(conn, writer, settings, {})
+    writer.flush()
+    npr = latest(conn, "ref.sources", "source_id")["npr"]
+    assert npr["lean_label"] == "LL"
+    assert npr["adfontes_bias"] is None
+    assert npr["adfontes_reliability"] is None
+    assert npr["adfontes_url"] is None
 
 
 def test_missing_lean_file_still_loads_sources(conn, writer, settings):

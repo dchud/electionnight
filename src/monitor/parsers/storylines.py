@@ -131,7 +131,11 @@ def tokens_of(title: str) -> list[str]:
 def ctfidf_keywords(
     titles: list[str], background: Counter, background_docs: int
 ) -> list[str]:
-    """Terms frequent in this storyline and rare across the others."""
+    """Terms frequent in this storyline and rare across the others.
+
+    The score is adapted from c-TF-IDF (Grootendorst 2022), with counts of
+    titles in place of the original's classes and 1 added to both counts.
+    """
     counts: Counter = Counter()
     for title in titles:
         counts.update(tokens_of(title))

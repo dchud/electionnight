@@ -92,6 +92,7 @@ def title_tokens(normalized: str) -> list[str]:
 
 
 def simhash64(normalized: str) -> int:
+    """A 64-bit SimHash (Charikar 2002) of a normalized title's tokens."""
     weights = np.zeros(64, dtype=np.int64)
     for token in title_tokens(normalized):
         value = xxhash.xxh64(token.encode("utf-8")).intdigest()

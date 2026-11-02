@@ -95,13 +95,6 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     return loaded if isinstance(loaded, dict) else {}
 
 
-def _float(value: str | None) -> float | None:
-    try:
-        return float(value) if value not in (None, "") else None
-    except ValueError:
-        return None
-
-
 def poll_close_timestamp(clock: str | None, election_date: str) -> str | None:
     """Turn `20:00` into an ISO timestamp. Before 12:00 is the next day."""
     if not clock:
@@ -188,7 +181,7 @@ def source_rows(settings: Settings) -> list[Row] | None:
     """Rows from `sources.csv`, with confirmed `lean_ratings.csv` values added.
 
     An unconfirmed lean row is a proposal awaiting owner review, so it changes
-    nothing, including the Ad Fontes columns.
+    nothing. The loader writes nothing to the table's three Ad Fontes columns.
     """
     if not sources_path(settings).exists():
         return None
@@ -226,14 +219,9 @@ def source_rows(settings: Settings) -> list[Row] | None:
                 "lean_source",
                 "lean_source_url",
                 "lean_retrieved_on",
-                "adfontes_url",
             ):
                 if lean.get(column):
                     row[column] = lean[column]
-            row["adfontes_bias"] = _float(lean.get("adfontes_bias"))
-            row["adfontes_reliability"] = _float(
-                lean.get("adfontes_reliability")
-            )
         rows.append({key: _blank_to_none(value) for key, value in row.items()})
     return rows
 

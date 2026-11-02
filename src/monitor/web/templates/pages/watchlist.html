@@ -23,7 +23,7 @@
           <tr data-filter-row="{{ race.state }} {{ race.label }} {{ race.rating or '' }} {{ race.race_key }}">
             <td><a class="text-link" href="/state/{{ race.state }}?{{ qs }}">{{ race.state }}</a></td>
             <td>{{ race.label }}</td>
-            <td>{% if race.rating %}{% if race.rating_url %}<a class="text-link" href="{{ race.rating_url }}" target="_blank" rel="noopener noreferrer" title="{{ race.rating_source }}">{{ race.rating }}</a>{% else %}{{ race.rating }}{% endif %}{% else %}<span class="lean-neutral">Not rated</span>{% endif %}</td>
+            <td>{% if race.rating %}{% if race.rating_url %}<a class="text-link" href="{{ race.rating_url }}" target="_blank" rel="noopener noreferrer" title="{{ race.rating_source }}">{{ race.rating }}</a>{% else %}{{ race.rating }}{% endif %}{% if race.rating_source %}<span class="panel-note">{{ race.rating_source }}</span>{% endif %}{% else %}<span class="lean-neutral">Not rated</span>{% endif %}</td>
             <td>{% if race.close_race %}<span class="badge">close</span>{% endif %}</td>
             <td>{% with kind = 'race', key = race.race_key, watched = race.watched %}{% include "fragments/watch_toggle.html" %}{% endwith %}</td>
           </tr>

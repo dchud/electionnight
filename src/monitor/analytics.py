@@ -68,7 +68,8 @@ class ToneAggregate:
 def t_975(df: int) -> float:
     """The 97.5th percentile of Student's t, within 0.001 for df of 4 or more.
 
-    This is the Cornish-Fisher expansion around the normal quantile.
+    This is the Cornish-Fisher expansion around the normal quantile, as given
+    in Abramowitz and Stegun (1964), eq. 26.7.5.
     """
     z = Z_975
     return (

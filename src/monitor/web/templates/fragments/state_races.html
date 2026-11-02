@@ -5,7 +5,7 @@
   {% for race in races %}
   <tr>
     <td>{{ race.label }}{% if race.close_race %} <span class="badge">close</span>{% endif %}</td>
-    <td>{% if race.rating %}{% if race.rating_url %}<a class="text-link" href="{{ race.rating_url }}" target="_blank" rel="noopener noreferrer" title="{{ race.rating_source }}">{{ race.rating }}</a>{% else %}{{ race.rating }}{% endif %}{% else %}<span class="lean-neutral">Not rated</span>{% endif %}</td>
+    <td>{% if race.rating %}{% if race.rating_url %}<a class="text-link" href="{{ race.rating_url }}" target="_blank" rel="noopener noreferrer" title="{{ race.rating_source }}">{{ race.rating }}</a>{% else %}{{ race.rating }}{% endif %}{% if race.rating_source %}<span class="panel-note">{{ race.rating_source }}</span>{% endif %}{% else %}<span class="lean-neutral">Not rated</span>{% endif %}</td>
     <td>{% for person in race.candidate_rows %}<a class="text-link candidate" href="/entity/{{ person.entity_id }}?{{ qs }}">{% if person.party %}<span class="party-chip" data-party="{{ person.party }}"></span>{% endif %}{{ person.canonical_name }}</a>{% else %}<span class="panel-note">—</span>{% endfor %}</td>
     <td>{% with kind = 'race', key = race.race_key, watched = race.watched %}{% include "fragments/watch_toggle.html" %}{% endwith %}</td>
   </tr>
