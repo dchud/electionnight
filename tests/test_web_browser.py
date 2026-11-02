@@ -807,6 +807,7 @@ def test_county_map_uses_a_fixed_readout(scratch, browser):
     context = browser.new_context(viewport={"width": 1920, "height": 1080})
     page = context.new_page()
     page.goto(f"{BASE}/state/GA?window=24h")
+    # The hover handlers are bound once the counties are painted.
     page.wait_for_selector("svg.map-painted path.map-county", state="attached")
     readout = page.locator(".map-readout").first
     page.locator("path.map-county").first.hover(force=True)
