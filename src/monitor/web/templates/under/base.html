@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Under the hood{% endblock %} · Election Night Monitor</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/css/app.css">
+<script>
+  (function () {
+    try {
+      var root = document.documentElement;
+      root.dataset.theme = localStorage.getItem("theme") || "light";
+      if (localStorage.getItem("projector") === "1") root.dataset.projector = "1";
+    } catch (error) {}
+  })();
+</script>
+<script src="/static/vendor/htmx.min.js" defer></script>
+<script src="/static/js/under.js" defer></script>
+{% block head %}{% endblock %}
+</head>
+<body class="under" data-auto-refresh="{{ '1' if auto_refresh else '0' }}">
+<header class="u-header">
+  <div class="u-brand">
+    <a class="u-title" href="/under">Under the hood</a>
+    <a class="text-link u-back" href="{{ back_href|default('/') }}">Back to the dashboard</a>
+  </div>
+  <nav class="u-nav" aria-label="Under the hood views">
+    {% for key, href, label in nav %}
+    <a href="{{ href }}{% if key == 'panels' and view == 'panels' %}?{{ qs }}{% endif %}" aria-current="{{ 'page' if view == key else 'false' }}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <div class="u-controls">
+    <span id="u-snapshot" class="u-snapshot num" title="The lake snapshot the local tables reflect">
+      Snapshot {{ snapshot.snapshot_id }}{% if snapshot.committed_at %}, {{ snapshot.committed_at|et_time }} ET{% endif %}
+    </span>
+    <button class="u-button" data-under-refresh title="Reload this view's data (r)">Refresh</button>
+    <label class="u-check"><input type="checkbox" data-under-auto> Every 30 s</label>
+    <button class="u-button" data-under-projector title="Projector mode (p)">Projector</button>
+    <button class="u-button" data-under-theme>Theme</button>
+  </div>
+</header>
+<main class="page under-main" id="under-main">
+{% set shown %}{% block content %}{% endblock %}{% endset %}
+{{ shown }}
+{% if 'class="u-sql"' in shown and 'Line breaks are added for reading.' not in shown %}<p class="u-note">Line breaks are added for reading.</p>{% endif %}
+</main>
+<div id="tip" class="tip" hidden></div>
+</body>
+</html>

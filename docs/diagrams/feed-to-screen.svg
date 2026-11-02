@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 606" role="img" aria-labelledby="feed-title">
+  <title id="feed-title">From a news feed to the screen. The poller and parser stages write every row through one batch writer into DuckLake, and maintenance runs directly on the same connection. The web process reads the lake into memory for the browser. Outlet sites, archive files, DuckLake, and the browser sit outside both processes.</title>
+  <style>
+    .fd-bg { fill: var(--surface-1, #fcfcfb); }
+    .fd-area { fill: none; stroke: var(--line, #a9a9a3); stroke-width: 1.5; stroke-dasharray: 7 5; }
+    .fd-box { fill: var(--surface-2, #efefec); stroke: var(--text-3, #6f6e69); stroke-width: 1.5; }
+    .fd-llm { fill: var(--surface-2, #efefec); stroke: var(--accent, #6250d6); stroke-width: 3; }
+    .fd-name { fill: var(--text-1, #0b0b0b); font: 650 17px ui-sans-serif, system-ui, sans-serif; }
+    .fd-note { fill: var(--text-2, #52514e); font: 400 14px ui-sans-serif, system-ui, sans-serif; }
+    .fd-area-name { fill: var(--text-2, #52514e); font: 650 14px ui-sans-serif, system-ui, sans-serif; }
+    .fd-line { fill: none; stroke: var(--text-2, #52514e); stroke-width: 2; }
+    .fd-ask { stroke-dasharray: 6 4; }
+    .fd-head { fill: var(--text-2, #52514e); }
+  </style>
+  <defs>
+    <marker id="fd-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path class="fd-head" d="M0 0 L10 5 L0 10 Z"/>
+    </marker>
+  </defs>
+  <rect class="fd-bg" width="960" height="606"/>
+
+  <rect class="fd-area" x="6" y="64" width="948" height="320" rx="8"/>
+  <text class="fd-area-name" x="946" y="84" text-anchor="end">pipeline process</text>
+  <rect class="fd-area" x="6" y="456" width="724" height="144" rx="8"/>
+  <text class="fd-area-name" x="722" y="474" text-anchor="end">web process</text>
+
+  <rect class="fd-box" x="18" y="8" width="180" height="48" rx="6"/>
+  <text class="fd-name" x="28" y="28">Outlet sites</text>
+  <text class="fd-note" x="28" y="47">feeds and article pages</text>
+
+  <rect class="fd-box" x="430" y="8" width="220" height="48" rx="6"/>
+  <text class="fd-name" x="442" y="28">Archive files</text>
+  <text class="fd-note" x="442" y="47">feed and page bytes</text>
+
+  <text class="fd-note" x="690" y="26" font-weight="650">Heavy outline: calls the Claude API</text>
+  <text class="fd-note" x="690" y="46" font-weight="650">Dashed area: one process</text>
+
+  <rect class="fd-box" x="18" y="164" width="152" height="90" rx="6"/>
+  <text class="fd-name" x="28" y="184">Feed poller</text>
+  <text class="fd-note" x="28" y="204">every 60, 180, or</text>
+  <text class="fd-note" x="28" y="222">600 s by tier, with</text>
+  <text class="fd-note" x="28" y="240">conditional GET</text>
+
+  <rect class="fd-area" x="182" y="92" width="764" height="180" rx="8"/>
+  <text class="fd-area-name" x="196" y="262">Stages, each with its own queue and workers</text>
+
+  <rect class="fd-box" x="330" y="100" width="230" height="56" rx="6"/>
+  <text class="fd-name" x="340" y="120">fetch_text</text>
+  <text class="fd-note" x="340" y="142">relevant items, paced per domain</text>
+
+  <rect class="fd-llm" x="584" y="100" width="350" height="56" rx="6"/>
+  <text class="fd-name" x="594" y="120">extract_b</text>
+  <text class="fd-note" x="594" y="142">relevant items: entities, tone, places, race calls</text>
+
+  <rect class="fd-box" x="194" y="174" width="90" height="70" rx="6"/>
+  <text class="fd-name" x="204" y="194">lang</text>
+  <text class="fd-note" x="204" y="214">lingua,</text>
+  <text class="fd-note" x="204" y="232">local</text>
+
+  <rect class="fd-llm" x="308" y="174" width="152" height="70" rx="6"/>
+  <text class="fd-name" x="318" y="194">classify_a</text>
+  <text class="fd-note" x="318" y="214">relevance, states,</text>
+  <text class="fd-note" x="318" y="232">topics, translation</text>
+
+  <rect class="fd-box" x="484" y="174" width="102" height="70" rx="6"/>
+  <text class="fd-name" x="494" y="194">embed</text>
+  <text class="fd-note" x="494" y="214">384 floats,</text>
+  <text class="fd-note" x="494" y="232">local ONNX</text>
+
+  <rect class="fd-box" x="610" y="174" width="88" height="70" rx="6"/>
+  <text class="fd-name" x="620" y="194">dedupe</text>
+  <text class="fd-note" x="620" y="214">SimHash,</text>
+  <text class="fd-note" x="620" y="232">cosine</text>
+
+  <rect class="fd-llm" x="722" y="174" width="212" height="70" rx="6"/>
+  <text class="fd-name" x="732" y="194">storylines</text>
+  <text class="fd-note" x="732" y="214">relevant, canonical items;</text>
+  <text class="fd-note" x="732" y="232">Claude writes the labels</text>
+
+  <rect class="fd-box" x="60" y="300" width="370" height="56" rx="6"/>
+  <text class="fd-name" x="72" y="320">BatchWriter</text>
+  <text class="fd-note" x="72" y="342">every row; one transaction every 30 s</text>
+
+  <rect class="fd-llm" x="452" y="296" width="316" height="76" rx="6"/>
+  <text class="fd-name" x="462" y="316">Periodic jobs</text>
+  <text class="fd-note" x="462" y="338">rollups every 45 s; briefs checked every 60 s;</text>
+  <text class="fd-note" x="462" y="358">entity pass 300 s; storyline pass 600 s</text>
+
+  <rect class="fd-box" x="790" y="296" width="156" height="76" rx="6"/>
+  <text class="fd-name" x="800" y="316">Maintenance</text>
+  <text class="fd-note" x="800" y="338">every 15 minutes:</text>
+  <text class="fd-note" x="800" y="358">flush, merge, cleanup</text>
+
+  <rect class="fd-box" x="150" y="400" width="796" height="48" rx="6"/>
+  <text class="fd-name" x="162" y="419">DuckLake</text>
+  <text class="fd-note" x="162" y="439">SQLite catalog, inlined rows, and Parquet files</text>
+
+  <rect class="fd-box" x="18" y="482" width="226" height="66" rx="6"/>
+  <text class="fd-name" x="30" y="502">Read model</text>
+  <text class="fd-note" x="30" y="522">polls every 3 s, attached read-</text>
+  <text class="fd-note" x="30" y="540">only; facts held in memory</text>
+
+  <rect class="fd-box" x="310" y="482" width="214" height="66" rx="6"/>
+  <text class="fd-name" x="322" y="502">Panels</text>
+  <text class="fd-note" x="322" y="522">SQL over the in-memory</text>
+  <text class="fd-note" x="322" y="540">fact table</text>
+
+  <rect class="fd-box" x="310" y="558" width="214" height="34" rx="6"/>
+  <text class="fd-name" x="322" y="581">SSE hub, /events</text>
+
+  <rect class="fd-box" x="750" y="482" width="196" height="66" rx="6"/>
+  <text class="fd-name" x="762" y="502">Browser</text>
+  <text class="fd-note" x="762" y="522">htmx fragments and</text>
+  <text class="fd-note" x="762" y="540">Vega charts</text>
+
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M90 56 V164"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M198 24 H404 V100"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M150 164 V80 H440 V56"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M500 100 V56"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M170 209 H194"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M284 209 H308"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M460 209 H484"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M586 209 H610"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M698 209 H722"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M384 174 V156"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M560 128 H584"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M110 254 V300"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M300 272 V300"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M452 328 H430"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M220 356 V400"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M868 372 V400"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M600 400 V372"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M779 400 V272"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M150 424 H36 V254"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M190 448 V482"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M244 515 H310"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M524 500 H750"/>
+  <path class="fd-line fd-ask" marker-end="url(#fd-arrow)" d="M750 532 H524"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M130 548 V575 H310"/>
+  <path class="fd-line" marker-end="url(#fd-arrow)" d="M524 575 H848 V548"/>
+
+  <text class="fd-note" x="98" y="112">feeds</text>
+  <text class="fd-note" x="212" y="42">article pages</text>
+  <text class="fd-note" x="190" y="76">feed bytes</text>
+  <text class="fd-note" x="508" y="84">page bytes</text>
+  <text class="fd-note" x="228" y="396">commit</text>
+  <text class="fd-note" x="608" y="396">reads</text>
+  <text class="fd-note" x="786" y="288">reads</text>
+  <text class="fd-note" x="876" y="396">direct</text>
+  <text class="fd-note" x="44" y="396">reads at start</text>
+  <text class="fd-note" x="552" y="492">HTML, chart data</text>
+  <text class="fd-note" x="552" y="550">requests</text>
+  <text class="fd-note" x="552" y="570">snapshot event</text>
+</svg>

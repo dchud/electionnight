@@ -1,0 +1,32 @@
+{% import "under/_macros.html" as u %}
+{% macro retry() %}<button class="u-button" hx-get="/under/trace/{{ item_id }}/archive/{{ kind }}" hx-target="closest .u-slot">Retry</button>{% endmacro %}
+{% if status == 'found' %}
+<p class="u-note">
+  <code>{{ archive_file }}</code>{% if still_open %}, still being written{% endif %}.
+  {{ record.n_bytes|u_bytes }} original, fetched {{ record.header.fetched_at|u_et }}.
+  Record {{ record.scanned|u_int }} in the file, found in {{ '%.2f' % seconds }} s.
+  SHA-256 {% if record.sha256_ok %}matches the index{% else %}<span class="u-tag u-tag-crit">does not match the index</span>{% endif %}.
+</p>
+{% if kind == 'feeds' %}
+<p class="u-note">{% if record.located %}The entry for this item, as the feed served it. Escaped, not rendered.{% else %}This item's URL was not found in the payload, so this is the start of it. Escaped, not rendered.{% endif %}</p>
+{% else %}
+<p class="u-note">The first {{ limit_bytes|u_bytes }} of the HTML, escaped, not rendered. The dashboard shows extracts and never a full article.</p>
+{% endif %}
+<pre class="u-pre">{{ record.excerpt }}</pre>
+{% elif status == 'gone' %}
+<p class="banner-warn u-error">The local file <code>{{ archive_file }}</code> is gone. Archive files move to a private S3 bucket and leave this machine after 24 hours. This view does not fetch from S3. The index row below is still here.</p>
+<pre class="u-pre">{{ index }}</pre>
+{% elif status == 'scan_failed' %}
+<p class="banner-warn u-error">The scan of the archive index did not finish, so whether this item has an archived record is not known. {{ error }} {{ retry() }}</p>
+{% elif status == 'no_index' %}
+<p class="u-note">{% if kind == 'feeds' %}No archived feed payload is recorded near the time this item was first seen. Archiving started when capture did.{% else %}No archived page is recorded. Pages are fetched only for relevant items, and archiving started when capture did.{% endif %}</p>
+{% elif status == 'not_flushed' %}
+<p class="u-note">This record is not readable in <code>{{ archive_file }}</code> yet. The file is still being written and flushes every 30 s. {{ scanned|u_int }} earlier records were read. Open this again shortly. {{ retry() }}</p>
+{% elif status == 'timeout' %}
+<p class="banner-warn u-error">Reading stopped at {{ limit }} s. Archive files are one compressed stream, so a record late in a large file takes longer to reach. {{ retry() }}</p>
+{% elif status == 'bad_name' %}
+<p class="banner-warn u-error">The index names an unexpected file, so it was not opened: <code>{{ archive_file }}</code>.</p>
+{% else %}
+<p class="banner-warn u-error">Could not read the archive{% if error %}: {{ error }}{% endif %} {% if item_id %}{{ retry() }}{% endif %}</p>
+{% endif %}
+{% if query is defined %}{{ u.show_query(query, "archive-" ~ kind) }}{% endif %}

@@ -1,0 +1,6 @@
+{% extends "under/base.html" %}
+{% block title %}No such item{% endblock %}
+{% block content %}
+<h1>No such item</h1>
+<p class="u-lede">The local fact table has no item with the id <code>{{ item_id }}</code>. Try <a class="text-link" href="/under/records">record search</a>.</p>
+{% endblock %}

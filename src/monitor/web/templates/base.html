@@ -25,6 +25,7 @@
 <script src="/static/js/app.js" defer></script>
 <script src="/static/js/charts.js" defer></script>
 <script src="/static/js/map.js" defer></script>
+{% block head %}{% endblock %}
 </head>
 <body hx-ext="sse" sse-connect="/events?{{ qs }}" data-qs="{{ qs }}"
       data-replay-on="{{ '1' if filters.is_replay else '0' }}"

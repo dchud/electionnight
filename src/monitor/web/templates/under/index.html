@@ -1,0 +1,60 @@
+{% extends "under/base.html" %}
+{% import "under/_macros.html" as u %}
+{% block title %}Under the hood{% endblock %}
+{% block content %}
+<h1>Under the hood</h1>
+<p class="u-lede">How this monitor turns news feeds into a dashboard: how many records there are, where they came from, how they are stored, which models produced which values, and what they cost. These pages read the same data as the dashboard and change nothing.</p>
+{{ u.scan_failed(overview.error) }}
+<div class="u-stats">
+  <div class="u-stat"><span class="u-stat-label">Items in the fact table</span><span class="u-stat-value">{{ overview.counts["items"]|u_int }}</span><span class="u-stat-note">{{ overview.counts.relevant|u_int }} classified as relevant</span></div>
+  <div class="u-stat"><span class="u-stat-label">Outlets enabled</span><span class="u-stat-value">{{ overview.counts.outlets_enabled|u_int }}</span><span class="u-stat-note">of {{ overview.counts.outlets_listed|u_int }} listed</span></div>
+  <div class="u-stat"><span class="u-stat-label">Outlets working</span>{% if overview.pipeline.available %}<span class="u-stat-value">{{ overview.working|u_int }}</span><span class="u-stat-note">enabled, with a feed that succeeded in the last hour</span>{% else %}<span class="u-stat-value">Status unavailable</span><span class="u-stat-note">{{ overview.pipeline.reason }}</span>{% endif %}</div>
+  <div class="u-stat"><span class="u-stat-label">Lake tables</span><span class="u-stat-value">{{ overview.tables }}</span><span class="u-stat-note">{{ overview.total_rows|u_int }} rows, not records</span></div>
+  <div class="u-stat"><span class="u-stat-label">Parquet files</span><span class="u-stat-value">{{ overview.parquet_files|u_int }}</span><span class="u-stat-note">{{ overview.parquet_bytes|u_bytes }}</span></div>
+  <div class="u-stat"><span class="u-stat-label">Estimated API spend</span><span class="u-stat-value">${{ '%.2f' % overview.spend }}</span><span class="u-stat-note">from the ledger and configured prices, not an invoice</span></div>
+</div>
+{% call u.caveat("What to keep in mind on every page") %}
+<ul>
+  <li>Rows are not records. Tables are append-only, so a correction or a recomputed bin is a new row. Readers take the newest row per key.</li>
+  <li>{{ overview.counts.backlog|u_int }} of {{ overview.counts["items"]|u_int }} items were published over 2 hours before they were first seen, most of them feed backlog from the first fetch at {{ overview.counts.first_seen|u_et }}. Feeds serve their newest entries, not a complete history.</li>
+  <li>Dashboard panels read an in-memory fact table in the web process, not the <code>gold.*</code> tables. The dashboard's time axis places an item at its published time in two cases: it was published over 2 hours before first seen, or it was published around a collection gap and first seen just after the gap. <code>gold.*</code> bins use <code>first_seen_at</code> unchanged, so the two can differ.</li>
+  <li>Capture of traces, raw entries, and decisions started on the afternoon of Nov 1. Older items lack them, which is expected.</li>
+</ul>
+{% endcall %}
+<section class="u-section" id="views">
+  <div class="u-section-head"><h2 class="u-section-title">Views</h2><span class="panel-note">each page shows its SQL under "Show query"</span></div>
+  <div class="u-section-body">
+    <div class="u-views">
+      <a class="u-view" href="/under/coverage"><strong>Coverage</strong><span>Where the source list is heavy, light, or missing, and what the data cannot support.</span></a>
+      <a class="u-view" href="/under/lake"><strong>DuckLake</strong><span>What the lake stores, from its own catalog: every table, its schema, statistics, and sample rows.</span></a>
+      <a class="u-view" href="/under/inventory"><strong>Inventory</strong><span>Rows and distinct keys per table. Items by outlet, feed, and language, and when they arrived.</span></a>
+      <a class="u-view" href="/under/storage"><strong>Storage</strong><span>Inlined and Parquet rows, files, column compression, snapshots, merges, and time travel.</span></a>
+      <a class="u-view" href="/under/data-model"><strong>Data model</strong><span>A table as declared, as the catalog sees it, and as it sits in a Parquet file. The JSON schema of each model call.</span></a>
+      <a class="u-view" href="/under/models"><strong>Models</strong><span>Which parser, method, version, and model produced each column. Prompts. Keyword path against the LLM.</span></a>
+      <a class="u-view" href="/under/trace"><strong>Trace</strong><span>One article through every stage, from feed entry to the panels that count it.</span></a>
+      <a class="u-view" href="/under/records"><strong>Records</strong><span>Low-level search over stored values. Not the semantic search in the main view.</span></a>
+      <a class="u-view" href="/under/feeds"><strong>Feeds</strong><span>Polling as a system: status mix, conditional GET, yield per feed and tier, and circuit breakers.</span></a>
+      <a class="u-view" href="/under/costs"><strong>Costs</strong><span>Spend by purpose, model, and day. What prompt caching saved. Cost per item for each stage.</span></a>
+      <a class="u-view" href="/under/queries"><strong>Queries</strong><span>Worked queries by data shape and by what produced the values, each with a live result.</span></a>
+      <a class="u-view" href="/under/sql"><strong>SQL</strong><span>A read-only query box, limited to one SELECT, 1,000 rows, and 10 seconds.</span></a>
+    </div>
+    {{ u.show_query(overview.queries, "index-overview") }}
+  </div>
+</section>
+<section class="u-section" id="try-a-trace">
+  <div class="u-section-head"><h2 class="u-section-title">Articles worth tracing</h2><span class="panel-note">newest items with an extraction trace and an archived page</span></div>
+  <div class="u-section-body">
+    {{ u.scan_failed(candidates.error) }}
+    {% if candidates["items"] %}
+    <ul class="u-list">
+      {% for item in candidates["items"][:5] %}
+      <li><a class="text-link" href="/under/trace/{{ item.item_id }}">{{ item.headline }}</a> <span class="u-names">{{ item.outlet }}, {{ item.seen_raw_at|u_et }}</span></li>
+      {% endfor %}
+    </ul>
+    {% elif candidates.scanned %}
+    <p class="empty">No item has both a trace and an archived page.</p>
+    {% endif %}
+    {{ u.show_query(candidates.queries, "index-candidates") }}
+  </div>
+</section>
+{% endblock %}

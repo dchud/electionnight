@@ -1,0 +1,75 @@
+{# A statement, colored, with a button that copies its text. `console` adds a
+link that fills the SQL console without running it. #}
+{% macro sql_block(sql, console=false) %}
+<div class="u-sql-block">
+  <pre class="u-sql">{{ sql|u_sql }}</pre>
+  <div class="u-sql-tools">
+    <button type="button" class="u-button" data-copy-sql>Copy</button>
+    {% if console %}<a class="u-button" href="/under/sql?sql={{ sql|urlencode }}">Open in SQL console</a>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{# The two controls that open a table's rows, and where those rows appear. #}
+{% macro rows_controls(table) %}
+<span class="u-rows-controls"><button type="button" class="u-button" data-rows-open="recent" data-rows-table="{{ table }}" aria-expanded="false">Most recent 25</button> <button type="button" class="u-button" data-rows-open="sample" data-rows-table="{{ table }}" aria-expanded="false">Sample 25</button></span>
+{% endmacro %}
+
+{% macro rows_body(table) %}
+<div class="u-rows-body" data-rows-body="{{ table }}"></div>
+{% endmacro %}
+
+{% macro rows_panel(table) %}
+<div class="u-rows">
+  {{ rows_controls(table) }}
+  <div data-rows-wrap hidden>{{ rows_body(table) }}</div>
+</div>
+{% endmacro %}
+
+{# A disclosure of the SQL a panel ran. `queries` is one query or a list. #}
+{% macro show_query(queries, key) %}
+{% set items = [queries] if queries.sql is defined else queries %}
+<details class="u-query" data-key="{{ key }}">
+  <summary>Show query</summary>
+  {% for q in items %}
+  <div class="u-query-block">
+    <p class="u-query-meta">Ran on: {{ q.where }}{% if q.ms is not none %}; {{ q.ms }} ms{% endif %}{% if q.rows is not none %}; {{ q.rows }} rows{% endif %}.</p>
+    {% if q.note %}<p class="u-query-meta">{{ q.note }}</p>{% endif %}
+    {% if q.params_text %}<p class="u-query-meta">Parameters: <code>{{ q.params_text }}</code></p>{% endif %}
+    {{ sql_block(q.sql) }}
+  </div>
+  {% endfor %}
+</details>
+{% endmacro %}
+
+{% macro caveat(title) %}
+<aside class="u-caveat">
+  <strong class="u-caveat-title">{{ title }}</strong>
+  <div>{{ caller() }}</div>
+</aside>
+{% endmacro %}
+
+{% macro retry() %}<button class="u-button" data-under-refresh>Retry</button>{% endmacro %}
+
+{% macro error_note(message) %}
+{% if message %}<p class="banner-warn u-error">{{ message }}</p>{% endif %}
+{% endmacro %}
+
+{# A scan that did not finish says nothing about what the lake holds. #}
+{% macro scan_failed(message) %}
+{% if message %}<p class="banner-warn u-error">This scan did not finish, so these figures are not known. {{ message }} {{ retry() }}</p>{% endif %}
+{% endmacro %}
+
+{% macro scans_failed(messages) %}
+{% if messages %}<div class="banner-warn u-error"><p>A scan did not finish, so a blank figure on this page is not known. It does not mean zero. {{ retry() }}</p><ul>{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul></div>{% endif %}
+{% endmacro %}
+
+{% macro status_unavailable(pipeline) %}
+<p class="banner-warn u-error">Status unavailable. {{ pipeline.reason }} This says nothing about whether feeds are working. {{ retry() }}</p>
+{% endmacro %}
+
+{% macro ran_note(ran) %}
+{{ scan_failed(ran.error) }}
+{% if ran.age_seconds %}<p class="u-note">These figures were scanned {{ ran.age_seconds|u_secs }} ago, so they can trail the snapshot shown above.</p>{% endif %}
+{% if ran.truncated %}<p class="u-note">The result was cut off at the row limit.</p>{% endif %}
+{% endmacro %}

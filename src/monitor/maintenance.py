@@ -44,8 +44,8 @@ def run_maintenance(
     """Flush inlined rows, merge small files, delete replaced files.
 
     A merged file carries the snapshot range of each row, so time travel works
-    without the files it replaced. Those are deleted once they are 2 hours
-    old, which leaves any query still reading them time to finish.
+    without the files it replaced. Each of those is deleted 2 hours after it
+    was replaced, which leaves any query still reading it time to finish.
     """
     cutoff = (now or datetime.now(UTC)) - CLEANUP_AGE
     conn.execute("CALL ducklake_flush_inlined_data('lake')").fetchall()

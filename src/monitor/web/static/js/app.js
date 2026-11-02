@@ -515,13 +515,14 @@
       );
     }
     updateClock();
+    syncCardLinks();
   }
   function startReplay(from) {
     const replay = Monitor.replay;
     replay.active = true;
     if (wireLive) wireLive.replaceChildren();
     replay.end = Date.now();
-    replay.start = replay.end - REPLAY_SPAN_MS;
+    replay.start = Math.min(replay.end - REPLAY_SPAN_MS, from || Infinity);
     replay.asOf = from || replay.start;
     root.dataset.replay = "1";
     const replayNote = document.getElementById("replay-note");
@@ -545,11 +546,28 @@
   function toggleReplay() {
     if (Monitor.replay.active) {
       clearInterval(replayTimer);
-      window.location.reload();
+      const live = new URL(window.location.href);
+      live.searchParams.delete("as_of");
+      live.hash = "";
+      window.location.assign(live);
     } else {
       startReplay();
     }
   }
+  /* The dashboard opened at a moment, as from a card's page, replays from it. */
+  function resumeReplay() {
+    if (window.location.pathname !== "/") return;
+    const moment = new URLSearchParams(window.location.search).get("as_of");
+    const from = moment ? parseMoment(moment) : NaN;
+    if (!Number.isNaN(from)) startReplay(from);
+  }
+  /* The server reads a time with no zone as UTC, so this does too. */
+  function parseMoment(text) {
+    const iso = text.replace(" ", "+");
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso)) return NaN;
+    return Date.parse(/(Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`);
+  }
+  resumeReplay();
   document.addEventListener("input", (event) => {
     if (event.target.id === "replay-scrubber") {
       Monitor.replay.asOf = Number(event.target.value);
@@ -726,6 +744,27 @@
       if (control) control.focus();
     }
   }
+  /* A card's link to its SQL carries the filters, and it is no panel, so
+     swapping the panels leaves it behind. */
+  function updateCardLinks(page) {
+    page.querySelectorAll("[data-card-link]").forEach((model) => {
+      const link = document.querySelector(
+        `[data-card-link="${model.dataset.cardLink}"]`
+      );
+      if (link) link.setAttribute("href", model.getAttribute("href"));
+    });
+    syncCardLinks();
+  }
+  /* In a replay, a card's link carries the moment on screen. */
+  function syncCardLinks() {
+    if (!Monitor.replay.active || !Monitor.replay.asOf) return;
+    const moment = new Date(Monitor.replay.asOf).toISOString();
+    document.querySelectorAll("[data-card-link]").forEach((link) => {
+      const url = new URL(link.getAttribute("href"), window.location.href);
+      url.searchParams.set("as_of", moment);
+      link.setAttribute("href", url.pathname + url.search + url.hash);
+    });
+  }
   /* The control shows the choice at once, and `f` and `w` advance from it. */
   function markChosen(control) {
     if (!control) return;
@@ -744,6 +783,7 @@
     wireLiveStale = true;
     reconnectStream(page.body.getAttribute("sse-connect"));
     replaceControls(page);
+    updateCardLinks(page);
     swapPanels(page);
     Monitor.switchers.forEach((refresh) => refresh());
   }

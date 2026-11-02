@@ -1,0 +1,82 @@
+{% extends "under/base.html" %}
+{% import "under/_macros.html" as u %}
+{% block title %}Data model{% endblock %}
+{% block content %}
+<h1>Data model: {{ table }}</h1>
+<form class="u-form" method="get"><label>Table <select class="field" name="table" onchange="this.form.submit()">{% for name in tables %}<option value="{{ name }}" {{ 'selected' if name == table else '' }}>{{ name }}</option>{% endfor %}</select></label></form>
+<p class="u-lede">The same table three ways: as the code declares it, as the catalog reports it, and as a Parquet file stores it. A row is: {{ meaning }} Key: <code>{{ key or 'none listed' }}</code>.</p>
+
+<section class="u-section" id="definitions">
+  <div class="u-section-head"><h2 class="u-section-title">Declared, and live</h2></div>
+  <div class="u-section-body">
+    <div class="u-pair">
+      <div>
+        <h3 class="u-chart-title">Declared in <code>lake.TABLES</code></h3>
+        <pre class="u-pre">{{ declared }}</pre>
+        <p class="u-note">Every table also gets <code>created_at TIMESTAMPTZ</code> when it is created.{% if no_inline %} This table's inlining limit is 0, so its rows always go to Parquet.{% endif %}</p>
+      </div>
+      <div>
+        <h3 class="u-chart-title">Live, from <code>information_schema.columns</code></h3>
+        {{ u.scan_failed(columns.error) }}
+        <div class="u-scroll"><table class="table u-table">
+          <thead><tr><th class="num">#</th><th>Column</th><th>Type</th><th>Nullable</th></tr></thead>
+          <tbody>{% for row in columns.rows %}<tr><td class="num">{{ row.ordinal_position }}</td><td>{{ row.column_name }}</td><td>{{ row.data_type }}</td><td>{{ row.is_nullable }}</td></tr>{% endfor %}</tbody>
+        </table></div>
+      </div>
+    </div>
+    {{ u.show_query(columns.query, "model-columns") }}
+  </div>
+</section>
+
+<section class="u-section" id="physical">
+  <div class="u-section-head"><h2 class="u-section-title">Physical schema in a Parquet file</h2></div>
+  <div class="u-section-body">
+    {% if physical %}
+    <p class="u-note">From the footer of <code>{{ file_name }}</code>, the table's largest file. A list column appears as nested <code>list</code> and <code>element</code> entries. DuckLake rejects <code>FLOAT[384]</code>, so vectors are stored as <code>FLOAT[]</code>, and queries cast them to use array functions. A file written by a merge also carries <code>_ducklake_internal_row_id</code> and <code>_ducklake_internal_snapshot_id</code>, which are not in the declared table.</p>
+    {{ u.ran_note(physical) }}
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Name</th><th>Parquet type</th><th>Repetition</th><th class="num">Children</th><th>Converted</th><th>DuckDB type</th></tr></thead>
+      <tbody>{% for row in physical.rows %}<tr class="{{ 'u-row-flag' if row.duckdb_type == 'FLOAT[]' and row.name == 'vec' else '' }}"><td>{{ row.name }}</td><td>{{ row.type or '—' }}</td><td>{{ row.repetition_type }}</td><td class="num">{{ row.num_children if row.num_children is not none else '' }}</td><td>{{ row.converted_type or '' }}</td><td>{{ row.duckdb_type or '' }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {{ u.show_query(physical.query, "model-physical") }}
+    {% elif files.error %}
+    {{ u.scan_failed(files.error) }}
+    {% else %}
+    <p class="empty">{{ table }} has no Parquet file. Its rows are inlined in the catalog, or it has no rows.</p>
+    {% endif %}
+    {{ u.show_query(files.query, "model-files") }}
+  </div>
+</section>
+
+<section class="u-section" id="sample">
+  <div class="u-section-head"><h2 class="u-section-title">The newest row</h2><span class="panel-note">stored values, escaped; long values are cut</span></div>
+  <div class="u-section-body">
+    {{ u.ran_note(sample) }}
+    {% if sample_rows %}
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Column</th><th>Stored value</th></tr></thead>
+      <tbody>{% for row in sample_rows %}<tr><td class="nowrap">{{ row.column }}</td><td class="u-break">{{ row.value if row.value is not none else 'NULL' }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <p class="u-note"><code>_snapshot</code> and <code>_file</code> are the virtual columns <code>snapshot_id</code> and <code>filename</code>. A <code>_file</code> starting with <code>ducklake_inlined_data</code> means the row is still in the catalog.</p>
+    {% elif sample.ok %}
+    <p class="empty">This table has no rows.</p>
+    {% endif %}
+    {{ u.show_query(sample.query, "model-sample") }}
+    {{ u.rows_panel(table) }}
+  </div>
+</section>
+
+<section class="u-section" id="schemas">
+  <div class="u-section-head"><h2 class="u-section-title">What each model call must return</h2><span class="panel-note">from llm/schemas.py, as sent to the API</span></div>
+  <div class="u-section-body">
+    <p class="u-note">Every structured call sends one of these schemas, and the API holds the response to it. A response that fails validation is retried once. A schema constrains the shape of an answer, not whether it is correct.</p>
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Purpose</th><th>Schema</th><th>Written to</th></tr></thead>
+      <tbody>{% for row in schemas %}<tr><td>{{ row.purpose }}</td><td>{{ row.name }}</td><td>{{ row.tables }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% for row in schemas %}
+    <details class="u-details" data-key="schema-{{ row.name }}"><summary>{{ row.name }}</summary><pre class="u-pre">{{ row.json }}</pre></details>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

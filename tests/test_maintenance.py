@@ -1,3 +1,6 @@
+import inspect
+import os
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -6,6 +9,7 @@ from monitor.control import process_requests
 from monitor.disk import DiskGuard, DiskLevel, disk_figures
 from monitor.lake import BatchWriter, connect
 from monitor.maintenance import (
+    CLEANUP_AGE,
     backup_catalog,
     backups_to_keep,
     parse_span,
@@ -43,6 +47,65 @@ def test_maintenance_moves_inlined_rows_to_parquet(settings):
     assert list(settings.paths.data.rglob("*.parquet"))
     assert count(conn) == 18
     conn.close()
+
+
+def test_cleanup_clock_starts_when_a_file_is_replaced(settings):
+    """A file's own age does not matter, only how long ago it was replaced."""
+    conn = connect(settings)
+    for index in range(3):
+        conn.execute(
+            "INSERT INTO lake.raw.fetches BY NAME "
+            f"SELECT 'f{index}-' || i AS fetch_id, now() AS created_at "
+            "FROM range(2500) t(i)"
+        )
+    snapshots = [
+        row[0]
+        for row in conn.execute(
+            "SELECT snapshot_id FROM lake.snapshots() "
+            "ORDER BY snapshot_id DESC LIMIT 3"
+        ).fetchall()
+    ]
+    conn.close()
+    days_ago = datetime.now(UTC) - timedelta(days=5)
+    with sqlite3.connect(settings.paths.catalog) as catalog:
+        catalog.executemany(
+            "UPDATE ducklake_snapshot SET snapshot_time = ? "
+            "WHERE snapshot_id = ?",
+            [(f"{days_ago:%Y-%m-%d %H:%M:%S}+00", s) for s in snapshots],
+        )
+    folder = settings.paths.data / "raw" / "fetches"
+    for path in folder.glob("*.parquet"):
+        os.utime(path, (days_ago.timestamp(), days_ago.timestamp()))
+    conn = connect(settings)
+    now = datetime.now(UTC)
+    # Five days old, and just replaced by this merge.
+    assert run_maintenance(conn, now=now)["files_removed"] == 0
+    assert len(list(folder.glob("*.parquet"))) == 4
+    almost = now + CLEANUP_AGE - timedelta(minutes=1)
+    assert run_maintenance(conn, now=almost)["files_removed"] == 0
+    past = now + CLEANUP_AGE + timedelta(minutes=1)
+    assert run_maintenance(conn, now=past)["files_removed"] == 3
+    assert len(list(folder.glob("*.parquet"))) == 1
+    conn.close()
+
+
+def test_maintenance_commits_with_no_batch_writer(settings):
+    """It runs on the connection it is given, and takes nothing else."""
+    assert list(inspect.signature(run_maintenance).parameters) == [
+        "conn",
+        "now",
+    ]
+    conn = connect(settings)
+    write_rows(conn, settings)
+    before = conn.execute(
+        "SELECT max(snapshot_id) FROM lake.snapshots()"
+    ).fetchone()[0]
+    run_maintenance(conn)
+    after = conn.execute(
+        "SELECT max(snapshot_id) FROM lake.snapshots()"
+    ).fetchone()[0]
+    conn.close()
+    assert after > before
 
 
 @pytest.mark.parametrize(

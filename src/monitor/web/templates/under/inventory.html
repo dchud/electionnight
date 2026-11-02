@@ -1,0 +1,131 @@
+{% extends "under/base.html" %}
+{% import "under/_macros.html" as u %}
+{% block title %}Inventory{% endblock %}
+{% block content %}
+<h1>Inventory: how many records, and where they came from</h1>
+<div class="u-stats">
+  <div class="u-stat"><span class="u-stat-label">Items</span><span class="u-stat-value">{{ totals["items"]|u_int }}</span><span class="u-stat-note">one row per article URL</span></div>
+  <div class="u-stat"><span class="u-stat-label">Relevant</span><span class="u-stat-value">{{ totals.relevant|u_int }}</span><span class="u-stat-note">by the classifier, not by a person</span></div>
+  <div class="u-stat"><span class="u-stat-label">Relevant and unique</span><span class="u-stat-value">{{ totals.relevant_unique|u_int }}</span><span class="u-stat-note">one per duplicate group</span></div>
+  <div class="u-stat"><span class="u-stat-label">Published over 2 h before first seen</span><span class="u-stat-value">{{ totals.backlog|u_int }}</span><span class="u-stat-note">mostly backlog from a first fetch</span></div>
+  <div class="u-stat"><span class="u-stat-label">Outlets with items</span><span class="u-stat-value">{{ totals.outlets_with_items|u_int }}</span><span class="u-stat-note">{{ totals.outlets_enabled|u_int }} enabled, {{ totals.outlets_listed|u_int }} listed</span></div>
+</div>
+{{ u.show_query(totals_query, "inventory-totals") }}
+
+<section class="u-section" id="rows-keys">
+  <div class="u-section-head"><h2 class="u-section-title">Rows and distinct keys per table</h2><span class="panel-note">{% if key_failures %}not every table was scanned{% elif key_age %}keys scanned {{ key_age|u_secs }} ago{% else %}keys scanned just now{% endif %}</span></div>
+  <div class="u-section-body">
+    {{ u.scan_failed(catalog_error) }}
+    {{ u.scans_failed(key_failures) }}
+    {% call u.caveat("Rows are not records") %}
+    <p>Every table is append-only. A correction, a recomputed bin, or a reloaded reference row is a new row, and readers take the newest row per key. So a row count measures writes, and a key count measures things. Largest gaps{% if key_failures %} among the tables scanned{% endif %}: {% for row in widest %}<code>{{ row.table }}</code> has {{ row.scan_rows|u_int }} rows for {{ row['keys']|u_int }} keys{{ ', ' if not loop.last else '.' }}{% else %}{% if key_failures %}not known, because the scan did not finish.{% else %}no table has more rows than keys.{% endif %}{% endfor %}</p>
+    <p><code>gold.*</code> tables recompute recent bins each cycle and append a row when a count changes, so one 5-minute bin can hold several rows. Rows come from the catalog, which knows them without opening a file. Keys need a scan, so they run in a child process and can trail the catalog. The heading of this section says by how much.</p>
+    {% endcall %}
+    <div class="u-scroll">
+    <table class="table u-table">
+      <thead><tr><th>Table</th><th class="num">Rows, catalog</th><th class="num">Rows, scan</th><th class="num">Distinct keys</th><th class="num">Extra rows</th><th class="num">Rows per key</th><th class="u-hide-projector">Key</th><th class="u-hide-projector">A row is, and why rows repeat</th><th>See rows</th></tr></thead>
+      <tbody>
+      {% for row in table_rows %}
+      <tr class="{{ 'u-row-flag' if row.extra else '' }}">
+        <td><a class="text-link" href="/under/data-model?table={{ row.table }}">{{ row.table }}</a></td>
+        <td class="num">{{ row.rows|u_int }}</td>
+        <td class="num">{{ row.scan_rows|u_int }}</td>
+        <td class="num">{{ row['keys']|u_int if row.key else 'no key' }}</td>
+        <td class="num">{{ row.extra|u_int if row.key else '—' }}</td>
+        <td class="num">{{ '%.2f' % row.per_key if row.per_key else '—' }}</td>
+        <td class="u-hide-projector">{{ row.key or '—' }}</td>
+        <td class="u-hide-projector">{{ row.meaning }}{% if row.extra and row.why %} {{ row.why }}{% endif %}</td>
+        <td class="nowrap">{{ u.rows_controls(row.table) }}</td>
+      </tr>
+      <tr data-rows-wrap hidden><td colspan="9">{{ u.rows_body(row.table) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {{ u.show_query(table_queries, "inventory-keys") }}
+  </div>
+</section>
+
+<section class="u-section" id="arrivals">
+  <div class="u-section-head"><h2 class="u-section-title">Items arriving over time</h2>{% if not arrivals.empty %}<span class="panel-note">{{ arrivals.minutes }}-minute bins</span>{% endif %}</div>
+  <div class="u-section-body">
+    {% if arrivals.empty %}
+    <p class="empty">No items have arrived.</p>
+    {% else %}
+    {% call u.caveat("Most early items were backlog") %}
+    <p>{{ arrivals.summary.first_15_minutes|u_int }} of {{ arrivals.summary['items']|u_int }} items arrived in the first 15 minutes, from the first fetch at {{ arrivals.first_seen|u_et }}. A feed's first fetch serves whatever it already holds, so that spike is not news volume. {{ arrivals.summary.backlog|u_int }} items were published over 2 hours before first seen.</p>
+    <p>The dashboard's time axis places those items at their published time. It does the same for {{ arrivals.summary.moved_for_gap|u_int }} items published during a collection gap, or in the 20 minutes before it, and first seen within 15 minutes after it. {{ arrivals.before_chart|u_int }} of these moved items land before the first fetch, off the left edge of the charts below. <code>gold.*</code> bins use <code>first_seen_at</code> unchanged, so they show the spike and the dashboard does not.</p>
+    {% for bar in arrivals.spikes %}<p>At {{ bar.when }}: {{ bar.n|u_int }} items, {{ bar.backlog|u_int }} of them backlog, as {{ bar.outlets_first }} outlets delivered their first item.</p>{% endfor %}
+    {% endcall %}
+    <div class="u-legend">
+      <span><span class="u-swatch u-mark-backlog"></span>Published over 2 h before first seen</span>
+      <span><span class="u-swatch u-mark-new"></span>Everything else</span>
+    </div>
+    <h3 class="u-chart-title">By true first sighting, as <code>gold.*</code> bins it. Tallest bar: {{ arrivals.peak|u_int }} items.</h3>
+    <div class="u-chart" role="img" aria-label="Items per bin by first sighting; the table below has the same numbers">
+      {% for bar in arrivals.bars %}
+      <div class="u-chart-col" data-tip="{{ bar.when }}: {{ bar.n }} items, {{ bar.backlog }} backlog, {{ bar.outlets_first }} outlets first seen"><span class="u-mark u-mark-backlog" style="height:{{ '%.2f' % bar.backlog_h }}%"></span><span class="u-mark u-mark-new" style="height:{{ '%.2f' % bar.fresh_h }}%"></span></div>
+      {% endfor %}
+    </div>
+    <div class="u-axis" aria-hidden="true">{% for bar in arrivals.bars %}<span>{{ bar.label }}</span>{% endfor %}</div>
+    <h3 class="u-chart-title">Same time scale, everything except backlog, with its own vertical scale. Tallest bar: {{ arrivals.fresh_peak|u_int }} items.</h3>
+    <div class="u-chart" role="img" aria-label="Items per bin excluding backlog">
+      {% for bar in arrivals.bars %}
+      <div class="u-chart-col" data-tip="{{ bar.when }}: {{ bar.fresh }} items that were not backlog"><span class="u-mark u-mark-new" style="height:{{ '%.2f' % bar.fresh_only_h }}%"></span></div>
+      {% endfor %}
+    </div>
+    <div class="u-axis" aria-hidden="true">{% for bar in arrivals.bars %}<span>{{ bar.label }}</span>{% endfor %}</div>
+    <details class="u-details" data-key="inventory-arrival-table"><summary>The same numbers as a table</summary>
+      <div class="u-scroll"><table class="table u-table">
+        <thead><tr><th>Bin</th><th class="num">Items</th><th class="num">Backlog</th><th class="num">Not backlog</th><th class="num">On dashboard axis</th><th class="num">Outlets first seen</th></tr></thead>
+        <tbody>{% for bar in arrivals.bars %}<tr><td>{{ bar.when }}</td><td class="num">{{ bar.n|u_int }}</td><td class="num">{{ bar.backlog|u_int }}</td><td class="num">{{ bar.fresh|u_int }}</td><td class="num">{{ bar.on_axis|u_int }}</td><td class="num">{{ bar.outlets_first }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </details>
+    {% endif %}
+    {{ u.show_query(arrivals.queries, "inventory-arrivals") }}
+  </div>
+</section>
+
+<section class="u-section" id="by-source">
+  <div class="u-section-head"><h2 class="u-section-title">Items by outlet</h2><span class="panel-note">top 25, all time</span></div>
+  <div class="u-section-body">
+    {% call u.caveat("source_id is the first feed to serve an item") %}
+    <p>When several feeds carry one URL, the item is credited to whichever was polled first after it appeared. That favors the fastest poller. <code>raw.sightings</code> records the other feeds, for items since capture started. Counts here include backlog, so an outlet with a long feed looks busier than one with a short feed.</p>
+    {% endcall %}
+    <div class="u-scroll">
+    <table class="table u-table">
+      <thead><tr><th>Outlet</th><th class="num">Items</th><th class="num">Relevant</th><th class="num">Canonical</th><th class="num">Backlog</th></tr></thead>
+      <tbody>{% for row in by_source.rows %}<tr><td>{{ row.outlet }}</td><td class="num">{{ row['items']|u_int }}</td><td class="num">{{ row.relevant|u_int }}</td><td class="num">{{ row.canonical|u_int }}</td><td class="num">{{ row.backlog|u_int }}</td></tr>{% endfor %}</tbody>
+    </table>
+    </div>
+    {{ u.show_query(by_source.query, "inventory-by-source") }}
+  </div>
+</section>
+
+<section class="u-section" id="by-feed">
+  <div class="u-section-head"><h2 class="u-section-title">Items by feed</h2><span class="panel-note">top 25, scanned from raw.items</span></div>
+  <div class="u-section-body">
+        {{ u.ran_note(by_feed) }}
+        <div class="u-scroll">
+        <table class="table u-table">
+          <thead><tr><th>Feed URL</th><th>Outlet</th><th class="num">Items</th></tr></thead>
+          <tbody>{% for row in by_feed.rows %}<tr><td class="u-break">{{ row.feed_url }}</td><td>{{ row.source_id }}</td><td class="num">{{ row['items']|u_int }}</td></tr>{% endfor %}</tbody>
+        </table>
+        </div>
+        {{ u.show_query(by_feed.query, "inventory-by-feed") }}
+  </div>
+</section>
+
+<section class="u-section" id="by-language">
+  <div class="u-section-head"><h2 class="u-section-title">Items by detected language</h2><span class="panel-note">all time, including backlog</span></div>
+  <div class="u-section-body">
+        <div class="u-scroll">
+        <table class="table u-table">
+          <thead><tr><th>Language</th><th class="num">Items</th><th class="num">Relevant</th><th class="num">Relevant, unique</th></tr></thead>
+          <tbody>{% for row in by_language.rows %}<tr><td>{{ row.language }}</td><td class="num">{{ row['items']|u_int }}</td><td class="num">{{ row.relevant|u_int }}</td><td class="num">{{ row.relevant_unique|u_int }}</td></tr>{% endfor %}</tbody>
+        </table>
+        </div>
+        {{ u.show_query(by_language.query, "inventory-by-language") }}
+  </div>
+</section>
+{% endblock %}

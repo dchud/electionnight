@@ -1,0 +1,48 @@
+{% extends "under/base.html" %}
+{% import "under/_macros.html" as u %}
+{% block title %}Example queries{% endblock %}
+{% block content %}
+<h1>Example queries: what this stack can do with each kind of data</h1>
+<p class="u-lede">{{ n_queries }} queries, each with its question, its SQL, a live result of at most {{ result_rows }} rows, why it is interesting, and what its result does not mean. Each runs in a child process, and a result is kept for 10 minutes. A link opens the query in the <a class="text-link" href="/under/sql">SQL console</a> without running it.</p>
+<div class="u-form">
+  <span class="control-group">
+    <a href="?by=shape" aria-current="{{ 'true' if by == 'shape' else 'false' }}">By data shape</a>
+    <a href="?by=producer" aria-current="{{ 'true' if by == 'producer' else 'false' }}">By what produced the values</a>
+  </span>
+</div>
+{{ u.scans_failed(errors) }}
+{% call u.caveat("Reading these results") %}
+<p>Most tables are append-only, so a count of rows is a count of writes unless a query takes the latest row, and these queries say which they do. Most early items are feed backlog from a first fetch. Long text is cut to an excerpt and vectors never print whole, so no result here holds a full article.</p>
+{% endcall %}
+{% for group in groups %}
+<section class="u-section" id="{{ group.key }}">
+  <div class="u-section-head"><h2 class="u-section-title">{{ group.title }}</h2></div>
+  <div class="u-section-body">
+    {% for member in group.members %}
+    {% set ran = member.ran %}
+    <div class="u-call" id="query-{{ member.query.key }}">
+      <h3 class="u-chart-title">{{ member.query.question }}</h3>
+      <p class="u-note"><strong>Why it is interesting:</strong> {{ member.query.interesting }} <strong>What it does not mean:</strong> {{ member.query.not_mean }}</p>
+      {% if member.note %}<p class="u-note">{{ member.note }}</p>{% endif %}
+      <details class="u-query" data-key="gallery-{{ member.query.key }}" open>
+        <summary>Show query</summary>
+        {{ u.sql_block(ran.query.sql) }}
+        <p class="u-query-meta">Ran on: {{ ran.query.where }}{% if ran.query.ms is not none %}; {{ ran.query.ms }} ms{% endif %}{% if ran.query.rows is not none %}; {{ ran.query.rows }} rows{% endif %}.{% if ran.query.where != 'not run' %} <a class="text-link" href="/under/sql?sql={{ ran.query.sql|urlencode }}">Open in the SQL console</a>{% endif %}</p>
+      </details>
+      {{ u.ran_note(ran) }}
+      {% if ran.ok %}
+      {% if ran.rows %}
+      <div class="u-scroll"><table class="table u-table">
+        <thead><tr>{% for name in ran.first.keys() %}<th>{{ name }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in ran.rows %}<tr>{% for value in row.values() %}<td class="u-break">{{ value|u_cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table></div>
+      {% else %}
+      <p class="empty">This query returned no rows.</p>
+      {% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

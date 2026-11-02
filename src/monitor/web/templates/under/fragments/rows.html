@@ -1,0 +1,44 @@
+{% import "under/_macros.html" as u %}
+{% macro close() %}<button type="button" class="u-button" data-rows-close>Close</button>{% endmacro %}
+{% if status == 'error' %}
+<p class="banner-warn u-error">{{ error }}</p>
+{{ close() }}
+{% elif status == 'no_time' %}
+<p class="u-note"><code>{{ table }}</code> has no <code>{{ time_column }}</code> column, so it has no order for most recent. It offers a sample only.</p>
+<div class="u-rows-pager"><button type="button" class="u-button" data-rows-go="{{ sample_url }}">Show a sample</button>{{ close() }}</div>
+{% elif status == 'failed' %}
+<p class="banner-warn u-error">These rows were not read. {{ error }}</p>
+<div class="u-rows-pager"><button type="button" class="u-button" data-rows-go="{{ retry_url }}">Retry</button>{{ close() }}</div>
+{% if query %}{{ u.sql_block(query.sql, console_link) }}{% endif %}
+{% elif status == 'snapshot_gone' %}
+<p class="banner-warn u-error">Snapshot {{ at_snapshot }} was removed from the lake, so this page cannot be read again. Close this and reopen.</p>
+{{ close() }}
+{% elif status == 'past_end' %}
+<p class="u-note">No rows on this page. <code>{{ table }}</code> has {{ total|u_int }} rows{% if at_snapshot %} at snapshot {{ at_snapshot }}{% endif %}.</p>
+<div class="u-rows-pager"><button type="button" class="u-button" data-rows-go="{{ last_url }}">Last page</button>{{ close() }}</div>
+{% else %}
+<div class="u-rows-pager">
+  {% if mode == 'recent' %}
+  <button type="button" class="u-button"{% if newer_url %} data-rows-go="{{ newer_url }}"{% else %} disabled{% endif %}>Newer</button>
+  <button type="button" class="u-button"{% if older_url %} data-rows-go="{{ older_url }}"{% else %} disabled{% endif %}>Older</button>
+  <span>{% if rows %}Rows {{ first_row|u_int }} to {{ last_row|u_int }} of {{ total|u_int }}, newest <code>{{ time_column }}</code> first{% else %}This table has no rows{% endif %}{% if at_snapshot %}, at snapshot {{ at_snapshot }}{% endif %}.</span>
+  {% else %}
+  <button type="button" class="u-button"{% if newer_url %} data-rows-go="{{ newer_url }}"{% else %} disabled{% endif %}>Previous sample</button>
+  <button type="button" class="u-button"{% if another_url %} data-rows-go="{{ another_url }}"{% else %} disabled{% endif %}>Another sample</button>
+  <span>{% if rows %}Sample {{ page|u_int }}: {{ rows|length }} of {{ total|u_int }} rows{% else %}This table has no rows{% endif %}{% if at_snapshot %}, at snapshot {{ at_snapshot }}{% endif %}.</span>
+  {% endif %}
+  {{ close() }}
+</div>
+{{ u.sql_block(query.sql, console_link) }}
+<p class="u-query-meta">Ran on: {{ query.where }}{% if query.ms is not none %}; {{ query.ms }} ms{% endif %}. The total comes from <code>{{ count_sql }}</code>.</p>
+{% if rows %}
+<div class="u-scroll"><table class="table u-table u-rows-table">
+  <thead><tr>{% for name in columns %}<th>{{ name }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for row in rows %}<tr>{% for cell in row %}<td class="u-break">{{ cell.text }}{% if cell.cut %} <span class="u-rows-cut">cut</span>{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+</table></div>
+{% endif %}
+{% call u.caveat("These are rows") %}
+<p>In an append-only table one record can have several rows.{% if record_key %} A record here is one <code>{{ record_key }}</code>.{% endif %}{% if mode == 'recent' %} Most recent means by <code>{{ time_column }}</code>, the time the writer buffered the row. That is a write time, not a publication time.{% if backlog_applies %} Many early rows are backlog from a feed's first fetch.{% endif %}{% else %} This is a sample of rows, not of stories: a record with more rows is more likely to appear. The query orders by <code>hash(rowid, {{ page }})</code>, so the same seed at the same snapshot returns these rows.{% endif %}{% if at_snapshot %} <code>AT (VERSION =&gt; {{ at_snapshot }})</code> keeps this page on one snapshot while new rows arrive. Close and reopen for the newest.{% endif %}</p>
+<p>Text and nested values over {{ shown_chars }} characters are cut in the SQL, so the full value stays in the lake.{% if cut_columns %} Cut on this page: {% for name in cut_columns %}<code>{{ name }}</code>{{ ', ' if not loop.last else '.' }}{% endfor %}{% else %} Nothing on this page was cut.{% endif %} A list shows its length and first 3 values. The SQL console can read stored text up to {{ console_cell_chars|u_int }} characters per cell.</p>
+{% endcall %}
+{% endif %}

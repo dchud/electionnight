@@ -11,13 +11,16 @@ import subprocess
 import sys
 import time
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
+import duckdb
 import pytest
 from conftest import clone_lake
 
-from monitor.lake import BatchWriter, connect
+from monitor.lake import TABLES, BatchWriter, connect
+from monitor.web.under import et_label
 
 pytestmark = [pytest.mark.slow, pytest.mark.enable_socket]
 
@@ -769,3 +772,815 @@ def test_chips_explain_themselves_at_once(scratch, browser):
     assert tip.is_visible()
     assert tip.inner_text() == "Georgia"
     context.close()
+
+
+def open_methods(browser, projector=False, width=1280, height=720):
+    page = browser.new_page(viewport={"width": width, "height": height})
+    page.goto(f"{BASE}/methods")
+    if projector:
+        page.keyboard.press("p")
+    page.wait_for_selector("[data-doc-nav]")
+    return page
+
+
+def marked(page):
+    return page.eval_on_selector_all(
+        '[data-doc-nav] a[aria-current="true"]',
+        "links => links.map(link => link.getAttribute('href'))",
+    )
+
+
+def choose(page, href):
+    page.evaluate(
+        "href => document.querySelector("
+        '`[data-doc-nav] a[href="${href}"]`).click()',
+        href,
+    )
+    page.wait_for_timeout(150)
+
+
+def in_view(page):
+    """The heading at the line the script marks by, read from the page."""
+    return page.evaluate(
+        """() => {
+          const line = document.querySelector('.app-header')
+            .getBoundingClientRect().bottom + 40;
+          let current = null;
+          for (const link of document.querySelectorAll('[data-doc-nav] a')) {
+            const element = document.getElementById(link.hash.slice(1));
+            if (element && element.getBoundingClientRect().top <= line) {
+              current = link.getAttribute('href');
+            }
+          }
+          return current;
+        }"""
+    )
+
+
+@pytest.mark.parametrize("projector", [False, True])
+def test_methods_navigation_marks_the_section_in_view(
+    scratch, browser, projector
+):
+    _, server = scratch
+    server.start()
+    page = open_methods(browser, projector)
+    page.mouse.move(800, 300)
+    for _ in range(12):
+        page.mouse.wheel(0, 900)
+        page.wait_for_timeout(100)
+        assert marked(page) == [in_view(page)]
+    assert page.evaluate(
+        "document.documentElement.scrollWidth "
+        "<= document.documentElement.clientWidth"
+    )
+
+
+def test_methods_navigation_reaches_every_heading_below_the_header(
+    scratch, browser
+):
+    _, server = scratch
+    server.start()
+    page = open_methods(browser)
+    hrefs = page.eval_on_selector_all(
+        "[data-doc-nav] a",
+        "links => links.map(link => link.getAttribute('href'))",
+    )
+    assert len(hrefs) > 30
+    for href in hrefs:
+        choose(page, href)
+        assert marked(page) == [href]
+        top, header = page.evaluate(
+            """href => [
+              document.getElementById(href.slice(1))
+                .getBoundingClientRect().top,
+              document.querySelector('.app-header')
+                .getBoundingClientRect().bottom,
+            ]""",
+            href,
+        )
+        assert top >= header - 1, href
+
+
+def test_a_chosen_section_lets_go_when_the_page_moves(scratch, browser):
+    _, server = scratch
+    server.start()
+    page = open_methods(browser)
+    choose(page, "#storylines")
+    assert marked(page) == ["#storylines"]
+    # A scrollbar drag moves the page with no wheel or key event.
+    page.evaluate("window.scrollTo(0, 0)")
+    page.wait_for_timeout(200)
+    assert marked(page) == ["#from-feed-to-screen"]
+
+
+def test_a_section_at_the_end_stays_marked_after_a_click(scratch, browser):
+    _, server = scratch
+    server.start()
+    page = open_methods(browser)
+    choose(page, "#in-service")
+    page.wait_for_timeout(200)
+    assert marked(page) == ["#in-service"]
+
+
+def test_the_back_button_moves_the_mark_with_the_hash(scratch, browser):
+    _, server = scratch
+    server.start()
+    page = open_methods(browser)
+    choose(page, "#dedupe")
+    choose(page, "#cost")
+    assert marked(page) == ["#cost"]
+    page.go_back()
+    page.wait_for_timeout(300)
+    assert page.evaluate("window.location.hash") == "#dedupe"
+    assert marked(page) == ["#dedupe"]
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("projector", [False, True])
+@pytest.mark.parametrize("width,height", [(1280, 720), (1920, 1080)])
+def test_the_table_map_reads_at_a_glance(
+    scratch, browser, theme, projector, width, height
+):
+    _, server = scratch
+    server.start()
+    page = browser.new_page(viewport={"width": width, "height": height})
+    page.goto(f"{BASE}/under")
+    page.evaluate(
+        """([theme, projector]) => {
+          localStorage.setItem('theme', theme);
+          localStorage.setItem('projector', projector ? '1' : '0');
+        }""",
+        [theme, projector],
+    )
+    page.goto(f"{BASE}/under/lake")
+    found = page.evaluate(
+        """() => {
+          const svg = document.querySelector('.tm-wrap svg');
+          const box = svg.getBoundingClientRect();
+          const view = svg.viewBox.baseVal;
+          const scale = Math.min(
+            box.width / view.width, box.height / view.height);
+          const texts = [...svg.querySelectorAll('text')]
+            .filter((t) => t.textContent)
+            .map((t) => ({
+              text: t.textContent, box: t.getBBox(),
+              size: parseFloat(getComputedStyle(t).fontSize) * scale,
+            }));
+          const overlaps = [];
+          for (let i = 0; i < texts.length; i++) {
+            for (let j = i + 1; j < texts.length; j++) {
+              const a = texts[i].box, b = texts[j].box;
+              if (a.x < b.x + b.width && b.x < a.x + a.width
+                  && a.y < b.y + b.height - 2 && b.y < a.y + a.height - 2) {
+                overlaps.push([texts[i].text, texts[j].text]);
+              }
+            }
+          }
+          const outside = texts.filter((t) => (
+            t.box.x < 0 || t.box.y < 0
+            || t.box.x + t.box.width > view.width
+            || t.box.y + t.box.height > view.height
+          )).map((t) => t.text);
+          const rows = [...svg.querySelectorAll('a')].map((a) => {
+            const row = a.querySelector('rect').getBBox();
+            const inRow = [...a.querySelectorAll('text')]
+              .filter((t) => t.textContent)
+              .map((t) => t.getBBox());
+            return {
+              name: a.getAttribute('aria-label'),
+              fits: inRow.every((t) => (
+                t.x >= row.x && t.x + t.width <= row.x + row.width
+                && t.y >= row.y - 1 && t.y + t.height <= row.y + row.height + 1
+              )),
+            };
+          });
+          return {
+            overlaps,
+            outside,
+            tooWide: rows.filter((row) => !row.fits).map((row) => row.name),
+            height: box.height,
+            header: document.querySelector('.u-header')
+              .getBoundingClientRect().height,
+            viewport: innerHeight,
+            smallest: Math.min(...texts.map((t) => t.size)),
+            tableName: Math.min(...[...svg.querySelectorAll('.tm-name')]
+              .map((t) => parseFloat(getComputedStyle(t).fontSize) * scale)),
+            pageWide: document.documentElement.scrollWidth
+              <= document.documentElement.clientWidth,
+            links: svg.querySelectorAll('a').length,
+          };
+        }"""
+    )
+    assert found["overlaps"] == []
+    assert found["outside"] == []
+    assert found["tooWide"] == []
+    assert found["height"] + found["header"] <= found["viewport"]
+    assert found["tableName"] >= 14
+    assert found["smallest"] >= 12.8
+    assert found["pageWide"]
+    assert found["links"] == len(TABLES)
+
+
+def test_a_map_row_opens_the_table_browser_entry(scratch, browser):
+    _, server = scratch
+    server.start()
+    page = browser.new_page(viewport={"width": 1280, "height": 720})
+    page.goto(f"{BASE}/under/lake")
+    page.locator('.tm-wrap a[aria-label="nlp.mentions"]').click()
+    page.wait_for_load_state()
+    assert "table=nlp.mentions" in page.url
+    assert page.locator("#detail h2").first.inner_text() == "nlp.mentions"
+
+
+def test_a_copied_sql_block_is_the_statement_that_ran(scratch, browser):
+    _, server = scratch
+    server.start()
+    page = browser.new_page(viewport={"width": 1280, "height": 720})
+    page.goto(f"{BASE}/under/lake?table=raw.items")
+    copied = page.evaluate(
+        """() => {
+          const block = document.querySelector('pre.u-sql');
+          const details = block.closest('details');
+          if (details) details.open = true;
+          const range = document.createRange();
+          range.selectNodeContents(block);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          return selection.toString();
+        }"""
+    )
+    assert copied.strip().startswith("SELECT")
+    assert len(duckdb.connect().extract_statements(copied)) == 1
+
+
+def test_a_copied_echo_parses_the_same_as_what_was_typed(scratch, browser):
+    _, server = scratch
+    server.start()
+    typed = (
+        "SELECT $q$ one FROM two WHERE three $q$ AS kept, E'it\\'s FROM x' AS "
+        "also_kept, 1 AS padding -- ' FROM comment WHERE x = 0"
+    )
+    page = browser.new_page(viewport={"width": 1280, "height": 720})
+    page.goto(f"{BASE}/under/sql")
+    page.fill("textarea[name=sql]", typed)
+    page.click("button[type=submit]")
+    page.wait_for_load_state()
+    copied = page.evaluate(
+        """() => {
+          const range = document.createRange();
+          range.selectNodeContents(document.querySelector('pre.u-sql'));
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          return selection.toString();
+        }"""
+    )
+    assert copied == typed
+
+
+def rows_scratch(settings, count=60):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    writer.add(
+        "raw.items",
+        [
+            {
+                "item_id": f"row-{n:03}",
+                "source_id": "wire",
+                "title": f"Headline {n}",
+                "summary": "s" * 200 + "PASTTHECUT",
+                "url": f"https://example.com/{n}",
+                "first_seen_at": datetime.now(UTC),
+            }
+            for n in range(count)
+        ],
+    )
+    writer.flush()
+    conn.close()
+
+
+def projector_page(browser, width=1280, height=720, permissions=(), script=""):
+    context = browser.new_context(
+        viewport={"width": width, "height": height},
+        permissions=list(permissions),
+    )
+    context.route(
+        "**/*",
+        lambda route: (
+            route.continue_()
+            if route.request.url.startswith((BASE, "data:"))
+            else route.abort()
+        ),
+    )
+    context.add_init_script(
+        "try { localStorage.setItem('projector', '1'); } catch (error) {}"
+        + script
+    )
+    return context, context.new_page()
+
+
+def test_rows_expand_page_collapse_and_survive_a_refresh(scratch, browser):
+    settings, server = scratch
+    rows_scratch(settings)
+    server.start()
+    _, page = projector_page(browser)
+    page.goto(f"{BASE}/under/data-model?table=raw.items")
+    recent = page.locator(
+        '[data-rows-open="recent"][data-rows-table="raw.items"]'
+    )
+    body = page.locator('[data-rows-body="raw.items"]')
+    assert not body.is_visible()
+    url = page.url
+    recent.click()
+    body.locator("table").wait_for()
+    assert page.url == url
+    assert recent.get_attribute("aria-expanded") == "true"
+    assert "Rows 1 to 25 of 60" in body.inner_text()
+    assert body.locator("button", has_text="Newer").is_disabled()
+    # A wide table scrolls in the panel, so its last columns can be reached.
+    assert (
+        body.locator(".u-scroll").evaluate(
+            "(box) => getComputedStyle(box).overflowX"
+        )
+        == "auto"
+    )
+    assert "_file" in body.locator("thead").inner_text()
+    assert "PASTTHECUT" not in body.inner_text()
+    assert "cut" in body.locator("table").inner_text()
+
+    body.locator("button", has_text="Older").click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-rows-body]')"
+        ".innerText.includes('Rows 26 to 50')"
+    )
+    page.locator("[data-under-refresh]").first.click()
+    page.wait_for_timeout(1500)
+    body = page.locator('[data-rows-body="raw.items"]')
+    assert "Rows 26 to 50 of 60" in body.inner_text()
+    recent = page.locator(
+        '[data-rows-open="recent"][data-rows-table="raw.items"]'
+    )
+    assert recent.get_attribute("aria-expanded") == "true"
+
+    body.locator("button", has_text="Older").click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-rows-body]')"
+        ".innerText.includes('Rows 51 to 60')"
+    )
+    assert body.locator("button", has_text="Older").is_disabled()
+    assert page.evaluate(
+        "() => document.documentElement.scrollWidth"
+        " <= document.documentElement.clientWidth"
+    )
+
+    recent.click()
+    page.wait_for_timeout(100)
+    assert not body.is_visible()
+    assert recent.get_attribute("aria-expanded") == "false"
+    assert body.inner_text() == ""
+
+    sample = page.locator(
+        '[data-rows-open="sample"][data-rows-table="raw.items"]'
+    )
+    sample.click()
+    body.locator("table").wait_for()
+    first = body.locator("table").inner_text()
+    assert "Sample 1:" in body.inner_text()
+    body.locator("button", has_text="Another sample").click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-rows-body]')"
+        ".innerText.includes('Sample 2:')"
+    )
+    assert body.locator("table").inner_text() != first
+    body.locator("button", has_text="Previous sample").click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-rows-body]')"
+        ".innerText.includes('Sample 1:')"
+    )
+    assert body.locator("table").inner_text() == first
+    body.locator("button", has_text="Close").click()
+    page.wait_for_timeout(100)
+    assert not body.is_visible()
+
+
+def test_rows_open_inside_the_inventory_table(scratch, browser):
+    settings, server = scratch
+    rows_scratch(settings)
+    server.start()
+    _, page = projector_page(browser)
+    page.goto(f"{BASE}/under/inventory")
+    page.locator(
+        '[data-rows-open="recent"][data-rows-table="raw.items"]'
+    ).click()
+    body = page.locator('[data-rows-body="raw.items"]')
+    body.locator("table").wait_for()
+    assert "Rows 1 to 25 of 60" in body.inner_text()
+    assert page.evaluate(
+        "() => document.documentElement.scrollWidth"
+        " <= document.documentElement.clientWidth"
+    )
+
+
+def copied_block(page):
+    return page.evaluate(
+        """() => document.querySelector('pre.u-sql').textContent"""
+    ).strip()
+
+
+def serialized(sql):
+    text = (
+        duckdb.connect()
+        .execute("SELECT json_serialize_sql(?)", [sql])
+        .fetchone()[0]
+    )
+    tree = json.loads(text)
+
+    def clean(value):
+        if isinstance(value, dict):
+            return {
+                key: clean(item)
+                for key, item in value.items()
+                if not key.startswith("query_location")
+            }
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        return value
+
+    return clean(tree)
+
+
+def test_the_copy_button_copies_the_query_text_only(scratch, browser):
+    settings, server = scratch
+    rows_scratch(settings)
+    server.start()
+    _, page = projector_page(
+        browser, permissions=("clipboard-read", "clipboard-write")
+    )
+    page.goto(f"{BASE}/under/data-model?table=raw.items")
+    page.locator(
+        '[data-rows-open="recent"][data-rows-table="raw.items"]'
+    ).click()
+    body = page.locator('[data-rows-body="raw.items"]')
+    body.locator("table").wait_for()
+    button = body.locator("[data-copy-sql]")
+    shown = body.locator("pre.u-sql").evaluate("(pre) => pre.textContent")
+    button.click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-rows-body] [data-copy-sql]')"
+        ".textContent === 'Copied'"
+    )
+    pasted = page.evaluate("() => navigator.clipboard.readText()")
+    assert pasted == shown.strip()
+    assert "Copy" not in pasted
+    assert pasted.startswith("SELECT")
+    assert serialized(pasted) == serialized(shown)
+    assert serialized(pasted)["error"] is False
+    page.wait_for_function(
+        "() => document.querySelector('[data-rows-body] [data-copy-sql]')"
+        ".textContent === 'Copy'"
+    )
+
+
+def test_the_copy_button_falls_back_without_the_clipboard_api(
+    scratch, browser
+):
+    _, server = scratch
+    server.start()
+    _, page = projector_page(
+        browser,
+        script="""
+        Object.defineProperty(navigator, 'clipboard', {value: undefined});
+        document.addEventListener('copy', () => {
+          const box = document.activeElement;
+          window.copiedText = box.value;
+        });
+        """,
+    )
+    page.goto(f"{BASE}/under/queries")
+    page.locator("details.u-query[open] [data-copy-sql]").first.click()
+    page.wait_for_function("() => window.copiedText !== undefined")
+    copied = page.evaluate("() => window.copiedText")
+    assert copied == copied_block(page)
+    assert (
+        "Copied"
+        in page.locator(
+            "details.u-query[open] [data-copy-sql]"
+        ).first.inner_text()
+    )
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "projector"),
+    [(1280, 720, True), (1920, 1080, False)],
+)
+def test_a_card_link_stays_clear_of_its_header(
+    scratch, browser, width, height, projector
+):
+    settings, server = scratch
+    add_item(settings, "linked", entity="ind")
+    server.start()
+    context = browser.new_context(viewport={"width": width, "height": height})
+    context.route(
+        "**/*",
+        lambda route: (
+            route.continue_()
+            if route.request.url.startswith((BASE, "data:"))
+            else route.abort()
+        ),
+    )
+    if projector:
+        context.add_init_script(
+            "try { localStorage.setItem('projector', '1'); } catch (e) {}"
+        )
+    page = context.new_page()
+    page.goto(f"{BASE}/?window=3h")
+    page.wait_for_function("() => window.Monitor && window.Monitor.mapData")
+    found = page.evaluate(
+        """() => [...document.querySelectorAll('[data-card-link]')].map(
+          (link) => {
+            const box = link.getBoundingClientRect();
+            const head = link.closest('.panel-head');
+            const room = head.getBoundingClientRect();
+            const hits = [...head.children].filter((other) => {
+              if (other === link) return false;
+              const b = other.getBoundingClientRect();
+              return b.left < box.right && box.left < b.right
+                && b.top < box.bottom && box.top < b.bottom;
+            }).map((other) => other.className);
+            return {
+              key: link.dataset.cardLink,
+              width: box.width,
+              height: box.height,
+              inside: box.left >= room.left && box.right <= room.right
+                && box.top >= room.top && box.bottom <= room.bottom,
+              hits,
+              text: link.textContent,
+              size: parseFloat(getComputedStyle(link).fontSize),
+            };
+          })"""
+    )
+    assert len(found) == 11
+    for link in found:
+        assert link["hits"] == [], link
+        assert link["inside"], link
+        assert link["height"] >= 22, link
+        assert link["width"] >= 28, link
+        assert link["text"] in {"SQL", "Code"}
+        assert link["size"] >= 11, link
+    assert page.evaluate(
+        "() => document.documentElement.scrollWidth"
+        " <= document.documentElement.clientWidth"
+    )
+
+
+def test_a_card_link_keeps_up_with_an_in_place_switch(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "linked")
+    server.start()
+    context, page = open_page(browser, "/?window=3h")
+    marked = page.evaluate("() => { window.samePage = true; return true; }")
+    assert marked
+    link = page.locator('[data-card-link="stream"]')
+    assert "window=3h" in link.get_attribute("href")
+    page.locator('a[data-filter="window:24h"]').click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-card-link=stream]')"
+        ".getAttribute('href').includes('window=24h')"
+    )
+    assert page.evaluate("() => window.samePage") is True
+    page.locator('a[data-filter="level:state"]').first.click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-card-link=brief]')"
+        ".getAttribute('href').includes('level=state')"
+    )
+    assert page.evaluate("() => window.samePage") is True
+    brief = page.locator('[data-card-link="brief"]').get_attribute("href")
+    assert brief.endswith("#code")
+    link.click()
+    page.wait_for_url("**/under/panels/stream?**")
+    assert "window=24h" in page.url
+    assert "level=state" in page.url
+    back = page.locator("a", has_text="Back to the dashboard").first
+    href = back.get_attribute("href")
+    assert "window=24h" in href
+    assert "level=state" in href
+    context.close()
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("path", ["/methods", "/under/panels/tone"])
+def test_math_draws_and_fits_at_1280_in_projector_mode(
+    scratch, browser, path, theme
+):
+    _, server = scratch
+    server.start()
+    _, page = projector_page(
+        browser,
+        script=f"localStorage.setItem('theme', '{theme}');",
+    )
+    page.goto(f"{BASE}{path}")
+    page.wait_for_selector(".katex")
+    found = page.evaluate(
+        """() => {
+          const text = getComputedStyle(document.body).color;
+          const shown = [...document.querySelectorAll('.katex')];
+          const boxes = [...document.querySelectorAll('.math-display')];
+          return {
+            drawn: shown.length,
+            raw: document.querySelector('.math-display, .math-inline')
+              ? [...document.querySelectorAll('.math-display, .math-inline')]
+                .filter((box) => !box.querySelector('.katex')).length
+              : 0,
+            wide: boxes.filter(
+              (box) => box.scrollWidth > box.clientWidth + 1
+            ).length,
+            pageWide: document.documentElement.scrollWidth
+              > document.documentElement.clientWidth,
+            sameColor: getComputedStyle(
+              document.querySelector('.katex-html')).color,
+            bodyColor: text,
+            size: parseFloat(
+              getComputedStyle(document.querySelector('.katex')).fontSize),
+            images: document.querySelectorAll('.doc img').length,
+          };
+        }"""
+    )
+    assert found["drawn"] > 0
+    assert found["raw"] == 0
+    assert found["wide"] == 0
+    assert not found["pageWide"]
+    assert found["size"] >= 14
+    assert found["images"] == 0
+
+
+# A card's page in a replay.
+
+
+def start_replay(page):
+    page.evaluate(
+        "() => document.querySelector('[data-toggle-replay]').click()"
+    )
+    page.wait_for_function("() => window.Monitor.replay.active")
+
+
+def as_of_in(url):
+    text = parse_qs(urlsplit(url).query)["as_of"][0]
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+
+
+@pytest.mark.parametrize("value", ["1", "2026", "not-a-time"])
+def test_a_value_that_is_not_a_moment_starts_no_replay(
+    scratch, browser, value
+):
+    _, server = scratch
+    server.start()
+    _, page = open_page(browser, f"/?window=3h&as_of={value}")
+    page.wait_for_timeout(500)
+    assert page.evaluate("() => window.Monitor.replay.active") is False
+
+
+def test_a_moment_with_no_zone_replays_it_as_utc(scratch, browser):
+    _, server = scratch
+    server.start()
+    at = (datetime.now(UTC) - timedelta(hours=1)).replace(microsecond=0)
+    text = at.strftime("%Y-%m-%dT%H:%M:%S")
+    _, page = open_page(browser, f"/?window=3h&as_of={text}")
+    page.wait_for_function(
+        "() => window.Monitor && window.Monitor.replay.active"
+    )
+    resumed = page.evaluate("() => window.Monitor.replay.asOf")
+    assert 0 <= resumed - at.timestamp() * 1000 < 60_000
+
+
+def test_exit_replay_reloads_from_a_page_with_a_hash(scratch, browser):
+    _, server = scratch
+    server.start()
+    _, page = open_page(browser, "/?window=3h#band-3")
+    start_replay(page)
+    page.evaluate(
+        "() => document.querySelector('[data-toggle-replay]').click()"
+    )
+    page.wait_for_function(
+        "() => window.Monitor && !window.Monitor.replay.active"
+    )
+    assert "#band-3" not in page.url
+    assert page.locator("#mode-pill").inner_text() != "REPLAY"
+
+
+def test_a_card_link_in_a_replay_carries_the_moment_and_back_returns_to_it(
+    scratch, browser
+):
+    _, server = scratch
+    server.start()
+    _, page = open_page(browser, "/?window=3h")
+    start_replay(page)
+    replayed = page.evaluate("() => window.Monitor.replay.asOf")
+
+    page.locator('[data-card-link="rising"]').click()
+    page.wait_for_url("**/under/panels/rising*")
+    moment = as_of_in(page.url)
+    assert abs(moment.timestamp() * 1000 - replayed) < 60_000
+    assert "window=3h" in page.url
+    note = page.locator("[data-replay-moment]").inner_text()
+    assert et_label(moment) in note
+
+    page.locator("#under-main").get_by_text("Back to the dashboard").click()
+    page.wait_for_function(
+        "() => window.Monitor && window.Monitor.replay.active"
+    )
+    assert page.locator("#mode-pill").inner_text() == "REPLAY"
+    resumed = page.evaluate("() => window.Monitor.replay.asOf")
+    assert 0 <= resumed - moment.timestamp() * 1000 < 60_000
+    assert "window=3h" in page.url
+
+    page.evaluate(
+        "() => document.querySelector('[data-toggle-replay]').click()"
+    )
+    page.wait_for_load_state()
+    page.wait_for_function("() => window.Monitor")
+    assert "as_of" not in page.url
+    assert page.locator("#mode-pill").inner_text() == "LIVE"
+    assert not page.evaluate("() => window.Monitor.replay.active")
+
+
+# What a refresh of a view keeps.
+
+
+def refreshed(page, refresh):
+    """Run a refresh, and wait until it has replaced the view's content."""
+    page.evaluate(
+        "() => { window.before = document.querySelector('.u-section'); }"
+    )
+    refresh()
+    page.wait_for_function(
+        "() => document.querySelector('.u-section') !== window.before"
+    )
+
+
+@pytest.mark.parametrize("how", ["button", "key"])
+def test_formulas_stay_drawn_after_a_refresh_of_a_card_page(
+    scratch, browser, how
+):
+    _, server = scratch
+    server.start()
+    _, page = projector_page(browser)
+    page.goto(f"{BASE}/under/panels/rising")
+    page.wait_for_selector(".katex")
+    drawn = page.locator(".katex").count()
+    assert drawn
+
+    def refresh():
+        if how == "button":
+            page.locator("[data-under-refresh]").first.click()
+        else:
+            page.keyboard.press("r")
+
+    refreshed(page, refresh)
+    page.wait_for_selector(".katex")
+    assert page.locator(".katex").count() == drawn
+    assert page.locator(".math-display:not(:has(.katex))").count() == 0
+    assert "\\frac" not in page.locator("#methods").inner_text()
+
+
+def test_a_refresh_keeps_the_horizontal_scroll_of_a_rows_table(
+    scratch, browser
+):
+    settings, server = scratch
+    rows_scratch(settings)
+    server.start()
+    _, page = projector_page(browser)
+    page.goto(f"{BASE}/under/data-model?table=raw.items")
+    page.locator(
+        '[data-rows-open="recent"][data-rows-table="raw.items"]'
+    ).click()
+    box = page.locator('[data-rows-body="raw.items"] .u-scroll')
+    box.locator("table").wait_for()
+    box.evaluate("(element) => { element.scrollLeft = 240; }")
+    assert box.evaluate("(element) => element.scrollLeft") == 240
+    refreshed(page, page.locator("[data-under-refresh]").first.click)
+    assert box.evaluate("(element) => element.scrollLeft") == 240
+
+
+def test_a_sample_opened_from_the_no_time_message_is_the_open_mode(
+    scratch, browser
+):
+    settings, server = scratch
+    conn = connect(settings)
+    conn.execute("ALTER TABLE lake.raw.archive_index DROP COLUMN created_at")
+    conn.close()
+    server.start()
+    _, page = projector_page(browser)
+    page.goto(f"{BASE}/under/data-model?table=raw.archive_index")
+    controls = '[data-rows-table="raw.archive_index"]'
+    recent = page.locator(f'[data-rows-open="recent"]{controls}')
+    sample = page.locator(f'[data-rows-open="sample"]{controls}')
+    body = page.locator('[data-rows-body="raw.archive_index"]')
+    recent.click()
+    body.get_by_role("button", name="Show a sample").click()
+    body.get_by_role("button", name="Another sample").wait_for()
+    assert body.get_attribute("data-rows-mode") == "sample"
+    assert sample.get_attribute("aria-expanded") == "true"
+    assert recent.get_attribute("aria-expanded") == "false"
+    sample.click()
+    assert not body.is_visible()

@@ -1,0 +1,16 @@
+{% extends "under/base.html" %}
+{% block title %}Dashboard cards{% endblock %}
+{% block content %}
+<h1>Dashboard cards: the SQL and the code behind each one</h1>
+<p class="u-lede">Each card on the dashboard has a small link in its header to the page for it here. A page runs the card's real methods and shows each statement as it ran, under the filters you came with, and says what is not SQL. <a class="text-link" href="{{ back_href }}">Back to the dashboard</a>.</p>
+{% if filters.is_replay %}<p class="u-note" data-replay-moment>Replay: these links show each card as of {{ filters.as_of|u_et }}.</p>{% endif %}
+<section class="u-section" id="cards">
+  <div class="u-section-head"><h2 class="u-section-title">Every card</h2><span class="panel-note">Code marks a card where a model or a statistical formula produces what is on screen. SQL marks the others, whose pages list any arithmetic done after the query.</span></div>
+  <div class="u-section-body">
+    <div class="u-scroll"><table class="table u-table">
+      <thead><tr><th>Card</th><th>Its link</th><th>Runs</th></tr></thead>
+      <tbody>{% for card in cards %}<tr><td><a class="text-link" href="/under/panels/{{ card.key }}?{{ qs }}">{{ card.title }}</a></td><td>{% if card.key == 'kpis' %}none: the header row has no card head{% else %}{{ card.label }}{% endif %}</td><td>{% for method in card.methods %}<code>{{ method.name }}</code>{{ ', ' if not loop.last else '' }}{% endfor %}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+</section>
+{% endblock %}

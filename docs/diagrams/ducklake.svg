@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="lake-title">
+  <title id="lake-title">DuckLake: DuckDB keeps table definitions, snapshots, and small inserts in a SQLite catalog, and larger data in Parquet files.</title>
+  <style>
+    .dl-bg { fill: var(--surface-1, #fcfcfb); }
+    .dl-box { fill: var(--surface-2, #efefec); stroke: var(--text-3, #6f6e69); stroke-width: 2; }
+    .dl-store { fill: var(--surface-2, #efefec); stroke: var(--accent, #6250d6); stroke-width: 3; }
+    .dl-row { fill: var(--surface-1, #fcfcfb); stroke: var(--line, #a9a9a3); stroke-width: 1.5; }
+    .dl-name { fill: var(--text-1, #0b0b0b); font: 650 17px ui-sans-serif, system-ui, sans-serif; }
+    .dl-code { fill: var(--text-1, #0b0b0b); font: 600 14px ui-monospace, Menlo, monospace; }
+    .dl-note { fill: var(--text-2, #52514e); font: 400 14px ui-sans-serif, system-ui, sans-serif; }
+    .dl-line { fill: none; stroke: var(--text-2, #52514e); stroke-width: 2; }
+    .dl-head { fill: var(--text-2, #52514e); }
+  </style>
+  <defs>
+    <marker id="dl-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path class="dl-head" d="M0 0 L10 5 L0 10 Z"/>
+    </marker>
+  </defs>
+  <rect class="dl-bg" width="960" height="600"/>
+
+  <rect class="dl-box" x="20" y="16" width="190" height="66" rx="6"/>
+  <text class="dl-name" x="32" y="40">pipeline</text>
+  <text class="dl-note" x="32" y="62">INSERT and SELECT</text>
+
+  <rect class="dl-box" x="750" y="16" width="190" height="66" rx="6"/>
+  <text class="dl-name" x="762" y="40">web, child process</text>
+  <text class="dl-note" x="762" y="62">SELECT, read-only</text>
+
+  <rect class="dl-box" x="270" y="16" width="420" height="90" rx="6"/>
+  <text class="dl-name" x="284" y="40">DuckDB, one in each process</text>
+  <text class="dl-note" x="284" y="62">Loads the ducklake and sqlite extensions, then runs:</text>
+  <text class="dl-code" x="284" y="86">ATTACH 'ducklake:sqlite:...' AS lake</text>
+
+  <path class="dl-line" marker-start="url(#dl-arrow)" marker-end="url(#dl-arrow)" d="M210 49 H270"/>
+  <path class="dl-line" marker-start="url(#dl-arrow)" marker-end="url(#dl-arrow)" d="M690 49 H750"/>
+
+  <rect class="dl-store" x="20" y="190" width="490" height="396" rx="8"/>
+  <text class="dl-name" x="36" y="216">SQLite catalog: data/catalog.sqlite</text>
+  <text class="dl-note" x="36" y="238">Plain tables that any SQL client can read.</text>
+
+  <rect class="dl-row" x="36" y="252" width="458" height="46" rx="4"/>
+  <text class="dl-code" x="46" y="272">ducklake_snapshot</text>
+  <text class="dl-note" x="46" y="290">one row per commit</text>
+
+  <rect class="dl-row" x="36" y="304" width="458" height="46" rx="4"/>
+  <text class="dl-code" x="46" y="324">ducklake_table, ducklake_column</text>
+  <text class="dl-note" x="46" y="342">each table's schema, with nested types</text>
+
+  <rect class="dl-row" x="36" y="356" width="458" height="46" rx="4"/>
+  <text class="dl-code" x="46" y="376">ducklake_data_file</text>
+  <text class="dl-note" x="46" y="394">which Parquet files hold each table, by snapshot</text>
+
+  <rect class="dl-row" x="36" y="408" width="458" height="46" rx="4"/>
+  <text class="dl-code" x="46" y="428">ducklake_file_column_stats</text>
+  <text class="dl-note" x="46" y="446">minimum, maximum, and nulls per column, per file</text>
+
+  <rect class="dl-row" x="36" y="460" width="458" height="46" rx="4"/>
+  <text class="dl-code" x="46" y="480">ducklake_inlined_data_...</text>
+  <text class="dl-note" x="46" y="498">the rows of each insert of up to 2,000 rows</text>
+
+  <text class="dl-note" x="36" y="530">Tables with long rows set the limit to 0: embeddings,</text>
+  <text class="dl-note" x="36" y="550">prompts, traces, and article text always go to Parquet.</text>
+
+  <rect class="dl-store" x="590" y="190" width="350" height="186" rx="8"/>
+  <text class="dl-name" x="606" y="216">Parquet files: data/lake/</text>
+  <text class="dl-code" x="606" y="244">raw/items/ducklake-...parquet</text>
+  <text class="dl-code" x="606" y="266">nlp/embeddings/ducklake-...parquet</text>
+  <text class="dl-note" x="606" y="296">Immutable. Compressed with zstd level 6,</text>
+  <text class="dl-note" x="606" y="316">with a target size of 128MB.</text>
+  <text class="dl-note" x="606" y="346">A query opens only files whose column</text>
+  <text class="dl-note" x="606" y="366">statistics can match its filter.</text>
+
+  <rect class="dl-box" x="590" y="436" width="350" height="150" rx="8"/>
+  <text class="dl-name" x="606" y="462">Maintenance, every 15 minutes</text>
+  <text class="dl-note" x="606" y="484">Runs on the pipeline's own connection.</text>
+  <text class="dl-note" x="606" y="506">Flush: inlined rows move to Parquet.</text>
+  <text class="dl-note" x="606" y="526">Merge: small adjacent files become one.</text>
+  <text class="dl-note" x="606" y="546">Cleanup: a replaced file is deleted 2 hours</text>
+  <text class="dl-note" x="606" y="566">after it was replaced.</text>
+
+  <path class="dl-line" marker-start="url(#dl-arrow)" marker-end="url(#dl-arrow)" d="M340 106 V190"/>
+  <text class="dl-note" x="130" y="136">snapshot, schema, file list,</text>
+  <text class="dl-note" x="130" y="156">and statistics; commits;</text>
+  <text class="dl-note" x="130" y="176">inlined rows</text>
+
+  <path class="dl-line" marker-start="url(#dl-arrow)" marker-end="url(#dl-arrow)" d="M640 106 V190"/>
+  <text class="dl-note" x="652" y="136">larger inserts are written;</text>
+  <text class="dl-note" x="652" y="156">reads open the chosen files</text>
+
+  <path class="dl-line" marker-end="url(#dl-arrow)" d="M494 483 H550 V340 H590"/>
+  <text class="dl-note" x="556" y="424">flush</text>
+
+  <path class="dl-line" marker-end="url(#dl-arrow)" d="M765 436 V376"/>
+  <text class="dl-note" x="775" y="412">rewrites and deletes files</text>
+</svg>

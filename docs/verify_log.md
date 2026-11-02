@@ -6,7 +6,7 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
 | # | Check | Result |
 |---|---|---|
 | V1 | DuckDB, ducklake, and sqlite extension versions | pass 2026-11-01: duckdb 2.0.0, ducklake 417a9117f5, sqlite_scanner e223dc0149, DuckLake format 1.1 |
-| V2 | Read-only attach works and rejects writes | pass 2026-11-01: `READ_ONLY` attach reads and rejects INSERT |
+| V2 | Read-only attach works and rejects writes | pass 2026-11-01: `READ_ONLY` attach reads and rejects INSERT. It does not make arbitrary SQL safe: on a scratch lake, `ducklake_cleanup_old_files` and `ducklake_delete_orphaned_files` deleted Parquet files, and `COPY`, `EXPORT DATABASE`, a writable `ATTACH` of the catalog, and `DETACH` succeeded. The SQL console adds a parsed-statement allowlist and a macOS sandbox that denies network access, other programs, file writes, and reads under the home directory outside the lake and Python |
 | V3 | Lake option names accepted | pass 2026-11-01: data_inlining_row_limit, parquet_compression, parquet_compression_level, target_file_size |
 | V4 | Maintenance function names | pass 2026-11-01: ducklake_flush_inlined_data; ducklake_merge_adjacent_files; ducklake_expire_snapshots; ducklake_cleanup_old_files |
 | V5 | Snapshot listing function | pass 2026-11-01: `lake.snapshots()` columns: ['snapshot_id', 'snapshot_time', 'schema_version', 'changes', 'author', 'commit_message', 'commit_extra_info'] |

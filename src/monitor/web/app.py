@@ -42,6 +42,8 @@ from monitor.web.hub import Hub
 from monitor.web.panels import Panels, lean_glyph, lean_text
 from monitor.web.readmodel import ReadModel
 from monitor.web.reference import Reference
+from monitor.web.under import Under, register_filters
+from monitor.web.under_panels import link_targets as card_link_targets
 from monitor.web.vectors import Vectors
 
 log = get(__name__)
@@ -120,6 +122,7 @@ def create_templates() -> Jinja2Templates:
         LEVELS=LEVELS,
         FOCUSES=FOCUSES,
         ALL_STATES=ALL_STATES,
+        CARD_LINKS=card_link_targets(),
     )
     return templates
 
@@ -139,7 +142,9 @@ class Web:
         self.vectors = Vectors(settings, self.model, load_embedding_model)
         self.drill = Drill(settings, self.model, self.panels, self.vectors)
         self.reference = Reference(settings, self.model, self.panels)
+        self.under = Under(settings, self.model, self.panels, self.reference)
         self.templates = create_templates()
+        register_filters(self.templates.env)
         self.hub = Hub(self.model, settings)
 
     def filters(self, request: Request) -> Filters:
@@ -187,7 +192,7 @@ def create_app(
     load_embedding_model: Callable[[Settings], Any] | None = None,
 ) -> FastAPI:
     """Build the app. `load_embedding_model` replaces the on-disk model."""
-    from monitor.web.routes import api, fragments, pages, sse
+    from monitor.web.routes import api, fragments, pages, sse, under
 
     # FastAPI's documentation pages load their assets from CDNs.
     app = FastAPI(
@@ -212,6 +217,7 @@ def create_app(
     app.include_router(fragments.router)
     app.include_router(api.router)
     app.include_router(sse.router)
+    app.include_router(under.router)
     return app
 
 
