@@ -1719,6 +1719,17 @@ def test_state_attention_chart_has_bins_and_totals(client):
     assert data["table"][0]["bin_minutes"] == 15
 
 
+def test_state_attention_marks_the_states_own_closing(client):
+    data = client.get(
+        "/api/data/state_attention?key=GA&window=24h"
+        "&as_of=2026-11-04T01:00:00Z"
+    ).json()
+    details = {rule["label"]: rule["detail"] for rule in data["rules"]}
+    assert "GA" in details["7:00 GA"]
+    assert "6:00" in details
+    assert "GA" not in details["6:00"]
+
+
 def test_state_counties_count_items_and_match_evidence(client):
     data = client.get("/api/data/state_counties?key=GA").json()
     assert data["table"] == [{"fips": "13121", "n": 2}]
@@ -2225,6 +2236,41 @@ def test_pages_never_write_to_the_lake(lake_template, tmp_path):
         test_client.post("/watchlist/battleground?key=OH&value=in")
     assert conn.execute(query).fetchall() == before
     conn.close()
+
+
+def test_poll_rules_run_in_time_order_with_states_in_the_detail(settings):
+    panels = Panels(settings, SimpleNamespace())
+    closes = panels.poll_closes
+    first, second = closes[0], closes[1]
+    gap_start = first.at + (second.at - first.at) / 2
+    gap_end = second.at + timedelta(minutes=5)
+    panels.collection_gaps = lambda: [
+        {"gap_start": gap_start.astimezone(UTC), "gap_end": gap_end}
+    ]
+    filters = SimpleNamespace(
+        window_start=first.at - timedelta(minutes=1),
+        now=gap_end + timedelta(minutes=1),
+    )
+    rules = panels.poll_rules(filters)
+    assert [rule["label"] for rule in rules] == [
+        first.clock,
+        "Offline",
+        second.clock,
+        "Back online",
+    ]
+    assert rules[0]["detail"] == "Polls close: " + " ".join(first.states)
+    assert rules[1]["detail"] == "Collection stopped"
+    assert rules[3]["detail"] == "Collection resumed"
+    state = first.states[0]
+    labels = [
+        rule["label"] for rule in panels.poll_rules(filters, state=state)
+    ]
+    assert labels == [
+        f"{first.clock} {state}",
+        "Offline",
+        second.clock,
+        "Back online",
+    ]
 
 
 def test_a_claim_from_before_polls_close_is_not_shown(client):

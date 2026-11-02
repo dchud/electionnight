@@ -1219,11 +1219,6 @@ class Drill:
             self._sql("state_bins", where, bin=minutes),
             {**params, "usps": usps},
         )
-        rules = self.panels.poll_rules(filters)
-        close_at = parse_iso((self.state(usps) or {}).get("poll_close_et"))
-        if close_at and filters.window_start <= close_at <= filters.now:
-            label = f"Polls close {usps}"
-            rules = [*rules, {"time": close_at.isoformat(), "label": label}]
         table = [
             {
                 "bin_start": row["bin_start"],
@@ -1244,7 +1239,7 @@ class Drill:
         ]
         return {
             "table": table if any(row["n"] for row in rows) else [],
-            "rules": rules,
+            "rules": self.panels.poll_rules(filters, usps),
         }
 
     def state_counties(self, filters: Filters, usps: str) -> dict[str, Any]:

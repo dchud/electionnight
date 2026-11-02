@@ -161,9 +161,12 @@ class PollClose:
     states: tuple[str, ...]
 
     @property
+    def clock(self) -> str:
+        return self.at.astimezone(ET).strftime("%-I:%M")
+
+    @property
     def label(self) -> str:
-        local = self.at.astimezone(ET)
-        hour = local.strftime("%-I:%M %p").lower()
+        hour = self.at.astimezone(ET).strftime("%-I:%M %p").lower()
         return f"{hour} {' '.join(self.states)}"
 
 
@@ -795,26 +798,38 @@ class Panels:
             params,
         )
 
-    def poll_rules(self, filters: Filters) -> list[dict[str, Any]]:
+    def poll_rules(
+        self, filters: Filters, state: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Moments marked on time charts, in time order.
+
+        A state's page adds the state's code to the label of its own closing.
+        """
         start, end = filters.window_start, filters.now
         rules = [
-            {"time": close.at.isoformat(), "label": close.label}
+            (
+                close.at,
+                f"{close.clock} {state}"
+                if state in close.states
+                else close.clock,
+                f"Polls close: {' '.join(close.states)}",
+            )
             for close in self.poll_closes
             if start <= close.at <= end
         ]
         for gap in self.collection_gaps():
             if start <= gap["gap_start"] <= end:
                 rules.append(
-                    {"time": gap["gap_start"].isoformat(), "label": "Offline"}
+                    (gap["gap_start"], "Offline", "Collection stopped")
                 )
             if start <= gap["gap_end"] <= end:
                 rules.append(
-                    {
-                        "time": gap["gap_end"].isoformat(),
-                        "label": "Back online",
-                    }
+                    (gap["gap_end"], "Back online", "Collection resumed")
                 )
-        return rules
+        return [
+            {"time": at.isoformat(), "label": label, "detail": detail}
+            for at, label, detail in sorted(rules, key=lambda rule: rule[0])
+        ]
 
     def collection_gaps(self) -> list[dict[str, Any]]:
         """Periods with no collection, newest first."""

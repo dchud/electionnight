@@ -294,7 +294,7 @@ main { padding: .6rem 1rem 2rem; display: flex; flex-direction: column; gap: .6r
 :root[data-replay="1"] .replay-bar { display: flex; }
 .replay-bar input[type="range"] { flex: 1; }
 .tour-bar { position: fixed; top: 0; left: 0; height: 4px; background: var(--accent); z-index: 80; width: 0; }
-.tour-panel { position: fixed !important; inset: 0; z-index: 55; border-radius: 0; }
+.tour-panel { position: fixed !important; inset: 0; height: auto !important; z-index: 55; border-radius: 0; }
 
 /* Pages */
 .page { max-width: 1500px; margin: 0 auto; padding: .8rem 1rem 3rem; display: flex; flex-direction: column; gap: .7rem; }

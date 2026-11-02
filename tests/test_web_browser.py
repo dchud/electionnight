@@ -20,6 +20,7 @@ import pytest
 from conftest import clone_lake
 
 from monitor.lake import TABLES, BatchWriter, connect
+from monitor.web.panels import load_poll_closes
 from monitor.web.under import et_label
 
 pytestmark = [pytest.mark.slow, pytest.mark.enable_socket]
@@ -1584,3 +1585,186 @@ def test_a_sample_opened_from_the_no_time_message_is_the_open_mode(
     assert recent.get_attribute("aria-expanded") == "false"
     sample.click()
     assert not body.is_visible()
+
+
+def load_config_closes():
+    return load_poll_closes(Path("config"))
+
+
+def rule_rows(closes):
+    return [
+        {
+            "time": close.at.isoformat(),
+            "label": close.clock,
+            "detail": f"Polls close: {' '.join(close.states)}",
+        }
+        for close in closes
+    ]
+
+
+def overlapping_text(page, chart, words):
+    """Pairs of the named labels on a chart whose text boxes overlap."""
+    return page.evaluate(
+        """
+        ([chart, words]) => {
+          const boxes = [...document.querySelectorAll(
+            `[data-chart="${chart}"] svg text`
+          )].filter((node) => words.includes(node.textContent.trim()))
+            .map((node) => ({
+              text: node.textContent.trim(),
+              box: node.getBoundingClientRect(),
+            }));
+          const pairs = [];
+          boxes.forEach((a, index) => {
+            boxes.slice(index + 1).forEach((b) => {
+              const apart = a.box.right <= b.box.left
+                || b.box.right <= a.box.left
+                || a.box.bottom <= b.box.top
+                || b.box.bottom <= a.box.top;
+              if (!apart) pairs.push([a.text, b.text]);
+            });
+          });
+          return pairs;
+        }
+        """,
+        [chart, words],
+    )
+
+
+def chart_text(page, chart):
+    return page.evaluate(
+        """
+        (chart) => [...document.querySelectorAll(
+          `[data-chart="${chart}"] svg text`
+        )].map((node) => node.textContent.trim())
+        """,
+        chart,
+    )
+
+
+@pytest.mark.parametrize(
+    "hours,screen_width", [(7, 1280), (24, 1280), (24, 700)]
+)
+def test_poll_closing_labels_stay_apart_and_leave_the_chart_its_width(
+    scratch, browser, hours, screen_width
+):
+    settings, server = scratch
+    add_item(settings, "i0")
+    server.start()
+    closes = load_config_closes()
+    latest = datetime(2026, 11, 4, 3, 35, tzinfo=UTC)
+    gap = [
+        {
+            "time": "2026-11-04T00:40:00+00:00",
+            "label": "Offline",
+            "detail": "Collection stopped",
+        },
+        {
+            "time": "2026-11-04T00:50:00+00:00",
+            "label": "Back online",
+            "detail": "Collection resumed",
+        },
+    ]
+    rules = sorted(
+        rule_rows(c for c in closes if c.at <= latest) + gap,
+        key=lambda rule: datetime.fromisoformat(rule["time"]),
+    )
+    start = latest - timedelta(hours=hours)
+    table = [
+        {
+            "bin_start": (start + timedelta(hours=step)).isoformat(),
+            "n": 5,
+            "label": "A storyline",
+            "storyline_id": "s1",
+            "total": 50,
+        }
+        for step in range(hours + 1)
+    ]
+    context, page = projector_page(browser, screen_width)
+    page.route(
+        "**/api/data/stream*",
+        lambda route: route.fulfill(json={"table": table, "rules": rules}),
+    )
+    page.goto(f"{BASE}/?window=24h")
+    page.wait_for_selector('[data-chart="stream"] g.mark-area path')
+    page.wait_for_timeout(300)
+    words = [rule["label"] for rule in rules]
+    drawn = [text for text in chart_text(page, "stream") if text in words]
+    assert sorted(drawn) == sorted(words)
+    assert overlapping_text(page, "stream", words) == []
+    width = page.evaluate(
+        """
+        () => {
+          const svg = document.querySelector('[data-chart="stream"] svg');
+          const area = svg.querySelector("g.mark-area path");
+          return area.getBoundingClientRect().width
+            / svg.getBoundingClientRect().width;
+        }
+        """
+    )
+    assert width > 0.8
+    context.close()
+
+
+def test_entity_rank_names_the_newer_line_when_two_end_at_one_rank(
+    scratch, browser
+):
+    settings, server = scratch
+    add_item(settings, "i0")
+    server.start()
+    now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+    older, newer = now - timedelta(hours=1), now
+
+    def row(name, at, rank):
+        return {
+            "bin_start": at.isoformat(),
+            "entity_id": name.lower(),
+            "entity": name,
+            "party": "Other",
+            "rank": rank,
+            "n": 5,
+            "evidence": "",
+        }
+
+    table = [
+        row("Alpha", older, 1),
+        row("Bravo", older, 2),
+        row("Charlie", older, 3),
+        row("Delta", newer, 1),
+        row("Echo", newer, 2),
+    ]
+    context, page = open_page(browser)
+    page.route(
+        "**/api/data/bump*",
+        lambda route: route.fulfill(json={"table": table, "rules": []}),
+    )
+    page.reload()
+    page.wait_for_selector('[data-chart="bump"] g.mark-symbol path')
+    page.wait_for_timeout(300)
+    shown = set(chart_text(page, "bump"))
+    assert {"Delta", "Echo", "Charlie"} <= shown
+    assert not {"Alpha", "Bravo"} & shown
+    context.close()
+
+
+@pytest.mark.parametrize("width,height", [(1280, 720), (1920, 1080)])
+def test_the_tour_fills_the_screen(scratch, browser, width, height):
+    settings, server = scratch
+    add_item(settings, "i0")
+    server.start()
+    context, page = projector_page(browser, width, height)
+    page.goto(f"{BASE}/?window=3h")
+    page.wait_for_function("() => window.Monitor && window.Monitor.mapData")
+    page.keyboard.press("t")
+    page.wait_for_selector(".tour-panel")
+    box = page.evaluate(
+        """
+        () => {
+          const box = document.querySelector(".tour-panel")
+            .getBoundingClientRect();
+          return [box.top, box.left, box.width, box.height];
+        }
+        """
+    )
+    assert box == [0, 0, width, height]
+    context.close()
