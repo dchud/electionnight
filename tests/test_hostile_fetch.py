@@ -974,7 +974,7 @@ async def test_a_little_padding_after_a_gzip_stream_is_ignored():
 @pytest.mark.parametrize(
     ("coding", "packed"),
     [
-        ("gzip", gzip.compress(b"x" * 500)),
+        ("gzip", gzip.compress(b"x" * 500, mtime=0)),
         ("deflate", zlib.compress(b"x" * 500)),
     ],
 )
