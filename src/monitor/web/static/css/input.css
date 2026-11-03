@@ -47,13 +47,13 @@
   --crit-bg: #fde3e1;
   --crit-text: #8a1c17;
   --ok: #1a7f4b;
-  --sql-keyword: #6b2ea6;
-  --sql-function: #00606d;
-  --sql-string: #1d6a2c;
-  --sql-number: #8a4500;
-  --sql-comment: #5c5b56;
-  --sql-identifier: #625a00;
-  --sql-param: #8a4500;
+  --code-keyword: #6b2ea6;
+  --code-function: #00606d;
+  --code-string: #1d6a2c;
+  --code-number: #8a4500;
+  --code-comment: #5c5b56;
+  --code-identifier: #625a00;
+  --code-param: #8a4500;
   --base-size: 16px;
   --chart-label: 13px;
   --stroke-scale: 1;
@@ -93,13 +93,13 @@
   --crit-bg: #551a17;
   --crit-text: #ffc9c5;
   --ok: #4cc38a;
-  --sql-keyword: #b3a9f5;
-  --sql-function: #5fd0d8;
-  --sql-string: #8fd694;
-  --sql-number: #f0b070;
-  --sql-comment: #b4b3a8;
-  --sql-identifier: #dccf6a;
-  --sql-param: #f0b070;
+  --code-keyword: #b3a9f5;
+  --code-function: #5fd0d8;
+  --code-string: #8fd694;
+  --code-number: #f0b070;
+  --code-comment: #b4b3a8;
+  --code-identifier: #dccf6a;
+  --code-param: #f0b070;
 }
 :root[data-projector="1"] {
   --base-size: 20px;
@@ -529,13 +529,13 @@ pre.raw { font-size: .72rem; overflow: auto; background: var(--surface-2); paddi
 .under-main { max-width: 1500px; }
 .u-lede { font-size: .98rem; color: var(--text-2); margin: 0; max-width: 70rem; }
 .tm-wrap svg { display: block; width: 100%; height: auto; max-height: calc(100vh - 2rem); }
-.sql-keyword { color: var(--sql-keyword); font-weight: var(--weight-label); }
-.sql-function { color: var(--sql-function); }
-.sql-string { color: var(--sql-string); }
-.sql-number { color: var(--sql-number); }
-.sql-comment { color: var(--sql-comment); font-style: italic; }
-.sql-identifier { color: var(--sql-identifier); }
-.sql-param { color: var(--sql-param); font-weight: var(--weight-label); }
+.code-keyword { color: var(--code-keyword); font-weight: var(--weight-label); }
+.code-function { color: var(--code-function); }
+.code-string { color: var(--code-string); }
+.code-number { color: var(--code-number); }
+.code-comment { color: var(--code-comment); font-style: italic; }
+.code-identifier { color: var(--code-identifier); }
+.code-param { color: var(--code-param); font-weight: var(--weight-label); }
 .u-section { display: flex; flex-direction: column; min-width: 0; scroll-margin-top: 4rem; background: var(--surface-1); border: 1px solid var(--line); border-radius: 8px; }
 .u-section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .2rem .8rem; padding: .5rem .8rem; border-bottom: 1px solid var(--line-soft); }
 .u-section-title { font-size: 1rem; font-weight: var(--weight-heading); margin: 0; }

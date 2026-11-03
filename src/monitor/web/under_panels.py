@@ -22,6 +22,7 @@ from markupsafe import Markup
 
 import monitor
 from monitor.settings import Settings
+from monitor.web.code_format import SQL, language_of
 from monitor.web.filters import Filters
 from monitor.web.methods_doc import Document, sections_html
 from monitor.web.panels import Panels
@@ -64,10 +65,14 @@ merged AS (
 
 @dataclass(frozen=True)
 class CodeRef:
-    """A function or value, named by module and attribute path."""
+    """A function or value, named by module and attribute path.
+
+    `language` states what a value holds. A function's file states its own.
+    """
 
     module: str
     name: str
+    language: str | None = None
 
 
 @dataclass(frozen=True)
@@ -212,8 +217,8 @@ CARDS: tuple[Card, ...] = (
         ),
         (
             CodeRef("monitor.parsers.briefs", "SYSTEM"),
-            CodeRef("monitor.parsers.briefs", "ITEMS_SQL"),
-            CodeRef("monitor.parsers.briefs", "STORYLINES_SQL"),
+            CodeRef("monitor.parsers.briefs", "ITEMS_SQL", SQL),
+            CodeRef("monitor.parsers.briefs", "STORYLINES_SQL", SQL),
         ),
         (
             Link("Rollups and briefs", "/methods#rollups-and-briefs"),
@@ -815,6 +820,7 @@ def source_of(ref: CodeRef) -> dict[str, Any]:
         "file": f"src/monitor/{path.relative_to(root)}",
         "line": first,
         "source": "".join(lines).rstrip(),
+        "language": language_of(path.name),
     }
 
 
@@ -827,6 +833,7 @@ def value_of(ref: CodeRef) -> dict[str, Any]:
         "module": ref.module,
         "text": value if isinstance(value, str) else repr(value),
         "long": isinstance(value, str) and len(value) > 80,
+        "language": ref.language,
     }
 
 

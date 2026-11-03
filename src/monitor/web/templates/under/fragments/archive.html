@@ -15,7 +15,7 @@
 <pre class="u-pre">{{ record.excerpt }}</pre>
 {% elif status == 'gone' %}
 <p class="banner-warn u-error">The local file <code>{{ archive_file }}</code> is gone. Archive files move to a private S3 bucket and leave this machine after 24 hours. This view does not fetch from S3. The index row below is still here.</p>
-<pre class="u-pre">{{ index }}</pre>
+<pre class="u-pre">{{ index|string|u_code('python') }}</pre>
 {% elif status == 'scan_failed' %}
 <p class="banner-warn u-error">The scan of the archive index did not finish, so whether this item has an archived record is not known. {{ error }} {{ retry() }}</p>
 {% elif status == 'no_index' %}

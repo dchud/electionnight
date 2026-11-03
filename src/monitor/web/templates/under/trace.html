@@ -45,7 +45,7 @@
     <details class="u-details" data-key="trace-rows"><summary>Each stage's stored rows</summary>
       {% for s in stages if s.n %}
       <h3 class="u-chart-title">{{ s.name }}: {{ s.table }}</h3>
-      <pre class="u-pre">{{ s.json }}</pre>
+      <pre class="u-pre">{{ s.json|u_code('json') }}</pre>
       {% endfor %}
     </details>
     {{ u.show_query(stage_queries, "trace-stages") }}
@@ -62,7 +62,7 @@
     {% if not rich_entry %}
     <p class="banner-warn u-error">This entry holds only a few fields, because rich raw entries started when capture did. The title and summary are still in their own columns on the row.</p>
     {% endif %}
-    <pre class="u-pre">{{ entry or 'No raw entry is stored.' }}</pre>
+    <pre class="u-pre">{{ (entry or 'No raw entry is stored.')|u_code('json') }}</pre>
     {% endif %}
     <h3 class="u-chart-title">Sightings{% if sightings.ok %}: {{ sightings.rows|length }}{% endif %}</h3>
     {% if sightings.error %}
@@ -99,13 +99,13 @@
       {% if call.parts %}
       <p class="u-note">A batch of {{ call.parts.n }} items. This item is <code>item_ref</code> {{ call.parts.index }}.</p>
       <div class="u-pair">
-        <div><h3 class="u-chart-title">This item in the request</h3><pre class="u-pre">{{ call.parts.request or 'Could not locate it in the request.' }}</pre></div>
-        <div><h3 class="u-chart-title">This item in the response</h3><pre class="u-pre">{{ call.parts.response or 'Could not locate it in the response.' }}</pre></div>
+        <div><h3 class="u-chart-title">This item in the request</h3><pre class="u-pre">{{ (call.parts.request or 'Could not locate it in the request.')|u_code('json') }}</pre></div>
+        <div><h3 class="u-chart-title">This item in the response</h3><pre class="u-pre">{{ (call.parts.response or 'Could not locate it in the response.')|u_code('json') }}</pre></div>
       </div>
       {% endif %}
       <details class="u-details" data-key="prompt-{{ loop.index }}"><summary>System prompt {{ call.prompt_hash }}</summary><pre class="u-pre">{{ call.prompt.text or 'The prompt row is not on record.' }}</pre></details>
-      <details class="u-details" data-key="request-{{ loop.index }}"><summary>Full request</summary><pre class="u-pre">{{ call.request }}</pre></details>
-      <details class="u-details" data-key="response-{{ loop.index }}"><summary>Full response</summary><pre class="u-pre">{{ call.response or 'No response text: the call failed.' }}</pre></details>
+      <details class="u-details" data-key="request-{{ loop.index }}"><summary>Full request</summary><pre class="u-pre">{{ call.request|u_code('json') }}</pre></details>
+      <details class="u-details" data-key="response-{{ loop.index }}"><summary>Full response</summary><pre class="u-pre">{{ (call.response or 'No response text: the call failed.')|u_code('json') }}</pre></details>
     </div>
     {% endfor %}
     {% else %}
