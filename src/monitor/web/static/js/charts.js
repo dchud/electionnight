@@ -162,7 +162,7 @@
   async function fitRows(chart) {
     const view = chart.view;
     if (!view) return;
-    const row = chart.spec.encoding && chart.spec.encoding.row;
+    const row = chart.spec?.encoding?.row;
     const cell = chart.el.parentElement;
     if (!row || !cell.clientWidth || !cell.clientHeight) return;
     const rows = (chart.rows || []).map((each) => each[row.field]);
@@ -235,7 +235,7 @@
     }
     attachCrosshair(chart);
     await pushData(chart, data);
-    if (chart.spec.encoding && chart.spec.encoding.row && !chart.fitWatch) {
+    if (chart.spec?.encoding?.row && !chart.fitWatch) {
       chart.fitWatch = new ResizeObserver(() => fitRows(chart));
       chart.fitWatch.observe(chart.el.parentElement);
     }

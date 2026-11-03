@@ -860,7 +860,7 @@ def test_every_tone_dot_opens_the_mentions_behind_it(lake):
 
 def test_global_press_time_axis_shows_minutes():
     axis = specs.global_press()["encoding"]["x"]["axis"]
-    assert axis["format"] == specs.TIME_AXIS.format
+    assert "%M" in axis["format"]
 
 
 def test_global_press_point_opens_its_count(lake):

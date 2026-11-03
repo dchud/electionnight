@@ -1986,10 +1986,9 @@ GLOBAL_PRESS_FIT = """
 """
 
 
-def global_press_page(browser, languages):
-    """The home page with Global Press data for these languages."""
+def global_press_table(languages):
     start = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
-    table = [
+    return [
         {
             "bin_start": (start + timedelta(minutes=minutes)).isoformat(),
             "language": language,
@@ -2001,6 +2000,11 @@ def global_press_page(browser, languages):
         for language in languages
         for minutes in (0, 30)
     ]
+
+
+def global_press_page(browser, languages):
+    """The home page with Global Press data for these languages."""
+    table = global_press_table(languages)
     context = browser.new_context(viewport={"width": 1920, "height": 1080})
     page = context.new_page()
     page.route(
@@ -2042,6 +2046,37 @@ def test_global_press_refits_when_its_card_changes_size(scratch, browser):
     context.close()
 
 
+def test_global_press_rows_shrink_when_a_language_appears(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "i0")
+    server.start()
+    context, page = global_press_page(browser, ["ar", "es"])
+    before = page.evaluate(GLOBAL_PRESS_FIT)
+    table = global_press_table(["ar", "es", "fr", "ru"])
+    page.route(
+        "**/api/data/global_press*",
+        lambda route: route.fulfill(json={"table": table}),
+    )
+    page.wait_for_function(
+        """
+        (height) => {
+          window.Monitor.bus.dispatchEvent(new Event("refresh"));
+          const chart = window.Monitor.charts.find(
+            (each) => each.name === "global_press"
+          );
+          return chart.view.signal("child_height") < height;
+        }
+        """,
+        arg=before["rowHeight"],
+        polling=500,
+    )
+    wait_settled(page)
+    fit = page.evaluate(GLOBAL_PRESS_FIT)
+    assert fit["height"] > 0.9
+    assert not fit["scrolls"]
+    context.close()
+
+
 def test_global_press_scrolls_rather_than_squeeze_many_rows(scratch, browser):
     settings, server = scratch
     add_item(settings, "i0")
@@ -2059,11 +2094,16 @@ def test_global_press_ticks_can_be_told_apart(scratch, browser):
     add_item(settings, "i0")
     server.start()
     context, page = global_press_page(browser, ["ar", "es"])
-    ticks = [
-        text
-        for text in chart_text(page, "global_press")
-        if text.endswith(("AM", "PM"))
-    ]
+    ticks = page.evaluate(
+        """
+        () => [...document.querySelectorAll(
+          '[data-chart="global_press"] svg text'
+        )]
+          .filter((node) => node.getAttribute("opacity") !== "0")
+          .map((node) => node.textContent.trim())
+          .filter((text) => /[AP]M$/.test(text))
+        """
+    )
     assert len(ticks) >= 2
     assert len(ticks) == len(set(ticks))
     context.close()
