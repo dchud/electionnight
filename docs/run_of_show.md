@@ -44,8 +44,7 @@ or restarting, and nothing already collected is at risk.
    then names the gap for 30 minutes. Until the first commit after waking,
    within about 90 seconds, its Lag counts from before the trip and it adds
    "Pipeline is not committing".
-4. Connect the projector and press `p`. This hides the strip; see "During
-   class".
+4. Connect the projector and press `p`.
 
 When the network returns, every feed polls within about a minute. Stories
 published during the gap are placed at their published time, and time charts
@@ -79,10 +78,10 @@ returning, and the backlog should clear within about 15 minutes, ahead of the
 
 ## During class
 
-Projector mode hides the status strip, with its warnings and disk banners. A
-second window in this browser also opens in projector mode. To watch status
-during class, keep `/status` open in a second window on the laptop's screen, or
-press `p` to show the strip and press it again to hide it.
+Projector mode keeps the status strip on screen, so the class sees its warnings
+and disk banners. A second window in this browser also opens in projector mode.
+To read `/status` during class, open it in a second window on the laptop's
+screen.
 
 The strip shows Lag, LLM state, spend today, and free disk. `/status` shows the
 last commit, whether the pipeline is shedding, each stage's queue and backlog,
@@ -158,9 +157,6 @@ Stop the dashboard with Ctrl-C in its terminal and start it again with
 and rows written by newer code remain readable.
 
 ## If something goes wrong
-
-Rows that name the strip need it showing. In projector mode, press `p` to show
-it.
 
 | Symptom | What happens | What to do |
 |---|---|---|

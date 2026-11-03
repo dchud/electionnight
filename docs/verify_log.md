@@ -95,9 +95,10 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
   canonical items. The query counts all copies of a storyline.
 - **Velocity.** Spec section 13 scores an entity or a storyline. Only
   storylines get a score.
-- **Projector mode.** Spec sections 14.6 and 17.2 have projector mode reduce
-  the main page's panels. Projector mode changes type size and colors and hides
-  the strip and secondary controls, and every panel stays on the page.
+- **Projector mode.** Spec section 14.6 has projector mode hide the status
+  strip, and sections 14.6 and 17.2 have it reduce the main page's panels.
+  Projector mode changes type size and colors and hides secondary controls. The
+  strip and every panel stay on the page.
 - **Stream colors.** No palette of 10 hues avoiding party blue and red passes
   the colorblind checks. The first 6 are validated; the rest rely on direct
   labels and hover.
