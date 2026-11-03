@@ -31,6 +31,8 @@ LICENSE_WORDING = {
     "BSD 3-Clause": "Redistribution and use",
     "MIT": "Permission is hereby granted",
     "0BSD": "for any purpose with or without fee",
+    "Unlicense": "free and unencumbered software",
+    "Apache 2.0": "Licensed under the Apache License, Version 2.0",
 }
 
 
@@ -73,7 +75,7 @@ def test_every_vendored_package_has_a_notice_at_its_version(row, version):
 
 def test_every_package_in_the_table_has_its_license_text():
     rows = table_rows()
-    assert len(rows) == 15
+    assert len(rows) == 18
     for name, _version, license_name in rows:
         if license_name == "SIL OFL 1.1":
             continue
