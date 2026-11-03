@@ -39,6 +39,7 @@ the beads tracker (`br`), under the MVP epic.
 ```bash
 uv sync                     # install
 scripts/check.sh            # format, lint, types, tests, process-label lint
+uv run pytest -n 0          # tests one at a time, as `--pdb` needs
 uv run pytest -m llm        # golden-set contract tests; costs cents
 uv run pytest -m slow       # soak and load tests
 uv run monitor --help       # every operating command
