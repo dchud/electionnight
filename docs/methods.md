@@ -534,8 +534,8 @@ Live view: [coverage](/under/coverage).
 Outlets with a hard paywall are not fetched, so their analysis
 rests on the feed's title and summary. A metered outlet may return a partial
 page, which is flagged as paywalled when it is short. Tone from a summary rests
-on less text than tone from an article. The dashboard shows extracts of up to
-1,200 characters and links to the original, so only an article shorter than
+on less text than tone from an article. The article page shows extracts of up
+to 1,200 characters and links to the original, so only an article shorter than
 that appears in full. The SQL console can read stored text, clipped to 4,000
 characters per cell, and only from this laptop.
 

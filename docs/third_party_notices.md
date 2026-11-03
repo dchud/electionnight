@@ -108,7 +108,7 @@ notices and source maps.
   and `wordcut.js`.
 - `assets/stylesheets/main.*.min.css` and each page hold Font Awesome Free
   7.1.0 icons. The notice reads "Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code:
-  MIT".
+  MIT License".
 - Each page holds icons from the theme's `material` set, which the package
   places under the Pictogrammers Free License.
 
@@ -495,7 +495,7 @@ specific language governing permissions and limitations under the License.
 ```
 
 The tone scale calls the PuOr scheme in `vendor/d3.min.js`, and
-`css/input.css` copies two of its values.
+`css/input.css` copies five of its values.
 
 ### Material for MkDocs
 

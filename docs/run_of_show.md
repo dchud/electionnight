@@ -12,8 +12,8 @@ Before you leave:
 
 1. Run `uv run monitor ref build-races --dry-run`. Compare the battleground
    states it prints with `battleground_states` in `config/races.yaml`. If they
-   differ and you accept the new list, run the command without `--dry-run`. The
-   file loads within 2 minutes, with no restart.
+   differ and you accept the new list, run the command without `--dry-run` and
+   commit the file. The file loads within 2 minutes, with no restart.
 2. Run `git tag known-good` on the running commit. Rollback goes to this tag.
 
 ## Starting the system
@@ -97,14 +97,16 @@ The two lag figures are different numbers:
   minutes, the strip adds "Pipeline is not committing": commits are failing or
   the pipeline has stopped. Follow "The strip says rows are held back" or "The
   pipeline is down" below. Reducing feeds does not help.
-- **Backlog lag** is the "Oldest live item" column on `/status`, in seconds,
-  not the "Lag" column beside it.
+- **Backlog lag** is the largest "Oldest live item" on `/status` among `lang`,
+  `classify_a`, `embed`, `dedupe`, and `storylines`, in seconds, not the "Lag"
+  column beside it. `fetch_text` holds items per domain on purpose.
 
 If backlog lag stays above 3 minutes, move feeds to a higher-numbered tier in
 `config/sources.csv` or disable tier 3 feeds, and restart the pipeline. Tier 3
-polls every 600 seconds and tier 1 every 60. If that is not enough, disable the
-international sources and restart the pipeline. This stops all collection and
-parsing for those outlets, because no setting limits extraction by source.
+polls every 600 seconds and tier 1 every 60. If that is not enough, disable
+the international sources and restart the pipeline. This stops new stories from
+those outlets. Stories already collected are still parsed, because no setting
+limits extraction by source.
 
 A browser keeps 6 connections per server, and each dashboard tab showing on
 screen holds one for its event stream. A hidden tab closes its stream and
@@ -149,11 +151,11 @@ To roll back:
 git switch --discard-changes --detach known-good && scripts/restart_pipeline.sh
 ```
 
-The switch discards uncommitted edits to tracked files, so commit any you want
-to keep first. If the switch fails, the pipeline does not restart. If the
-dashboard is not running with `--reload`, stop it with Ctrl-C in its terminal
-and start it again with `uv run monitor web`. The data stays, because tables
-are append-only and rows written by newer code remain readable.
+The switch returns every tracked file, including `config/`, to the tag, and
+discards uncommitted edits. If the switch fails, the pipeline does not restart.
+Stop the dashboard with Ctrl-C in its terminal and start it again with
+`uv run monitor web --reload`. The data stays, because tables are append-only
+and rows written by newer code remain readable.
 
 ## If something goes wrong
 
