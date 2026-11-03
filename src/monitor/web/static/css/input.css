@@ -318,9 +318,14 @@ main { padding: .6rem 1rem 2rem; display: flex; flex-direction: column; gap: .6r
 .map-legend-row { display: flex; justify-content: space-between; gap: .35rem; }
 .has-readout { display: flex; flex-direction: column; min-height: 0; }
 .has-readout > .map-wrap, .has-readout > .county-map, .has-readout > .mini-map { flex: 1; min-height: 0; height: auto; }
-.map-readout { flex: none; min-height: 2.75em; padding: 0 .25rem .3rem; font-size: .8rem; line-height: 1.35; color: var(--text-1); transition: opacity .11s ease; }
+.map-readout { flex: none; height: calc(2.7em + .3rem); overflow: hidden; padding: 0 .25rem .3rem; font-size: .8rem; line-height: 1.35; color: var(--text-1); transition: opacity .11s ease; }
 .map-readout.is-changing { opacity: 0; }
-.map-readout-note { color: var(--text-2); }
+.map-readout-line { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.map-readout-note {
+  color: var(--text-2); overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.map-readout-line + .map-readout-note { -webkit-line-clamp: 1; }
 [data-projector] .map-readout { font-size: 1rem; }
 .map-state:hover { stroke: var(--text-1); stroke-width: 1.4; }
 .map-county:hover { stroke: var(--text-1); stroke-width: 2px; }

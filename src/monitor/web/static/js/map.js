@@ -101,6 +101,7 @@
       drawn = JSON.stringify(content);
       slot.textContent = "";
       const line = document.createElement("div");
+      line.className = "map-readout-line";
       if (content.name) {
         const name = document.createElement("strong");
         name.textContent = content.name;
