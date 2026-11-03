@@ -3,6 +3,7 @@ import shutil
 import sqlite3
 from pathlib import Path
 
+import duckdb
 import pytest
 
 # Tests must never read real keys or settings from the repository's `.env`.
@@ -12,8 +13,33 @@ os.environ["WEB__ALLOWED_HOSTS"] = (
     '["127.0.0.1", "localhost", "::1", "testserver"]'
 )
 
+from monitor import lake  # noqa: E402
 from monitor.lake import ensure_dirs, init_lake  # noqa: E402
 from monitor.settings import Paths, Settings  # noqa: E402
+
+
+class UnsignedDuckdb:
+    """`duckdb` as `monitor.lake` sees it, with the signature check off.
+
+    DuckDB verifies an extension's signature each time a new instance
+    loads it. For the lake's two extensions that costs about 40 ms of
+    wall time and 300 ms of CPU per connection on the development
+    machine, which is most of the CPU a test run uses. The check detects
+    a tampered extension file and has no effect on what the lake does.
+    Code outside `monitor.lake`, including the console's child process,
+    is unchanged.
+    """
+
+    def __getattr__(self, name):
+        return getattr(duckdb, name)
+
+    def connect(self, *args, **kwargs):
+        config = {"allow_unsigned_extensions": "true"}
+        config.update(kwargs.pop("config", None) or {})
+        return duckdb.connect(*args, config=config, **kwargs)
+
+
+lake.duckdb = UnsignedDuckdb()
 
 
 @pytest.fixture(scope="session")

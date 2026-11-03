@@ -70,6 +70,9 @@ addopts = [
   "--basetemp=tmp/pytest",
   "--disable-socket",
   "--allow-unix-socket",
+  # One worker per core, at most 4. Pass `-n 0` to run serially.
+  "-n", "auto",
+  "--maxprocesses=4",
   "-m", "not slow and not llm and not live",
 ]
 markers = [
@@ -94,6 +97,7 @@ dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1",
     "pytest-socket>=0.8.1",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.17.3",
     "types-pytz>=2026.6.0.20261031",
     "types-pyyaml>=6.0.12.20261030",
