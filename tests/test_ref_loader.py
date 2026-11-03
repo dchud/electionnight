@@ -218,6 +218,32 @@ def test_unchanged_inputs_do_nothing(conn, writer, settings):
     assert writer.pending() == 0
 
 
+def test_restart_restores_a_row_another_writer_replaced(
+    conn, writer, settings
+):
+    sync_ref_tables(conn, writer, settings, {})
+    writer.flush()
+    replaced = latest(conn, "ref.entities", "entity_id")["e1"]
+    writer.add(
+        "ref.entities",
+        [
+            {
+                "entity_id": "e1",
+                "canonical_name": "Someone Else",
+                "ent_type": "PERSON",
+                "aliases": [],
+                "origin": "llm",
+            }
+        ],
+    )
+    writer.flush()
+    assert sync_ref_tables(conn, writer, settings, {}) == {"ref.entities": 1}
+    writer.flush()
+    restored = latest(conn, "ref.entities", "entity_id")["e1"]
+    assert restored["canonical_name"] == replaced["canonical_name"]
+    assert restored["aliases"] == replaced["aliases"]
+
+
 def test_restart_appends_nothing(conn, writer, settings):
     sync_ref_tables(conn, writer, settings, {})
     writer.flush()

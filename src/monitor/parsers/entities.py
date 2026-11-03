@@ -194,6 +194,20 @@ class EntityResolver:
         own = generational_suffix(known.canonical_name)
         return not suffixes or suffixes == {own}
 
+    @staticmethod
+    def _by_suffix(found: list[Known], suffixes: set[str]) -> list[Known]:
+        """Those with the mention's suffix, or all of them if none has it.
+
+        Normalized names drop the suffix, so a name can be held by a parent
+        and a child. A mention with no suffix means the one without.
+        """
+        same = [
+            known
+            for known in found
+            if {generational_suffix(known.canonical_name)} - {None} == suffixes
+        ]
+        return same or found
+
     def resolve(
         self,
         names: list[str],
@@ -228,7 +242,9 @@ class EntityResolver:
             ):
                 return known.entity_id, "exact"
         for name in candidates:
-            found = self.normalized.get(normalize_name(name), [])
+            found = self._by_suffix(
+                self.normalized.get(normalize_name(name), []), suffixes
+            )
             known = self._pick(found, context, anywhere(name))
             if (
                 known
@@ -435,9 +451,9 @@ class EntityPass:
             )
             if entity_id is None and resolution.is_new_entity:
                 name = resolution.canonical_name
-                entity_id = hash_id(
-                    "entity", normalize_name(name), resolution.state
-                )
+                entity_id = self._unheld_id(name, resolution.state)
+                if entity_id is None:
+                    continue
                 self.writer.add(
                     "ref.entities",
                     [
@@ -465,6 +481,21 @@ class EntityPass:
                     resolution.surface, asked["state"], entity_id, "llm"
                 )
         return counts
+
+    def _unheld_id(self, name: str, state: str | None) -> str | None:
+        """An id for a new person that no entity holds, or None.
+
+        Readers take the newest row per id, so a row under an id already held
+        would replace that entity. Ids hash a name without its generational
+        suffix, so a child with a parent's name adds the suffix to the hash.
+        """
+        key = normalize_name(name)
+        suffix = generational_suffix(name)
+        keys = [key, f"{key} {suffix}"] if suffix else [key]
+        ids = (hash_id("entity", each, state) for each in keys)
+        return next(
+            (each for each in ids if not self.resolver.names_of(each)), None
+        )
 
     @staticmethod
     def _entry_for(

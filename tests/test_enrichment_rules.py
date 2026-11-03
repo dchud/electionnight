@@ -74,6 +74,7 @@ from monitor.parsers.race_calls import (
     normalize_caller,
 )
 from monitor.pipeline import Pipeline
+from monitor.ref.candidates import entity_id
 
 CONFIG = Path("config")
 AFTER_CLOSE = datetime(2026, 11, 4, 3, 0, tzinfo=UTC)
@@ -755,6 +756,94 @@ def test_a_generational_suffix_must_match(settings):
         "rfk"
     )
     assert resolver.resolve(["Robert F. Kennedy"], "PERSON", [])[0] == "rfk"
+
+
+def test_a_mention_chooses_by_suffix_when_a_name_is_held_both_ways(settings):
+    resolver = EntityResolver(settings)
+    resolver.load(
+        [
+            known("trump", "Donald Trump", None, ["Trump"], origin="hand"),
+            known("junior", "Donald Trump Jr.", None),
+        ]
+    )
+    for surface in ("Donald Trump", "President Donald Trump", "Mr. Trump"):
+        assert resolver.resolve([surface], "PERSON", [])[0] == "trump"
+    for surface in ("Donald Trump Jr.", "Donald Trump Jr"):
+        assert resolver.resolve([surface], "PERSON", [])[0] == "junior"
+
+
+def new_person_answer(surface, name):
+    return EntityResolution(
+        surface=surface,
+        canonical_name=name,
+        is_new_entity=True,
+        is_person=True,
+        party=None,
+        state=None,
+        office=None,
+    )
+
+
+def entity_rows(conn):
+    return conn.execute(
+        "SELECT entity_id, canonical_name FROM lake.ref.entities"
+    ).fetchall()
+
+
+def newest_mention_entity(conn):
+    return conn.execute(
+        """
+        SELECT entity_id FROM lake.nlp.mentions
+        QUALIFY row_number() OVER (
+            PARTITION BY mention_id ORDER BY created_at DESC) = 1
+        """
+    ).fetchone()[0]
+
+
+async def test_a_new_person_never_replaces_the_entity_holding_the_id(settings):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    writer.add("nlp.mentions", [mention("m1", "Don Jr.")])
+    writer.flush()
+    held = entity_id("Donald Trump", None)
+    resolver = EntityResolver(settings)
+    resolver.load([known(held, "Donald Trump", None, ["Trump"], "hand")])
+    llm = FakeLlm(
+        EntityResolutionBatch(
+            resolutions=[new_person_answer("Don Jr.", "Donald Trump Jr.")]
+        )
+    )
+    entity_pass = EntityPass(settings, Database(conn), writer, llm, resolver)
+    entity_pass.reload = _noop
+    await entity_pass.run()
+    writer.flush()
+    rows = entity_rows(conn)
+    assert [name for _, name in rows] == ["Donald Trump Jr."]
+    assert rows[0][0] != held
+    assert newest_mention_entity(conn) == rows[0][0]
+    conn.close()
+
+
+async def test_a_held_id_with_no_suffix_to_separate_it_gets_no_row(settings):
+    conn = connect(settings)
+    writer = BatchWriter(conn, settings)
+    writer.add("nlp.mentions", [mention("m1", "Smith Group")])
+    writer.flush()
+    held = entity_id("Smith Group", None)
+    resolver = EntityResolver(settings)
+    resolver.load([{**known(held, "Smith Group", None), "ent_type": "ORG"}])
+    llm = FakeLlm(
+        EntityResolutionBatch(
+            resolutions=[new_person_answer("Smith Group", "Smith Group")]
+        )
+    )
+    entity_pass = EntityPass(settings, Database(conn), writer, llm, resolver)
+    entity_pass.reload = _noop
+    await entity_pass.run()
+    writer.flush()
+    assert entity_rows(conn) == []
+    assert newest_mention_entity(conn) is None
+    conn.close()
 
 
 async def test_an_unresolved_mention_keeps_the_full_name(settings):

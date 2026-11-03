@@ -246,10 +246,13 @@ once with twice the output limit. Tone is clamped to -2 to +2.
 ### Entity and place resolution
 
 A name resolves through an exact match, then a normalized match, then a fuzzy
-match of at least 92 among entities in the story's states. `resolved_by`
-records which. Every 300 s, a pass asks the bulk model about up to 30
-unresolved names. A place resolves against the Census gazetteer. Neither step
-changes what the model extracted, and each stores its own row.
+match of at least 92 among entities in the story's states, or in the state the
+text gives for that person. `resolved_by` records which. A name with a
+generational suffix, such as Jr., matches only an entity with the same suffix.
+Every 300 s, a pass asks the bulk model about up to 30 unresolved names. A
+person the model calls new gets an id no entity holds, so the row replaces no
+one. A place resolves against the Census gazetteer. Neither step changes what
+the model extracted, and each stores its own row.
 
 ### Rollups and briefs
 
