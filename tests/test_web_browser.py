@@ -1968,6 +1968,107 @@ def test_poll_closing_labels_stay_apart_and_leave_the_chart_its_width(
     context.close()
 
 
+GLOBAL_PRESS_FIT = """
+() => {
+  const chart = window.Monitor.charts.find(
+    (each) => each.name === "global_press"
+  );
+  const cell = chart.el.parentElement;
+  const svg = chart.el.querySelector("svg").getBoundingClientRect();
+  return {
+    width: svg.width / cell.clientWidth,
+    height: svg.height / cell.clientHeight,
+    rowHeight: chart.view.signal("child_height"),
+    scrolls: cell.scrollHeight > cell.clientHeight,
+    wide: cell.scrollWidth > cell.clientWidth,
+  };
+}
+"""
+
+
+def global_press_page(browser, languages):
+    """The home page with Global Press data for these languages."""
+    start = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+    table = [
+        {
+            "bin_start": (start + timedelta(minutes=minutes)).isoformat(),
+            "language": language,
+            "n": 2,
+            "total": 40,
+            "share": 0.05,
+            "evidence": "kind=language&key=" + language,
+        }
+        for language in languages
+        for minutes in (0, 30)
+    ]
+    context = browser.new_context(viewport={"width": 1920, "height": 1080})
+    page = context.new_page()
+    page.route(
+        "**/api/data/global_press*",
+        lambda route: route.fulfill(json={"table": table}),
+    )
+    page.goto(BASE)
+    page.wait_for_selector('[data-chart="global_press"] g.mark-area path')
+    wait_settled(page)
+    return context, page
+
+
+def test_global_press_fills_its_card_without_scrolling(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "i0")
+    server.start()
+    context, page = global_press_page(browser, ["ar", "es", "fr", "ru"])
+    fit = page.evaluate(GLOBAL_PRESS_FIT)
+    assert fit["width"] > 0.9
+    assert fit["height"] > 0.9
+    assert not fit["scrolls"]
+    assert not fit["wide"]
+    context.close()
+
+
+def test_global_press_refits_when_its_card_changes_size(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "i0")
+    server.start()
+    context, page = global_press_page(browser, ["ar", "es", "fr", "ru"])
+    before = page.evaluate(GLOBAL_PRESS_FIT)
+    page.set_viewport_size({"width": 1280, "height": 720})
+    page.wait_for_timeout(500)
+    fit = page.evaluate(GLOBAL_PRESS_FIT)
+    assert fit["rowHeight"] != before["rowHeight"]
+    assert fit["width"] > 0.9
+    assert not fit["scrolls"]
+    assert not fit["wide"]
+    context.close()
+
+
+def test_global_press_scrolls_rather_than_squeeze_many_rows(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "i0")
+    server.start()
+    languages = [f"l{number}" for number in range(12)]
+    context, page = global_press_page(browser, languages)
+    fit = page.evaluate(GLOBAL_PRESS_FIT)
+    assert fit["rowHeight"] == 44
+    assert fit["scrolls"]
+    context.close()
+
+
+def test_global_press_ticks_can_be_told_apart(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "i0")
+    server.start()
+    context, page = global_press_page(browser, ["ar", "es"])
+    ticks = [
+        text
+        for text in chart_text(page, "global_press")
+        if text.endswith(("AM", "PM"))
+    ]
+    assert len(ticks) >= 2
+    assert len(ticks) == len(set(ticks))
+    context.close()
+
+
 def test_entity_rank_names_the_newer_line_when_two_end_at_one_rank(
     scratch, browser
 ):
