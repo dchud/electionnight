@@ -858,6 +858,11 @@ def test_every_tone_dot_opens_the_mentions_behind_it(lake):
             assert "opinion excluded" in opened.filter
 
 
+def test_global_press_time_axis_shows_minutes():
+    axis = specs.global_press()["encoding"]["x"]["axis"]
+    assert "%M" in axis["format"]
+
+
 def test_global_press_point_opens_its_count(lake):
     for _ in range(4):
         lake.item(language="es")

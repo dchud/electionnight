@@ -293,7 +293,7 @@ def global_press() -> dict[str, Any]:
         _named()
         .mark_area(interpolate="monotone", opacity=0.85)
         .encode(
-            x=alt.X("bin_start:T", axis=alt.Axis(format="%-I %p", title=None)),
+            x=alt.X("bin_start:T", axis=TIME_AXIS),
             y=alt.Y(
                 "share:Q", axis=alt.Axis(format="%", title=None, tickCount=2)
             ),

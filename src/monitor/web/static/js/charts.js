@@ -93,6 +93,11 @@
     return { ...spec, params };
   }
 
+  const ROW_MIN_WIDTH = 80;
+  const ROW_MIN_HEIGHT = 44;
+  // The gap under an inline SVG would otherwise make the cell scroll.
+  const ROW_FIT_MARGIN = 8;
+
   function withSeriesColors(spec, rows) {
     if (!rows || !spec.layer) return spec;
     const labels = [...new Set(rows.map((row) => row.label))];
@@ -152,6 +157,38 @@
     return null;
   }
 
+  /* Vega-Lite cannot size a chart split into rows to its container. The plots
+     take what the cell leaves after the axes and the gaps between rows. */
+  async function fitRows(chart) {
+    const view = chart.view;
+    if (!view) return;
+    const row = chart.spec?.encoding?.row;
+    const cell = chart.el.parentElement;
+    if (!row || !cell.clientWidth || !cell.clientHeight) return;
+    const rows = (chart.rows || []).map((each) => each[row.field]);
+    const count = new Set(rows).size;
+    if (!count) return;
+    /* A new size can move the axis labels, so a second pass settles it. */
+    for (let pass = 0; pass < 2; pass += 1) {
+      const svg = view.container().querySelector("svg");
+      const drawn = svg.getBoundingClientRect();
+      const width = view.signal("child_width");
+      const height = view.signal("child_height");
+      const nextWidth = Math.floor(
+        cell.clientWidth - (drawn.width - width) - ROW_FIT_MARGIN
+      );
+      const nextHeight = Math.floor(
+        (cell.clientHeight - (drawn.height - count * height) - ROW_FIT_MARGIN) /
+          count
+      );
+      const fitWidth = Math.max(ROW_MIN_WIDTH, nextWidth);
+      const fitHeight = Math.max(ROW_MIN_HEIGHT, nextHeight);
+      if (fitWidth === width && fitHeight === height) return;
+      view.signal("child_width", fitWidth).signal("child_height", fitHeight);
+      await view.resize().runAsync();
+    }
+  }
+
   async function embed(chart, data) {
     const specUrl = chart.variant
       ? `/api/spec/${chart.name}?variant=${chart.variant}`
@@ -198,6 +235,10 @@
     }
     attachCrosshair(chart);
     await pushData(chart, data);
+    if (chart.spec?.encoding?.row && !chart.fitWatch) {
+      chart.fitWatch = new ResizeObserver(() => fitRows(chart));
+      chart.fitWatch.observe(chart.el.parentElement);
+    }
     if (chart.stage) {
       chart.stage.remove();
       stage.classList.remove("chart-stage-next");
@@ -231,6 +272,8 @@
       }
     }
     await view.resize().runAsync();
+    if ("table" in data) chart.rows = data.table;
+    await fitRows(chart);
   }
 
   async function refreshOnce(chart) {
