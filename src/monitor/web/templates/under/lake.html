@@ -80,6 +80,7 @@
       <div class="u-stat"><span class="u-stat-label">Parquet size</span><span class="u-stat-value">{{ detail.row.parquet_bytes|u_bytes }}</span><span class="u-stat-note">live files only</span></div>
     </div>
     {{ u.ran_note(detail.key_scan) }}
+    {{ u.show_query(detail.key_scan.query, "lake-keys", of="distinct keys") }}
 
     <h3 class="u-chart-title">Schema and statistics, from <code>ducklake_column</code> and <code>ducklake_file_column_stats</code></h3>
     <div class="u-scroll"><table class="table u-table">
@@ -87,24 +88,22 @@
       <tbody>{% for col in detail.schema %}<tr><td class="nowrap">{% for _ in range(col.depth) %}&nbsp;&nbsp;&nbsp;{% endfor %}{{ col.column_name }}</td><td>{{ col.column_type }}</td><td>{{ 'yes' if col.nulls_allowed else 'no' }}</td>{% if col.has_stats %}<td class="num">{{ col.n_values|u_int }}</td><td class="num">{{ col.n_nulls|u_int }}</td><td class="u-break">{{ col.smallest if col.smallest is not none else '—' }}</td><td class="u-break">{{ col.largest if col.largest is not none else '—' }}</td><td class="num">{{ col.n_bytes|u_bytes }}</td>{% else %}<td class="num" colspan="5">{% if col.column_type == 'list' %}its element holds the statistics{% else %}no statistics{% endif %}</td>{% endif %}</tr>{% endfor %}</tbody>
     </table></div>
     <p class="u-note">Statistics cover the {{ detail.row.parquet_rows|u_int }} rows in Parquet files. The {{ detail.row.inlined_rows|u_int }} inlined rows are not in them. These are table-wide figures, added up or compared across files. A long text minimum or maximum is cut here to 40 characters. A query skips a file by that file's own minimum and maximum in <code>ducklake_file_column_stats</code>, not by these totals.{% if detail.has_lists %} On a list's <code>element</code> row, Values counts the elements, and Nulls counts NULL lists, empty lists, and null elements, each as one.{% endif %}</p>
-    {{ u.show_query([detail.columns.query, detail.stats.query], "lake-schema") }}
+    {{ u.show_query([detail.columns.query, detail.stats.query], "lake-schema", of="schema and statistics") }}
 
     <h3 class="u-chart-title">Rows of this table, in place</h3>
     {{ u.rows_panel(detail.table) }}
 
     <h3 class="u-chart-title">Newest rows</h3>
     {% if detail.sample_rows %}
-    {% for entry in detail.sample_rows %}
-    <div class="u-scroll"><table class="table u-table">
-      <tbody>{% for name, value in entry %}<tr><td class="nowrap">{{ name }}</td><td class="u-break">{{ value }}</td></tr>{% endfor %}</tbody>
-    </table></div>
-    {% endfor %}
+    <div class="u-rows-body"><div class="u-scroll"><table class="table u-table u-rows-table">
+      <thead><tr>{% for name, value in detail.sample_rows[0] %}<th>{{ name }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for entry in detail.sample_rows %}<tr>{% for name, value in entry %}<td class="u-break">{{ value }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table></div></div>
     <p class="u-note">Long text is cut to an excerpt in the query, so the page never holds a full article. A list shows its length and first values. <code>_snapshot</code> is the commit that wrote the row, and <code>_file</code> is where it sits. A name starting with <code>ducklake_inlined_data</code> means the row is still in the catalog.</p>
     {% elif detail.sample.ok %}
     <p class="empty">This table has no rows.</p>
     {% endif %}
-    {{ u.show_query(detail.sample.query, "lake-sample") }}
-    {{ u.show_query(detail.key_scan.query, "lake-keys") }}
+    {{ u.show_query(detail.sample.query, "lake-sample", of="newest rows") }}
     <p class="u-note"><a class="text-link" href="/under/data-model?table={{ detail.table }}">Data model</a> shows this table as the code declares it and as a Parquet footer stores it. <a class="text-link" href="/under/storage?table={{ detail.table }}#columns">Storage</a> shows its largest file's compression, and a time-travel comparison.</p>
   </div>
 </section>

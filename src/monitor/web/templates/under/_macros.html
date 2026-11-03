@@ -26,11 +26,11 @@ link that fills the SQL console without running it. #}
 </div>
 {% endmacro %}
 
-{# A disclosure of the SQL a panel ran. `queries` is one query or a list. #}
-{% macro show_query(queries, key) %}
+{# A disclosure of the SQL a panel ran. `queries` is one query or a list. `of` names what it produced, for a section with more than one. #}
+{% macro show_query(queries, key, of=none) %}
 {% set items = [queries] if queries.sql is defined else queries %}
 <details class="u-query" data-key="{{ key }}">
-  <summary>Show query</summary>
+  <summary>Show query{% if of %} for {{ of }}{% endif %}</summary>
   {% for q in items %}
   <div class="u-query-block">
     <p class="u-query-meta">Ran on: {{ q.where }}{% if q.ms is not none %}; {{ q.ms }} ms{% endif %}{% if q.rows is not none %}; {{ q.rows }} rows{% endif %}.</p>

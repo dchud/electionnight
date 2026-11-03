@@ -1222,6 +1222,23 @@ def test_a_map_row_opens_the_table_browser_entry(scratch, browser):
     assert page.locator("#detail h2").first.inner_text() == "nlp.mentions"
 
 
+def test_a_wide_table_of_newest_rows_scrolls_inside_itself(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "seed")
+    server.start()
+    page = browser.new_page(viewport={"width": 1280, "height": 800})
+    page.goto(f"{BASE}/under/lake?table=raw.items")
+    frame = page.locator("#detail .u-scroll:has(.u-rows-table)").last
+    frame.wait_for()
+    assert frame.evaluate("(node) => node.scrollWidth > node.clientWidth")
+    assert frame.evaluate("(node) => getComputedStyle(node).overflowX") == (
+        "auto"
+    )
+    assert page.evaluate(
+        "() => document.documentElement.scrollWidth <= window.innerWidth"
+    )
+
+
 def test_a_copied_sql_block_is_the_statement_that_ran(scratch, browser):
     _, server = scratch
     server.start()
