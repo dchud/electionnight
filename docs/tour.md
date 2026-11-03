@@ -25,25 +25,27 @@ window, the focus modes, and the other filters.
 
 [![The Live Wire panel beside the Rising Storylines panel](screenshots/live_wire.png)](screenshots/live_wire.png)
 
-The Live Wire lists the newest relevant stories, with each outlet's lean rating
-and the states a story names. Rising Storylines lists storylines that meet the
-rising rule, and says so when none do. The strip under the header shows
-pipeline lag, model state, spend today, and free disk.
+The Live Wire lists the newest relevant stories, with each outlet's lean
+rating, each story's level (N, S, or L for national, state, or local), and the
+states a story names. Rising Storylines lists storylines that meet the rising
+rule, and says so when none do. The strip under the header shows Lag, the
+seconds since the last commit, with model state, spend today, and free disk.
 
 ### Attention by state
 
 [![The US Map panel with a list of rising states](screenshots/us_map.png)](screenshots/us_map.png)
 
 Attention compares a state's share of election coverage now with its usual
-share. The list names the states rising most.
+share. The list names the states rising most, by the last 15 minutes against
+the 2 hours before them.
 
 ### Who is in the news
 
 [![The Entity Rank bump chart](screenshots/entity_rank.png)](screenshots/entity_rank.png)
 
 Entity Rank follows the 12 most-mentioned people and organizations over time,
-with lines colored by party. Each rank names the line that ended there last,
-and hover names the others.
+with lines colored by party. A rank names the line that ended there last, so a
+rank where no line ended has no name. Hover names the others.
 
 ### Coverage by outlet lean
 

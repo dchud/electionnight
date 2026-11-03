@@ -7,8 +7,8 @@ times are Eastern. The dashboard is the main view; these pages explain it.
 
 1. Open <http://127.0.0.1:8000> and scroll past the last band. The footer link
    "Under the hood" opens `/under`.
-2. Press `p` for projector mode: larger text, one concept per screen, no
-   horizontal scrolling.
+2. Press `p` for projector mode: larger text, one concept per screen, and no
+   horizontal scrolling outside the tables of rows.
 3. Move between sections with `j` and `k`. Press `r` to refresh. Pages also
    refresh every 30 seconds unless "Every 30 s" is off; a form with focus
    holds the refresh.
@@ -121,15 +121,17 @@ minutes after it. `gold.*` bins use `first_seen_at` unchanged. So the two
 disagree on purpose. Dashboard panels read an in-memory fact table, not
 `gold.*`.
 
-`source_id` is the first feed to serve an item, which favors the fastest
-poller.
+`source_id` is the outlet of the first feed to serve an item, which favors the
+fastest poller.
 
 ### Storage
 
 Point out inlined rows against Parquet rows: a commit every 30 seconds would
 otherwise create thousands of tiny files. Pick `nlp.embeddings` to show a table
-that never inlines. Show column compression: repeated values compress well, and
-vectors do not.
+that never inlines. Show column compression: `vec` fills nearly all of the
+column data and hardly compresses, and timestamps compress well. A column that
+holds one repeated value takes a few dozen bytes, and its Ratio can read under
+1, so read its size.
 
 Then run a time-travel comparison, with Snapshot A a few hundred before the
 newest. A merged file keeps each row's snapshot range, so the old answer stays
@@ -138,17 +140,19 @@ exact after the files it came from are deleted.
 ### Data model
 
 Choose `nlp.embeddings`. The code declares `vec FLOAT[]`, because DuckLake
-rejects `FLOAT[384]`. Show how the Parquet footer holds that list. Open a JSON
-schema at the bottom, and connect it to the columns in the same table.
+rejects `FLOAT[384]`. Show how the Parquet footer holds that list. A local
+model fills this table, so no JSON schema writes to it. Choose
+`nlp.classify_a`, open its schema at the bottom, and connect it to the columns
+in that table.
 
 ### Trace
 
 Open `/under/trace` and choose a recent item. Walk down the page:
 
-1. The raw feed entry, then the original bytes. Open "Original feed bytes".
-2. Each stage's row and latency. Buffered is when a stage finished, and
+1. Each stage's row and latency. Buffered is when a stage finished, and
    committed is when a reader could see it. When a stage has several rows, the
    line describes the newest, the one readers use.
+2. The raw feed entry, then the original bytes. Open "Original feed bytes".
 3. The prompt, request, and response, with article text cut to an excerpt.
 4. Entity and place resolution, with any quote the citation check threw out.
 5. Dedupe and clustering. A stored `similarity` of 1.0 is a placeholder for an
@@ -199,15 +203,19 @@ the trace. It is a different tool from `/search`, which ranks by meaning.
 
 Use `/under/sql` for a question the views do not answer. It takes one SELECT or
 EXPLAIN, at most 1,000 rows, and stops at 10 seconds. It answers on loopback
-only, and it logs each query. These work:
+only, and it logs each query. Each of these works on its own:
 
 ```sql
 SELECT count(*) AS n_rows, count(DISTINCT (bin_start, source_id)) AS n_keys
 FROM lake.gold.source_bins;
+```
 
+```sql
 SELECT method, count(*) AS n FROM lake.nlp.dup_groups GROUP BY 1 ORDER BY n
 DESC;
+```
 
+```sql
 SELECT purpose, round(sum(usd_est), 2) AS usd
 FROM lake.nlp.llm_calls GROUP BY 1 ORDER BY usd DESC;
 ```

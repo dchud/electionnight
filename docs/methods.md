@@ -24,7 +24,8 @@ items also go to `fetch_text` and `extract_b`.
 
 Every row is append-only. A correction is a new row with a newer `created_at`,
 and readers take the latest row. Each parser row records `parser` and
-`parser_version`. To see them for one story, open its article page and expand
+`parser_version`, except in `raw.article_text` and `nlp.briefs`, which have
+neither column. To see them for one story, open its article page and expand
 "Raw parser output".
 
 ## Processes and the single-writer rule
@@ -33,12 +34,17 @@ Live views: [feeds](/under/feeds) and [storage](/under/storage).
 
 ![The processes and the files between them](diagrams/processes.svg)
 
-One process at a time writes to the lake, and it holds `data/writer.lock` while
-it does. While `pipeline` runs, it is that process. A `monitor` command that
-writes tries the same lock first. With no pipeline running, the command holds
-the lock and writes directly. With a pipeline running, the command leaves a
-request file in `data/control/`, the pipeline reads it within 2 s and carries
-it out, and a result file comes back there.
+One process at a time writes rows to the lake, and it holds
+`data/writer.lock` while it does. While `pipeline` runs, it is that process.
+`monitor rollups`, `brief`, and `prune` try the same lock first. With no
+pipeline running, the command holds the lock and writes directly. With a
+pipeline running, the command leaves a request file in `data/control/`, the
+pipeline checks for it every 2 s and carries it out, and a result file comes
+back there. `monitor restore` holds the lock and refuses to run beside a
+pipeline. `monitor relabel` needs a running pipeline. `monitor init` creates
+missing tables and sets lake options with no lock, and `monitor pipeline` does
+the same before it takes the lock. `monitor ref build-aliases` takes no lock
+and leaves its ledger rows in `data/control/` for the pipeline to read.
 
 The dashboard process, `web`, attaches the lake read-only and refreshes when a
 new snapshot appears. It never writes to the lake. Its only database file is
@@ -61,15 +67,16 @@ send `If-None-Match` and `If-Modified-Since`, so an unchanged feed answers 304
 with no body. At most 2 requests run per domain at once, each with a 20 s
 timeout.
 
-A failed poll doubles the delay, up to 8 times the tier and never over 900 s.
-After 5 failures in a row, the feed's circuit opens and it is tried every 900
-s. This state lives in the pipeline's memory, so a restart clears it.
+A failed poll doubles the delay, up to 8 times the tier and never over 900 s
+before jitter. After 5 failures in a row, the feed's circuit opens and it is
+tried every 900 s, with the same jitter. This state lives in the pipeline's
+memory, so a restart clears it.
 
 An item's id is a hash of its canonical URL, so one article is one item.
-`raw.items` keeps its first sighting, and its `source_id` is the first feed to
-serve it. `raw.sightings` records each feed that served it, and each change of
-title. The original bytes go to hourly compressed files in `data/archive/`, and
-`raw.archive_index` records where each one sits.
+`raw.items` keeps its first sighting: `source_id` is the outlet and `feed_url`
+is the feed that first served it. `raw.sightings` records each feed that served
+it, and each change of title. The original bytes go to hourly compressed files
+in `data/archive/`, and `raw.archive_index` records where each one sits.
 
 ## Parser stages
 
@@ -99,9 +106,10 @@ Items waiting on that path do not count as lag.
 ### Load shedding
 
 When the oldest live item waiting at `lang`, `classify_a`, `embed`, `dedupe`,
-or `storylines` has waited over 120 s, the pipeline pauses backfill and halves
-the embedding rate. It resumes under 60 s. Full-text fetching is left out,
-because it is paced per domain on purpose. `/status` shows when it is shedding.
+or `storylines` has waited over 120 s since it was first seen, the pipeline
+pauses backfill and halves the embedding rate. It resumes under 60 s. Full-text
+fetching is left out, because it is paced per domain on purpose. `/status`
+shows when it is shedding.
 
 ### Language detection
 
@@ -127,8 +135,9 @@ in batches of 32. It uses 40% of the time, so collection keeps running. The
 text is `passage: ` followed by the English title and summary, so stories in
 different languages land near each other. A search uses the `query: ` prefix.
 Each vector has 384 values. DuckLake rejects fixed-size arrays, so
-`nlp.embeddings.vec` is stored as `FLOAT[]`, and a query casts it to
-`FLOAT[384]` to use array functions.
+`nlp.embeddings.vec` is stored as `FLOAT[]`. Array functions need a cast to
+`FLOAT[384]`. List functions do not, and the example queries use
+`list_cosine_similarity` with no cast.
 [Wang et al. (2024)](https://arxiv.org/abs/2402.05672) describe the model.
 
 ### Dedupe
@@ -137,8 +146,8 @@ An item is compared with items seen within 36 hours.
 
 1. **Title.** A title is lowercased, stripped of punctuation and any trailing
    outlet name, and cut into words and word pairs, or character pairs for
-   Chinese, Japanese, and Korean. Each token's 64-bit `xxh64` hash votes on
-   each bit of a 64-bit SimHash
+   Chinese and Japanese. Each token's 64-bit `xxh64` hash votes on each bit of
+   a 64-bit SimHash
    ([Charikar 2002](https://doi.org/10.1145/509907.509965)). A title of under 7
    tokens gets no hash, because short titles such as "Live updates" repeat
    across unrelated stories.
@@ -184,7 +193,9 @@ earlier parser and means no match was found; no URL was compared. A
 `similarity` of 1.0 on a `title_hash` row is a placeholder, because no cosine
 decided that match.
 `nlp.cluster_decisions` keeps the nearest similarity and the SimHash distance
-for each decision.
+for each decision. The distance is the smallest to any item in the window, so
+it need not belong to the nearest item. A title with no hash counts as a hash
+of 0, so on such an item a distance of 0 does not mean an identical title.
 
 ### Storylines
 
@@ -237,8 +248,9 @@ characters of extracted text. A status of 401, 402, or 403 counts as paywalled.
 
 ### Extraction
 
-The bulk model reads the title and at most 6,000 tokens of text, cut at a
-paragraph, and returns at most 4,000 tokens. `text_basis` records what it read:
+The bulk model reads the title and at most 6,000 tokens of text, a limit
+estimated from the character count and cut at a paragraph when one is close,
+and returns at most 4,000 tokens. `text_basis` records what it read:
 `full_text`, `summary` when no text was fetched, or `summary+text` when a short
 or paywalled page went in with the feed summary. A truncated answer is retried
 once with twice the output limit. Tone is clamped to -2 to +2.
@@ -267,22 +279,24 @@ Live view: [models](/under/models).
 | Purpose | Model | Settings |
 |---|---|---|
 | Classification and translation | `claude-haiku-5-5` | Low effort, structured output, 10 items per call, cached system prompt |
-| Deep extraction | `claude-haiku-5-5` | Structured output, 1 item per call, at most 6,000 input tokens |
+| Deep extraction | `claude-haiku-5-5` | Structured output, 1 item per call, at most 6,000 tokens of article text |
 | Storyline labels and summaries | `claude-haiku-5-5` | Structured output, on promotion and on growth |
 | Entity resolution | `claude-haiku-5-5` | Structured output, batched |
 | Briefs | `claude-sonnet-5-5` | Structured output, every sentence must cite supplied items |
 | Embeddings | `intfloat/multilingual-e5-small` | Local ONNX on the CPU, 384 dimensions, `passage: ` and `query: ` prefixes |
 | Language detection | `lingua` | Local |
 
-The Methods page lists the configured models and the version of each parser in
-service, below this document.
+The dashboard's Methods page lists the configured models and the version of
+each parser in service.
 
 ## Prompts, abridged
 
 Live view: [models](/under/models).
 
 The models receive feed text as data and are told to ignore any instructions
-inside it. All prompts ask for neutral wording with no party framing.
+inside it. The classification, extraction, storyline, and brief prompts ask for
+neutral wording with no party framing. The entity resolution prompt asks for
+neutral wording, and the alias prompt asks for neither.
 
 ### Classification
 
@@ -329,8 +343,8 @@ the context given. Do not guess."
 "Every sentence must rest on the supplied items." A sentence with
 no citation is deleted. A citation is checked to be a supplied item, not
 checked to support the claim. "Results are claims reported by news outlets, not
-official results. Attribute them." Seats are never totaled. Each outlet
-supplies at most 3 items to a brief.
+official results. Attribute them." The prompt also says "Never total seats."
+No check enforces that. Each outlet supplies at most 3 items to a brief.
 
 ## Metric definitions
 
@@ -363,17 +377,18 @@ score.
 
 ### State attention index
 
-The state's share of relevant items in the window,
-divided by its share of relevant items over the baseline, November 1 12:00 to
-November 3 12:00 ET. Both shares divide by all relevant items, including
-stories that name no state, under the same Level, Language, and Unique
-controls. Focus chooses which states are shown and does not change a state's
-value. The ratio shrinks toward 1 with 5 pseudo-counts, so a small count stays
-near normal. $n_s$ is the state's items in the window and $N$ all items in the
-window. $b_s$ and $B$ are the same counts over the baseline. $E_s$ is the
-expected count, the baseline share times the window's total. 1.0 is normal for
-that state, and with no baseline items at all the index is 1. Before November 3
-12:00 ET the window sits inside the baseline, so $b_s$ includes $n_s$.
+The state's share of relevant items in the window, divided by its share of
+relevant items over the baseline, November 1 12:00 to November 3 12:00 ET. Both
+shares divide by all relevant items, including stories that name no state,
+under the same Level, Language, and Unique controls. On the map, Focus dims the
+states outside it. In States Rising, Focus chooses which states are listed. It
+does not change a state's value. The ratio shrinks toward 1 with 5
+pseudo-counts, so a small count stays near normal. $n_s$ is the state's items
+in the window and $N$ all items in the window. $b_s$ and $B$ are the same
+counts over the baseline. $E_s$ is the expected count, the baseline share times
+the window's total. 1.0 is normal for that state, and with no baseline items at
+all the index is 1. A window that starts before November 3 12:00 ET overlaps
+the baseline, so $b_s$ includes the items in the overlap.
 
 $$
 E_s = \frac{b_s}{B} \cdot N
@@ -386,7 +401,7 @@ $$
 The attention index of the last 15 minutes, with the 120 minutes before them as
 the baseline. So $n_s$ and $N$ count the last 15 minutes, and $b_s$ and $B$
 count the 120 before them. A state is listed when its value is above 1, largest
-first. A rise that every state shares leaves each state at 1.
+first, up to 8 states. A rise that every state shares leaves each state at 1.
 
 ### Tone aggregates
 
@@ -447,8 +462,10 @@ with more outlets does not dominate. The denominator counts only the items in
 $b$ that pass the Focus, Level, and Language controls. A bucket with no stories
 in the window has no share. It reads as no data, not 0%, and does not count
 toward divergence. Divergence is the spread across the buckets that have a
-share, and the matrix sorts by it. It is 0 when no bucket has one. The Unrated
-bucket has no column in the matrix and is left out of divergence.
+share, including Non-US, whose outlets have no lean rating. It is 0 when no
+bucket has one. The matrix keeps the 12 storylines with the most items and
+sorts them by divergence. The Unrated bucket has no column in the matrix and is
+left out of divergence, though its items count toward those 12.
 
 $$
 \text{divergence}(s) = \max_b \text{share}(s, b) - \min_b \text{share}(s, b)
@@ -456,7 +473,7 @@ $$
 
 A wide spread does not show that one side of the press covered a story more.
 The Left and Right buckets hold few outlets, so one outlet's stories can
-produce it.
+produce it, and the Non-US bucket can set one end of it.
 
 Lean labels are AllSides Media Bias Ratings. The
 [colophon](https://dchud.github.io/electionnight/colophon/) gives the citation
@@ -465,7 +482,8 @@ and license.
 ### First to report
 
 The earliest `first_seen_at` per storyline among all its copies. Poll timing
-makes this accurate to about 3 minutes at best.
+makes this accurate to one polling interval at best: 1, 3, or 10 minutes by
+tier.
 
 ### Race calls in the news
 
@@ -486,9 +504,10 @@ it. These are never added into a seat count.
 
 Near-duplicates form a group with one canonical member. A copy belongs to the
 storyline of its group's canonical member. Metrics count canonical members
-unless the Unique control says otherwise. Outlet-level
-metrics, such as coverage by lean and the outlet lists, count all copies,
-because republishing is that outlet's coverage choice.
+unless the Unique control says otherwise. Outlet-level metrics, such as
+coverage by lean and the outlet lists on a story page and on `/sources`, count
+all copies, because republishing is that outlet's coverage choice. The outlet
+list on a state page follows the Unique control.
 
 ### Evidence
 
@@ -502,8 +521,9 @@ for some figures is not the global window: stories per minute covers the last
 ### Focus
 
 A story matches a race through race keys from extraction, or through
-its classified state and race type. Without extraction, watching one House race
-in a state matches all stories classified as that state's House coverage.
+its classified state and race type. So watching one House race in a state
+matches all stories classified as that state's House coverage, whatever race
+keys extraction found.
 
 ## Known limitations
 
@@ -514,9 +534,10 @@ Live view: [coverage](/under/coverage).
 Outlets with a hard paywall are not fetched, so their analysis
 rests on the feed's title and summary. A metered outlet may return a partial
 page, which is flagged as paywalled when it is short. Tone from a summary rests
-on less text than tone from an article. The dashboard shows extracts and links
-to the original, and never the full text. The SQL console can read stored text,
-clipped to 4,000 characters per cell, and only from this laptop.
+on less text than tone from an article. The dashboard shows extracts of up to
+1,200 characters and links to the original, so only an article shorter than
+that appears in full. The SQL console can read stored text, clipped to 4,000
+characters per cell, and only from this laptop.
 
 ### Polling latency
 
@@ -548,7 +569,7 @@ rate an outlet as a whole, not each story.
 
 Several states drew new congressional maps for 2026. Census
 district boundary files may not match them, so there is no district map. House
-races are listed by their `XX-NN` code, and county maps show local geography.
+races are listed by district number, and county maps show local geography.
 County data comes from place names matched against the Census gazetteer, so a
 county named in a story is not proof the story is about all of that county. A
 name shared by several counties, with no state to choose among them, gets no
@@ -556,9 +577,10 @@ county.
 
 ### Search
 
-Results rank by cosine similarity, which measures closeness of
-meaning across languages, not truth or importance. Vectors cover the title and
-summary, not the full text.
+A search with a query ranks results by cosine similarity, which measures
+closeness of meaning across languages, not truth or importance. A keyword with
+no query lists the newest results first. Vectors cover the title and summary,
+not the full text.
 
 ## Differences from the build specification
 
@@ -592,8 +614,8 @@ avoided 22 or 23 of 24 false ones. On 400 real articles that use words such as
 won, leads, or conceded, from before any result existed, it reported one false
 claim, a primary, and the rule on a contest's label rejects that claim. A claim
 placed in a long, unrelated article is missed more often, mostly a lead or a
-too-close report. `tests/fixtures/race_claims.jsonl` holds the invented
-articles.
+too-close report. `tests/fixtures/race_claims.jsonl` holds 180 invented
+articles, among them those 50.
 
 ### Tone
 
@@ -601,7 +623,7 @@ The specification shrinks a mean toward 0 with 5 pseudo-observations
 and gives it a 95% interval from the standard error. An interval around the
 shrunk mean does not cover the true mean 95% of the time: in simulation with a
 true mean of -1.0, a standard deviation of 0.5, and tone clamped to the scale,
-it covered 32% at $n$ of 6 and 83% at $n$ of 100. The dashboard draws the
+it covered 31% at $n$ of 6 and 83% at $n$ of 100. The dashboard draws the
 unshrunk mean with a $t$-interval, and the low-n flag marks small counts.
 
 ### Replay
@@ -610,8 +632,8 @@ Replay shows what had been first seen by its time, wherever an item
 sits on the time axis. The attention baseline, the active storyline count, and
 the status that admits a storyline to Rising are as of that time. Storyline
 labels, summaries, and assignments, and each item's classification and tone,
-are current, and the replay header says so. Feed health is not shown for a past
-moment.
+are current. The replay header says so for storyline labels and assignments.
+Feed health is not shown for a past moment.
 
 ### Catching up after a gap
 
@@ -620,13 +642,16 @@ reads each listed outlet's Google News sitemap, because a sitemap lists about
 two days of stories and a feed lists fewer. It reads each one until it has an
 answer, starting over if the network drops during the read, and gives up on a
 sitemap that keeps failing. Only stories published since 20 minutes before the
-gap are added, and a date with no time of day counts if it falls within a day
-of that. One sitemap read adds at most 500 stories. An entry dated over an hour
-ahead is left out, because some sitemaps list pages under a future date, such
-as a results page dated election morning, and the dashboard does not count a
-story dated over an hour after it was first seen. These stories have no feed
-summary and may come from sections the outlet's feed omits, so that outlet can
-show more stories for that period than it would otherwise.
+gap are added, and a date with no time zone, with or without a time of day,
+counts if it falls within a day of that. One sitemap file adds at most 500
+stories, and up to 3 files are read from a sitemap index. An entry with a time
+zone dated over an hour ahead is left out, because some sitemaps list pages
+under a future date, such as a results page dated election morning, and the
+dashboard does not count a story dated over an hour after it was first seen. An
+entry with no time zone has no such upper limit: it is added with no published
+time, so neither rule applies to it. These stories have no feed summary and may
+come from sections the outlet's feed omits, so that outlet can show more
+stories for that period than it would otherwise.
 
 ### Storyline thresholds
 
@@ -653,8 +678,8 @@ that limit to 0, because their rows are long.
 
 Every 15 minutes, maintenance flushes inlined rows to Parquet, merges small
 adjacent files, and deletes each replaced file 2 hours after it was replaced.
-The clock starts when a merge or flush replaces the file, not when the file was
-written. A merged file keeps each row's snapshot in
+The clock starts when a merge replaces the file, not when the file was written.
+A merged file keeps each row's snapshot in
 `_ducklake_internal_snapshot_id`, so `AT (VERSION => n)` stays exact after the
 replaced files are gone. Catalog backups run every 15 minutes. The newest 12
 are kept, and one per earlier hour.
@@ -665,9 +690,9 @@ only the files that can match. Inlined rows have no per-file statistics. They
 are read unless the table-wide range in `ducklake_table_column_stats` rules out
 the whole table.
 
-[The table map](/under/lake#map) shows how the tables relate. DuckLake has no
-foreign keys, so its solid lines are values the code keeps equal. Its dashed
-lines show what the rollups read.
+[The table map](/under/lake#map), on the dashboard's DuckLake page, shows how
+the tables relate. DuckLake has no foreign keys, so its solid lines are values
+the code keeps equal. Its dashed lines show what the rollups read.
 
 ## The read model
 
@@ -681,7 +706,9 @@ Every 3 s, the hub asks whether a new snapshot exists. If one does, the read
 model finds items with a row newer than its watermark, less 3 minutes because a
 row is stamped when added and committed up to one batch later. It rereads those
 items' latest rows with `row_number() OVER (PARTITION BY item_id ORDER BY
-created_at DESC) = 1`, and replaces them in `facts`. Reference tables and
+created_at DESC) = 1`, and replaces them in `facts`. A row that failing commits
+hold past those 3 minutes while other tables commit keeps its old stamp, and
+the read model misses it until the web process restarts. Reference tables and
 storylines are copied whole. An item in a merged storyline points to the
 surviving storyline, following at most 8 merges.
 
@@ -692,10 +719,11 @@ server-sent events and refetch only what they show.
 
 Live view: [costs](/under/costs).
 
-The ledger below this document sums `nlp.llm_calls`. Dollar figures are
-estimates from token counts and the configured prices. The budget guard moves
-low-signal sources to keyword classification at 80% of the daily cap, and stops
-all LLM calls except briefs at the hard cap.
+The ledger on the dashboard's Methods page sums `nlp.llm_calls`. Dollar figures
+are estimates from token counts and the configured prices. The budget guard
+moves low-signal sources to keyword classification at 80% of the daily cap, and
+stops all LLM calls except briefs at the hard cap, which applies to total spend
+across all days. Reaching the daily cap itself stops nothing.
 ### Prompt caching
 
 Each call marks its system prompt with `cache_control: ephemeral`. A cache
@@ -716,9 +744,9 @@ retries are not counted, because the ledger sees one result per call.
 
 ## Values in this document
 
-A test compares this table with the code, and this page warns when a setting
-in service differs from it. The middle column names a setting, or a constant by
-its module.
+A test compares this table with the code, and the dashboard's Methods page
+warns when a setting in service differs from it. The middle column names a
+setting, or a constant by its module.
 
 | Value | Where it lives | Stated |
 |---|---|---|

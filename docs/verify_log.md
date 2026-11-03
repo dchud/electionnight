@@ -13,17 +13,18 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
 | V6 | Embedding model available through fastembed | pass 2026-11-01: intfloat/multilingual-e5-small, custom ONNX export, returns 384 dimensions |
 | V7 | Anthropic key, model ids, request settings, prompt caching | pass 2026-11-01: claude-haiku-5-5 parse with effort low and thinking disabled OK, cache read 2906 tokens on the second call; claude-sonnet-5-5 adaptive at medium OK; SDK 2.3.0 |
 | V8 | htmx 2 SSE extension attribute syntax | pass 2026-11-01: htmx 2.0.11 and htmx-ext-sse 2.2.4: `hx-ext="sse"`, `sse-connect`, `sse-swap`, and `hx-trigger="sse:snapshot throttle:10s"`, exercised in a browser |
-| V9 | Vendored asset versions | pass 2026-11-01: `scripts/vendor_assets.sh` pins htmx 2.0.11, sse 2.2.4, vega 6.4.0, vega-lite 6.4.1, vega-embed 7.3.0, d3 7.9.0, topojson-client 3.1.0, Inter 5.3.0, us-atlas 3.0.1, Tailwind 4.3.3 |
+| V9 | Vendored asset versions | pass 2026-11-01: `scripts/vendor_assets.sh` pins htmx 2.0.11, sse 2.2.4, vega 6.4.0, vega-lite 6.4.1, vega-embed 7.3.0, d3 7.9.0, topojson-client 3.1.0, Inter 5.3.0, KaTeX 0.16.11, Tailwind 4.3.3; `src/monitor/ref/gazetteer.py` pins us-atlas 3.0.1 |
 | V10 | OpenFEC endpoint and filters for 2026 candidates | pass 2026-11-01: `/v1/candidates/` honors `election_year`, `cycle`, `candidate_status`, `is_active_candidate`, `has_raised_funds`, `state`, `district`, `incumbent_challenge`. `election_type=G` is ignored, so Wikipedia candidate tables decide who is on the ballot |
 | V11 | Race ratings sources reachable and parsed | pass 2026-11-01: Wikipedia `action=parse` on the 2026 Senate, governor, House, attorney general, secretary of state, lieutenant governor, and ballot measure pages. Sabato pages returned 403, so its ratings come from the Wikipedia column. Ratings not checked against raters' own sites |
 | V12 | Poll-closing times confirmed | pass 2026-11-01: https://www.270towin.com/poll-closing-times/, cross-checked with The Green Papers and Wikipedia. Differs from the spec on KS, SD, ND, NH, ID, OR, AK; see `config/poll_closings.yaml` |
-| V13 | Lean ratings confirmed with citations | owner confirmed national and analysis outlets 2026-11-01; 36 rows. State, local, and wire outlets stay `Unrated` |
+| V13 | Lean ratings confirmed with citations | owner confirmed national and analysis outlets 2026-11-01; 36 rows. State, local, and wire outlets stay `Unrated`, as do 6 national and analysis outlets with no rating found |
 | V14 | Battleground and close-race list confirmed | owner confirmed 2026-11-01: AK AZ FL GA IA KS ME MI MN NC NE NH NV NY OH OR PA SC TX WI, which is the derived list plus overrides for NC, AZ, PA, NY |
 
 ## Differences from the spec
 
 - **Vectors.** DuckLake rejects `FLOAT[384]` with "unsupported type". Tables
-  store `FLOAT[]`; queries cast to `FLOAT[384]` for array functions.
+  store `FLOAT[]`. Array functions need a cast to `FLOAT[384]`; list functions
+  such as `list_cosine_similarity` do not.
 - **Embedding model.** fastembed does not list
   `intfloat/multilingual-e5-small`. The model's Hugging Face repository has
   `onnx/model.onnx`, registered with `TextEmbedding.add_custom_model`. Measured
@@ -68,12 +69,12 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
   also reads Google News sitemaps, listed in `config/news_sitemaps.csv` by
   `scripts/find_news_sitemaps.py`. A sitemap is listed only if the outlet's
   robots.txt names it and allows this crawler. Tested 2026-11-01: 128 of 269
-  enabled outlets qualify. The owner chose catch-up only, so outlets with no
-  feed stay out.
+  enabled outlets qualified, and `config/news_sitemaps.csv` lists 123. The
+  owner chose catch-up only, so outlets with no feed stay out.
 - **Tone intervals.** The spec gives a mean shrunk toward 0 with 5
   pseudo-observations and a 95% interval from the standard error. Simulated
   coverage of that interval, with a true mean of -1.0 and a standard deviation
-  of 0.5: 32% at n=6, 44% at n=14, 65% at n=30, 83% at n=100. With a true mean
+  of 0.5: 31% at n=6, 45% at n=14, 64% at n=30, 83% at n=100. With a true mean
   of 1.5 and n=8 it is 0%. The dashboard draws the unshrunk mean with a 95%
   t-interval, which covers 95% at those counts. The hide and low-n rules stay.
 - **Replay.** Spec section 9.5 takes storyline assignment as of the replay
@@ -81,10 +82,22 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
   classification, and tone, and a storyline's latest label. Replay filters on
   true first-seen time. The attention baseline, the active storyline count, and
   the status that admits a storyline to Rising are as of the replay time. The
-  rest is current, and the replay header says so. Feed health is not shown for
-  a past moment.
+  rest is current. The replay header says so for storyline labels and
+  assignments. Feed health is not shown for a past moment.
 - **Rising Storylines.** The spec ranks cards by velocity score. The panel
   lists only storylines that meet the rising rule, and says so when none do.
+- **Race calls.** Spec section 12 requires explicit language such as
+  "projected", "declared the winner", or "conceded". A sentence stating as fact
+  that a candidate won also counts, in any wording, and such a row shows its
+  caller as unspecified. Rules that judged a sentence's meaning kept 6 of 26
+  true claims in a test, so the model decides what a sentence means.
+- **First to report.** Spec section 13 takes the earliest `first_seen_at` among
+  canonical items. The query counts all copies of a storyline.
+- **Velocity.** Spec section 13 scores an entity or a storyline. Only
+  storylines get a score.
+- **Projector mode.** Spec sections 14.6 and 17.2 have projector mode reduce
+  the main page's panels. Projector mode changes type size and colors and hides
+  the strip and secondary controls, and every panel stays on the page.
 - **Stream colors.** No palette of 10 hues avoiding party blue and red passes
   the colorblind checks. The first 6 are validated; the rest rely on direct
   labels and hover.

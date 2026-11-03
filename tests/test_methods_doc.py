@@ -269,7 +269,7 @@ def stated_phrases():
         # Feed to screen and processes
         f"commits a batch to DuckLake every {commit.batch_seconds} s",
         f"polls the catalog every {settings.web.snapshot_poll_seconds:.0f} s",
-        f"the pipeline reads it within {CONTROL_SECONDS} s",
+        f"the pipeline checks for it every {CONTROL_SECONDS} s",
         f"`data/status.json` every {pipeline.STATUS_SECONDS} s",
         # Stages
         f"at least {nlp.relevance_threshold}",
@@ -330,7 +330,7 @@ def stated_phrases():
         f"`{llm.model_bulk}`",
         f"`{llm.model_brief}`",
         f"{llm.batch_a} items per call",
-        f"at most {extract_b.MAX_INPUT_TOKENS:,} input tokens",
+        f"at most {extract_b.MAX_INPUT_TOKENS:,} tokens of article text",
         f"{embed.EMBED_DIM} dimensions",
         # Prompts
         f"a quote of {extract_b.EVIDENCE_MIN_WORDS} to "
@@ -517,7 +517,7 @@ def test_the_stated_interval_covers_95_percent(n):
     assert t_interval_coverage(n) == pytest.approx(0.95, abs=0.01)
 
 
-@pytest.mark.parametrize(("n", "percent"), [(6, 32), (100, 83)])
+@pytest.mark.parametrize(("n", "percent"), [(6, 31), (100, 83)])
 def test_the_stated_shrunk_coverage_matches_a_simulation(n, percent):
     assert f"{percent}% at $n$ of {n}" in spaced(TEXT)
     assert shrunk_interval_coverage(n) == pytest.approx(
@@ -559,9 +559,7 @@ def test_a_monitor_command_can_write_with_no_pipeline():
 
 def test_cleanup_says_when_the_clock_starts():
     section = spaced(TEXT)
-    assert (
-        "The clock starts when a merge or flush replaces the file" in section
-    )
+    assert "The clock starts when a merge replaces the file" in section
     assert "they are 2 hours old" not in section
     assert "they are 2 hours old" not in diagram_words("ducklake")
 

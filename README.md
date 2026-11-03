@@ -61,8 +61,10 @@ instructions the agent followed.
 ## Running it
 
 It was built and run on a Mac, with [uv](https://docs.astral.sh/uv/) and Python
-3.12. It calls the Claude API, which costs money. `LLM__DAILY_USD_CAP` and
-`LLM__HARD_USD_CAP` in `.env` limit the spend.
+3.12. It calls the Claude API, which costs money. At 80% of
+`LLM__DAILY_USD_CAP` in `.env`, low-signal sources move to keywords and other
+calls continue. At `LLM__HARD_USD_CAP`, a total across all days, only briefs
+still call the API.
 
 ```bash
 uv sync

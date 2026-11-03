@@ -324,10 +324,11 @@ def test_the_rising_section_states_the_conditions_beside_its_formula():
     assert f"it keeps the top {limit} by score" in section
 
 
-def test_the_attention_section_says_the_window_can_sit_inside_the_baseline():
+def test_the_attention_section_says_the_window_can_overlap_the_baseline():
     assert (
-        "Before November 3 12:00 ET the window sits inside the baseline, so "
-        "$b_s$ includes $n_s$" in flat("state-attention-index")
+        "A window that starts before November 3 12:00 ET overlaps the "
+        "baseline, so $b_s$ includes the items in the overlap"
+        in flat("state-attention-index")
     )
 
 
