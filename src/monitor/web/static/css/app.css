@@ -526,7 +526,7 @@ strong {
   border-radius: 4px;
   font-weight: var(--weight-label);
 }
-:root[data-projector="1"] .status-strip, :root[data-projector="1"] .secondary-control {
+:root[data-projector="1"] .secondary-control {
   display: none;
 }
 main {

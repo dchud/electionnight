@@ -208,7 +208,6 @@ strong { font-weight: var(--weight-heading); }
 }
 .banner-warn { background: var(--warn-bg); color: var(--warn-text); padding: 0 .5rem; border-radius: 4px; font-weight: var(--weight-label); }
 .banner-crit { background: var(--crit-bg); color: var(--crit-text); padding: 0 .5rem; border-radius: 4px; font-weight: var(--weight-label); }
-:root[data-projector="1"] .status-strip,
 :root[data-projector="1"] .secondary-control { display: none; }
 
 /* Bands */

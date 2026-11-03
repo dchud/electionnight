@@ -689,6 +689,22 @@ def test_hover_keeps_the_tint_on_the_current_methods_section(scratch, browser):
     context.close()
 
 
+def test_projector_mode_keeps_the_status_strip(scratch, browser):
+    settings, server = scratch
+    add_item(settings, "seed")
+    server.start()
+    context, page = open_page(browser)
+    wait_for_row(page, "Headline seed")
+    strip = page.locator(".status-strip")
+    assert strip.is_visible()
+    page.keyboard.press("p")
+    page.wait_for_timeout(100)
+    assert page.evaluate("document.documentElement.dataset.projector") == "1"
+    assert strip.is_visible()
+    assert not page.locator(".secondary-control").first.is_visible()
+    context.close()
+
+
 def test_the_projector_key_repaints_tone_dots_on_rows_already_shown(
     scratch, browser
 ):
