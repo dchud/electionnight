@@ -89,7 +89,7 @@ time and are not in this repository.
 | Delaunator | As bundled | Inside `vendor/d3.min.js` and `vendor/vega.min.js` | ISC |
 | json-stringify-pretty-compact | 4.0.0 | Inside `vendor/vega-embed.min.js` | MIT |
 | robust-predicates | 3.0.2 | Inside `vendor/d3.min.js` and `vendor/vega.min.js` | Unlicense |
-| ColorBrewer color schemes | As bundled | Inside `vendor/d3.min.js` | Apache 2.0 |
+| ColorBrewer color schemes | As bundled | Inside `vendor/d3.min.js` and `vendor/vega.min.js` | Apache 2.0 |
 
 ## Documentation site
 
