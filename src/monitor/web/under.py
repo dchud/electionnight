@@ -37,6 +37,7 @@ from monitor.lake import NO_INLINE, TABLES, connect
 from monitor.llm.budget import estimate_usd
 from monitor.logs import get
 from monitor.settings import Settings
+from monitor.web.code_format import render_code
 from monitor.web.filters import Filters
 from monitor.web.panels import Panels, load_sql
 from monitor.web.readmodel import ReadModel
@@ -428,6 +429,7 @@ def register_filters(env: Any) -> None:
     env.filters["u_et"] = et_label
     env.filters["u_secs"] = seconds_label
     env.filters["u_sql"] = render_sql
+    env.filters["u_code"] = render_code
 
 
 def quoted(text: str) -> str:

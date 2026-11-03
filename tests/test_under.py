@@ -1097,6 +1097,45 @@ def test_trace_follows_every_stage(client):
     assert "older than capture" not in html
 
 
+def test_trace_colors_stored_json(client):
+    page = client.get("/under/trace/cap1").text
+    key = '<span class="code-identifier">&#34;election_relevant&#34;</span>'
+    assert f'{key}: <span class="code-keyword">true</span>' in page
+    assert '<span class="code-identifier">&#34;title&#34;</span>' in page
+    assert (
+        '<span class="code-string">&#34;Rich entry title&#34;</span>' in page
+    )
+
+
+def test_trace_leaves_prompts_and_messages_plain(client):
+    page = client.get("/under/trace/cap1").text
+    assert '<pre class="u-pre">You classify news items.</pre>' in page
+    old = client.get("/under/trace/old1").text
+    assert "No raw entry is stored." not in old
+    missing = client.get("/under/trace/backlog").text
+    assert '<pre class="u-pre">No raw entry is stored.</pre>' in missing
+
+
+def test_trace_of_escaped_json_stays_escaped(client):
+    page = client.get("/under/trace/xss").text
+    assert ALERT not in page
+    assert '<span class="code-identifier">&#34;a&#34;</span>' in page
+    assert "&lt;script&gt;" in page
+
+
+def test_data_model_colors_schemas(client):
+    page = client.get("/under/data-model?table=raw.items").text
+    schemas = page[page.index('id="schemas"') :]
+    assert '<span class="code-identifier">&#34;type&#34;</span>' in schemas
+    assert '<span class="code-string">&#34;object&#34;</span>' in schemas
+
+
+def test_raw_parser_output_is_colored(client):
+    page = client.get("/frag/article/cap1/raw").text
+    assert page.startswith('<pre class="raw">')
+    assert '<span class="code-identifier">&#34;item_id&#34;</span>' in page
+
+
 def test_trace_of_a_batch_item_finds_its_slice(under):
     from monitor.web.filters import Filters
     from monitor.web.under_trace import trace
@@ -1154,10 +1193,22 @@ def test_archive_record_is_read_and_verified(client):
     assert "Elsewhere" not in html
 
 
+def test_archive_bytes_stay_plain(client):
+    for kind in ("pages", "feeds"):
+        page = client.get(f"/under/trace/cap1/archive/{kind}").text
+        block = page[page.index('<pre class="u-pre">') :]
+        assert "<span" not in block[: block.index("</pre>")]
+
+
 def test_missing_archive_file_says_so(client):
     html = client.get("/under/trace/xss/archive/pages").text
     assert "is gone" in html
     assert "does not fetch from S3" in html
+
+
+def test_a_missing_archive_shows_its_index_row_as_python(client):
+    page = client.get("/under/trace/xss/archive/pages").text
+    assert '<span class="code-string">&#39;kind&#39;</span>' in page
 
 
 def test_item_with_no_archive_row_says_so(client):

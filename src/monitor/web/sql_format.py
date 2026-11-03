@@ -33,14 +33,15 @@ SPACE = "space"
 OTHER = "other"
 WORD = "word"
 
+# One set of colors, for every language the views color.
 CSS_CLASSES = {
-    COMMENT: "sql-comment",
-    STRING: "sql-string",
-    NUMBER: "sql-number",
-    KEYWORD: "sql-keyword",
-    FUNCTION: "sql-function",
-    IDENTIFIER: "sql-identifier",
-    PARAM: "sql-param",
+    COMMENT: "code-comment",
+    STRING: "code-string",
+    NUMBER: "code-number",
+    KEYWORD: "code-keyword",
+    FUNCTION: "code-function",
+    IDENTIFIER: "code-identifier",
+    PARAM: "code-param",
 }
 
 TOKEN_KINDS = {
@@ -220,8 +221,9 @@ def _classified(scanned: list[Token]) -> list[Token]:
     return tokens
 
 
-def _plain(sql: str) -> list[Token]:
-    return [Token(OTHER, sql)] if sql else []
+def plain(text: str) -> list[Token]:
+    """Text as one uncolored token."""
+    return [Token(OTHER, text)] if text else []
 
 
 def tokenize(sql: str) -> list[Token]:
@@ -231,13 +233,13 @@ def tokenize(sql: str) -> list[Token]:
     token, because showing a statement matters more than coloring it.
     """
     if len(sql) > MAX_FORMATTED_CHARS:
-        return _plain(sql)
+        return plain(sql)
     try:
         tokens = _classified(_scanned(sql))
     except Exception:
-        return _plain(sql)
+        return plain(sql)
     if "".join(token.text for token in tokens) != sql:
-        return _plain(sql)
+        return plain(sql)
     return tokens
 
 
@@ -320,13 +322,18 @@ def laid_out(sql: str) -> list[Token]:
     return break_clauses(tokens) if _is_one_long_line(sql) else tokens
 
 
-def render_sql(sql: str | None) -> Markup:
-    """The statement as escaped HTML, for inside a `pre` element."""
+def tokens_html(tokens: list[Token]) -> Markup:
+    """Tokens as escaped HTML, each kind in the span of its color."""
     parts = []
-    for token in laid_out(sql or ""):
+    for token in tokens:
         css = CSS_CLASSES.get(token.kind)
         text = escape(token.text)
         parts.append(
             f'<span class="{css}">{text}</span>' if css else str(text)
         )
     return Markup("".join(parts))
+
+
+def render_sql(sql: str | None) -> Markup:
+    """The statement as escaped HTML, for inside a `pre` element."""
+    return tokens_html(laid_out(sql or ""))

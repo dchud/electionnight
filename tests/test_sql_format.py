@@ -490,7 +490,7 @@ HOSTILE = "</pre><script>alert(1)</script><img src=x onerror=alert(1)>"
 def test_no_token_type_lets_markup_through(sql):
     markup = str(render_sql(sql))
     tags = re.findall(r"<[^>]*>?", markup)
-    allowed = re.compile(r'<span class="sql-\w+">|</span>')
+    allowed = re.compile(r'<span class="code-\w+">|</span>')
     assert all(allowed.fullmatch(tag) for tag in tags), tags
     assert spaced(strip_tags(markup)) == spaced(sql)
 
@@ -547,7 +547,7 @@ def test_formatting_needs_no_connection(monkeypatch):
         raise AssertionError("no connection is needed")
 
     monkeypatch.setattr(sql_format.duckdb, "connect", fails)
-    assert 'class="sql-keyword">SELECT' in str(render_sql("SELECT 1"))
+    assert 'class="code-keyword">SELECT' in str(render_sql("SELECT 1"))
 
 
 def test_formatting_works_from_several_threads():
@@ -652,14 +652,14 @@ def seeded(settings):
 def test_a_disclosed_query_is_colored(seeded):
     page = seeded.get("/under/lake?table=raw.fetches").text
     assert '<pre class="u-sql">' in page
-    assert '<span class="sql-keyword">SELECT</span>' in page
-    assert '<span class="sql-identifier">lake.raw.fetches</span>' in page
+    assert '<span class="code-keyword">SELECT</span>' in page
+    assert '<span class="code-identifier">lake.raw.fetches</span>' in page
 
 
 def test_the_gallery_is_colored(seeded):
     page = seeded.get("/under/queries").text
-    assert '<span class="sql-keyword">SELECT</span>' in page
-    assert '<span class="sql-comment">-- raw_entry is JSON.' in page
+    assert '<span class="code-keyword">SELECT</span>' in page
+    assert '<span class="code-comment">-- raw_entry is JSON.' in page
 
 
 @pytest.mark.skipif(
@@ -677,5 +677,5 @@ def test_the_console_echoes_a_colored_escaped_statement(seeded):
     assert "<span" not in box
     echo = page[page.index('<pre class="u-sql">') :]
     echo = echo[: echo.index("</pre>")]
-    assert '<span class="sql-keyword">SELECT</span>' in echo
+    assert '<span class="code-keyword">SELECT</span>' in echo
     assert "&lt;script&gt;" in echo

@@ -34,6 +34,7 @@ from monitor.web.under_panels import (
     combined,
     lake_form,
     literal,
+    source_of,
     with_literals,
 )
 from monitor.web.under_worker import check_console_sql
@@ -384,23 +385,27 @@ def test_code_is_read_from_the_source_with_its_file_and_line(client, card):
 
 
 def test_the_tone_page_shows_the_constants_and_the_real_function(client):
-    page = html.unescape(client.get("/under/panels/tone").text)
+    page = client.get("/under/panels/tone").text
+    assert ">5<" in page
+    page = strip_tags(page)
     assert "def tone_aggregate(" in page
     assert "src/monitor/analytics.py:" in page
     assert "TONE_HIDE_BELOW" in page
-    assert ">5<" in page
 
 
 def test_the_brief_page_shows_the_prompt_and_the_validator(client):
-    page = html.unescape(client.get("/under/panels/brief").text)
+    page = strip_tags(client.get("/under/panels/brief").text)
     assert "def validate_structured(" in page
     assert "You write short briefings" in page
     assert "async def write(" in page
 
 
 def test_code_comes_only_from_the_named_functions(client):
-    page = html.unescape(client.get("/under/panels/tone").text)
-    code = page[page.index('id="code"') : page.index('id="local-tables"')]
+    page = client.get("/under/panels/tone").text
+    code = strip_tags(
+        page[page.index('id="code"') : page.index('id="local-tables"')]
+    )
+    assert "def tone_aggregate(" in code
     assert "def coverage_share(" not in code
     assert "def velocity_score(" not in code
     assert "api_key" not in code.lower()
@@ -409,8 +414,49 @@ def test_code_comes_only_from_the_named_functions(client):
 def test_source_text_is_escaped(client):
     page = client.get("/under/panels/map").text
     code = page[page.index('id="code"') : page.index('id="local-tables"')]
-    assert "-&gt; float" in code
-    assert "-> float" not in code
+    assert "-&gt;" in code
+    assert "->" not in code
+    assert "-> float" in strip_tags(code)
+
+
+def test_source_is_colored_as_the_file_extension_states(client):
+    page = client.get("/under/panels/tone").text
+    code = page[page.index('id="code"') : page.index('id="local-tables"')]
+    assert (
+        '<span class="code-keyword">def</span> '
+        '<span class="code-function">tone_aggregate</span>'
+    ) in code
+
+
+def test_each_source_block_is_exactly_the_function(client):
+    page = client.get("/under/panels/tone").text
+    shown = [
+        strip_tags(block)
+        for block in re.findall(
+            r'<pre class="u-pre">(.*?)</pre>', page, flags=re.S
+        )
+    ]
+    for ref in CARDS_BY_KEY["tone"].code:
+        assert source_of(ref)["source"] in shown
+
+
+def test_a_long_value_is_colored_only_if_it_states_a_language(client):
+    page = client.get("/under/panels/brief").text
+    values = page[
+        page.index("Values it uses") : page.index('id="local-tables"')
+    ]
+    blocks = dict(
+        re.findall(
+            r"<summary><code>(\w+)</code>.*?<pre class=\"u-pre\">(.*?)</pre>",
+            values,
+            flags=re.S,
+        )
+    )
+    assert '<span class="code-keyword">SELECT</span>' in blocks["ITEMS_SQL"]
+    assert (
+        '<span class="code-keyword">SELECT</span>' in blocks["STORYLINES_SQL"]
+    )
+    assert "<span" not in blocks["SYSTEM"]
 
 
 # Three layers.

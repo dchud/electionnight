@@ -75,7 +75,7 @@
       <tbody>{% for row in schemas %}<tr><td>{{ row.purpose }}</td><td>{{ row.name }}</td><td>{{ row.tables }}</td></tr>{% endfor %}</tbody>
     </table></div>
     {% for row in schemas %}
-    <details class="u-details" data-key="schema-{{ row.name }}"><summary>{{ row.name }}</summary><pre class="u-pre">{{ row.json }}</pre></details>
+    <details class="u-details" data-key="schema-{{ row.name }}"><summary>{{ row.name }}</summary><pre class="u-pre">{{ row.json|u_code('json') }}</pre></details>
     {% endfor %}
   </div>
 </section>

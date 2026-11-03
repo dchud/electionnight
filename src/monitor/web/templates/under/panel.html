@@ -71,7 +71,7 @@
     {% for item in code %}
     <div>
       <h3 class="u-chart-title"><code>{{ item.name }}</code>, <code>{{ item.file }}:{{ item.line }}</code></h3>
-      <pre class="u-pre">{{ item.source }}</pre>
+      <pre class="u-pre">{{ item.source|u_code(item.language) }}</pre>
     </div>
     {% else %}
     <p class="empty">No function is named for this card.</p>
@@ -83,7 +83,7 @@
       <tbody>{% for value in values if not value.long %}<tr><td><code>{{ value.name }}</code></td><td class="u-break">{{ value.text }}</td></tr>{% endfor %}</tbody>
     </table></div>
     {% for value in values if value.long %}
-    <details class="u-details" data-key="panel-value-{{ value.name }}"><summary><code>{{ value.name }}</code>, from <code>{{ value.module }}</code></summary><pre class="u-pre">{{ value.text }}</pre></details>
+    <details class="u-details" data-key="panel-value-{{ value.name }}"><summary><code>{{ value.name }}</code>, from <code>{{ value.module }}</code></summary><pre class="u-pre">{{ value.text|u_code(value.language) }}</pre></details>
     {% endfor %}
     {% endif %}
   </div>
