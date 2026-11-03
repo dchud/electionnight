@@ -70,7 +70,7 @@ def add_item(settings, item_id, **fields):
                 "url": f"https://example.com/{item_id}",
                 "first_seen_at": now,
                 "published_at": now,
-                "language": "en",
+                "language": fields.pop("language", "en"),
                 "feed_categories": [],
             }
         ],
@@ -2066,6 +2066,35 @@ def test_global_press_ticks_can_be_told_apart(scratch, browser):
     ]
     assert len(ticks) >= 2
     assert len(ticks) == len(set(ticks))
+    context.close()
+
+
+def test_translated_headlines_sit_next_to_their_language_labels(
+    scratch, browser
+):
+    settings, server = scratch
+    for language in ("es", "zh", "ar"):
+        add_item(settings, f"item-{language}", language=language)
+    server.start()
+    context, page = global_press_page(browser, ["es", "zh", "ar"])
+    page.wait_for_selector("#panel-global .wire-row .badge")
+    rows = page.evaluate(
+        """
+        () => [...document.querySelectorAll("#panel-global .wire-row")].map(
+          (row) => {
+            const badge = row.querySelector(".badge").getBoundingClientRect();
+            const head = row.querySelector(".wire-head");
+            return {
+              gap: head.getBoundingClientRect().left - badge.right,
+              left: head.getBoundingClientRect().left,
+            };
+          }
+        )
+        """
+    )
+    assert len(rows) == 3
+    assert all(0 < row["gap"] <= 12 for row in rows)
+    assert len({row["left"] for row in rows}) == 1
     context.close()
 
 

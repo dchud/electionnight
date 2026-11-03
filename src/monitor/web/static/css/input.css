@@ -257,6 +257,7 @@ main { padding: .6rem 1rem 2rem; display: flex; flex-direction: column; gap: .6r
   padding: .3rem 0; border-bottom: 1px solid var(--line-soft); font-size: .85rem;
   cursor: pointer; align-items: start; justify-items: start;
 }
+.wire-row-lang { grid-template-columns: 1.5rem 1fr; }
 .wire-time { color: var(--text-3); font-variant-numeric: tabular-nums; font-size: .75rem; }
 .wire-head { font-weight: var(--weight-emphasis); }
 .wire-meta { grid-column: 2; display: flex; flex-wrap: wrap; gap: .2rem .4rem; align-items: center; font-size: .72rem; color: var(--text-2); }
