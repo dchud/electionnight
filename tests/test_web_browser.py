@@ -774,6 +774,67 @@ def test_map_tooltip_gives_the_toned_count_and_flags_low_n(scratch, browser):
     context.close()
 
 
+@pytest.mark.parametrize("projector", [False, True])
+def test_the_map_keeps_its_size_when_a_top_story_appears(
+    scratch, browser, projector
+):
+    settings, server = scratch
+    add_item(settings, "ga", states=["GA"])
+    add_item(settings, "oh", states=["OH"])
+    server.start()
+    context = browser.new_context(viewport={"width": 1920, "height": 1080})
+    if projector:
+        context.add_init_script(
+            "try { localStorage.setItem('projector', '1'); } catch (error) {}"
+        )
+    page = context.new_page()
+
+    def with_story(route):
+        response = route.fetch()
+        data = response.json()
+        for row in data["states"]:
+            if row["usps"] == "GA":
+                row["top_storyline"] = "A long storyline label " * 8
+            else:
+                row["top_storyline"] = None
+        route.fulfill(response=response, json=data)
+
+    page.route("**/api/data/map*", with_story)
+    page.goto(f"{BASE}/?window=3h")
+    page.wait_for_selector("path.map-state.map-painted, path.map-state")
+    wait_settled(page)
+
+    def sizes():
+        return page.evaluate(
+            """
+            () => {
+              const box = (id) => document
+                .getElementById(id).getBoundingClientRect();
+              const readout = document.getElementById("map-readout");
+              return {
+                readout: box("map-readout").height,
+                map: box("us-map").height,
+                top: box("us-map").top,
+                clipped: readout.scrollHeight - readout.clientHeight,
+              };
+            }
+            """
+        )
+
+    idle = sizes()
+    page.locator('path.map-state[data-usps="GA"]').hover(force=True)
+    page.wait_for_timeout(250)
+    text = page.locator("#map-readout").inner_text()
+    assert "Georgia" in text
+    assert "Top story" in text
+    assert sizes() == idle
+    page.locator('path.map-state[data-usps="OH"]').hover(force=True)
+    page.wait_for_timeout(250)
+    assert "Ohio" in page.locator("#map-readout").inner_text()
+    assert sizes() == idle
+    context.close()
+
+
 def test_map_readout_stays_in_place_and_says_what_attention_means(
     scratch, browser
 ):
