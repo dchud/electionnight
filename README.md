@@ -1,5 +1,7 @@
 # Election Night News Monitor
 
+**Documentation: <https://dchud.github.io/electionnight/>**
+
 > **Agent-coded, for teaching.** An AI coding agent, Claude Code, wrote this
 > software for teaching purposes. It is not intended as production software,
 > and it does not report official election results.
@@ -36,9 +38,9 @@ The monitor was built for one evening: the US midterm elections on November 3,
 are the unstructured data, and DuckLake is a main topic of the class.
 
 The "Under the hood" pages, at `/under`, show the same data from the inside:
-tables, snapshots, Parquet files, queries, model output, and API costs.
-[`docs/walkthrough.md`](docs/walkthrough.md) is the script for teaching from
-them.
+tables, snapshots, Parquet files, queries, model output, and API costs. The
+[class walkthrough](https://dchud.github.io/electionnight/walkthrough/) is the
+script for teaching from them.
 
 Claude Code wrote the code, tests, and documentation from the specification in
 [`SPEC.md`](SPEC.md), starting two days before the election. A person directed
@@ -79,16 +81,24 @@ every operating command.
 
 ## Where to read more
 
+The [documentation site](https://dchud.github.io/electionnight/) has these
+pages:
+
+| Page | What it holds |
+|---|---|
+| [Tour](https://dchud.github.io/electionnight/tour/) | Screens of the dashboard and the "Under the hood" pages |
+| [Class walkthrough](https://dchud.github.io/electionnight/walkthrough/) | The class script for the "Under the hood" pages |
+| [Methods](https://dchud.github.io/electionnight/methods/) | How each number is produced, and its limits |
+| [Run of show](https://dchud.github.io/electionnight/run_of_show/) | Operating steps for election night, and what to do when something fails |
+| [Verification log](https://dchud.github.io/electionnight/verify_log/) | Facts checked during the build, and where the specification differs |
+| [Colophon](https://dchud.github.io/electionnight/colophon/) | The tech stack, the data sources, and the published work the monitor uses |
+| [Third-party notices](https://dchud.github.io/electionnight/third_party_notices/) | What the MIT license covers, and the licenses of everything else |
+
+The repository holds two more:
+
 | File | What it holds |
 |---|---|
 | [`SPEC.md`](SPEC.md) | Requirements, data model, and dashboard behavior |
-| [`docs/tour.md`](docs/tour.md) | Screens of the dashboard and the "Under the hood" pages |
-| [`docs/methods.md`](docs/methods.md) | How each number is produced, and its limits |
-| [`docs/walkthrough.md`](docs/walkthrough.md) | The class script for the "Under the hood" pages |
-| [`docs/run_of_show.md`](docs/run_of_show.md) | Operating steps for election night, and what to do when something fails |
-| [`docs/verify_log.md`](docs/verify_log.md) | Facts checked during the build, and where the specification differs |
-| [`docs/colophon.md`](docs/colophon.md) | The tech stack, the data sources, and the published work the monitor uses |
-| [`docs/third_party_notices.md`](docs/third_party_notices.md) | What the MIT license covers, and the licenses of everything else |
 | [`CLAUDE.md`](CLAUDE.md) | Commands, key files, and conventions |
 
 ## License
@@ -96,5 +106,5 @@ every operating command.
 The MIT license in [`LICENSE`](LICENSE) covers this project's own code and
 documentation. It does not cover third-party material in this repository:
 vendored frontend code, fonts, map data, lean labels, race ratings, and
-Wikipedia excerpts in test fixtures keep their own terms, listed in
-[`docs/third_party_notices.md`](docs/third_party_notices.md).
+Wikipedia excerpts in test fixtures keep their own terms, listed in the
+[third-party notices](https://dchud.github.io/electionnight/third_party_notices/).

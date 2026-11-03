@@ -94,7 +94,24 @@ def test_the_font_notices_and_the_font_license_are_present():
 def test_the_readme_says_what_the_mit_license_covers():
     section = README[README.index("## License") :]
     assert "covers this project's own code and" in section
-    assert "docs/third_party_notices.md" in section
+    assert "third_party_notices/" in section
+
+
+def test_the_readme_opens_with_the_published_site():
+    site = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    url = re.search(r"^site_url: (\S+)", site, re.M).group(1)
+    assert url in README[: README.index("## Purpose")]
+
+
+def test_the_readme_links_published_pages_not_their_sources():
+    site = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    url = re.search(r"^site_url: (\S+)", site, re.M).group(1)
+    targets = re.findall(r"\]\(([^)\s]+)\)", README)
+    assert not [t for t in targets if t.endswith(".md") and "docs/" in t]
+    pages = [t[len(url) :].strip("/") for t in targets if t.startswith(url)]
+    assert len(pages) >= 7
+    for page in filter(None, pages):
+        assert (ROOT / "docs" / f"{page}.md").exists(), page
 
 
 def test_the_site_lists_the_colophon_and_the_notices():
