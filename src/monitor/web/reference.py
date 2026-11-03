@@ -59,8 +59,6 @@ CRITERIA_INCLUDE = (
     "Public broadcasters with editorial independence.",
 )
 CRITERIA_EXCLUDE = (
-    "Outlets rated low-reliability or problematic by Ad Fontes Media or "
-    "similar raters.",
     "Conspiracy or fabrication-prone sites.",
     "State-controlled media of authoritarian governments, such as RT and "
     "Sputnik.",
@@ -213,7 +211,6 @@ class Reference:
             **row,
             **lean_display(row),
             "homepage": safe_url(row.get("homepage")),
-            "adfontes_url": safe_url(row.get("adfontes_url")),
             "feed_list": [
                 url for url in (row.get("feed_urls") or "").split("|") if url
             ],

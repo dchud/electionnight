@@ -4,18 +4,18 @@
 <main id="main">
   <section class="band band-now" id="band-1" aria-label="Now">
     <article class="panel span-4" id="panel-wire">
-      <div class="panel-head"><h2 class="panel-title">Live Wire</h2><span class="panel-note">newest relevant stories</span>{{ card.link("wire", qs) }}</div>
+      <div class="panel-head"><h2 class="panel-title nowrap">Live Wire</h2><span class="panel-note">newest relevant stories; lean labels from AllSides; translations by a language model</span>{{ card.link("wire", qs) }}</div>
       <div class="panel-body" id="wire-panel">
         <div id="wire-live" sse-swap="wire,wire-ready" hx-swap="afterbegin"></div>
         <div id="wire" hx-get="/frag/wire?{{ qs }}" hx-trigger="load, replay-tick from:body, wire-resume from:body"></div>
       </div>
     </article>
     <article class="panel span-5" id="panel-rising">
-      <div class="panel-head"><h2 class="panel-title">Rising Storylines</h2><span class="panel-note">last 15 min vs prior 2 h</span>{{ card.link("rising", qs) }}</div>
+      <div class="panel-head"><h2 class="panel-title">Rising Storylines</h2><span class="panel-note">last 15 min vs prior 2 h; text written by a language model</span>{{ card.link("rising", qs) }}</div>
       <div class="panel-body" hx-get="/frag/rising?{{ qs }}" hx-trigger="load, sse:snapshot throttle:{{ throttle }}s, replay-tick from:body"></div>
     </article>
     <article class="panel span-3 span-wide" id="panel-brief">
-      <div class="panel-head"><h2 class="panel-title">Briefing</h2><span class="panel-note">cited summaries</span>{{ card.link("brief", qs) }}</div>
+      <div class="panel-head"><h2 class="panel-title">Briefing</h2><span class="panel-note">written by a language model</span>{{ card.link("brief", qs) }}</div>
       <div class="panel-body" id="brief" hx-get="/frag/brief?{{ qs }}" hx-trigger="load, sse:brief, replay-tick from:body"></div>
     </article>
   </section>
@@ -45,7 +45,7 @@
     </article>
     <article class="panel span-5 span-wide" id="panel-calls">
       <div class="panel-head"><h2 class="panel-title">Race Calls in the News</h2>{{ card.link("calls", qs) }}</div>
-      <div class="claims-banner">Claims as reported by news outlets; not official results.</div>
+      <div class="claims-banner">Claims as reported by news outlets and extracted by a language model; not official results.</div>
       <div class="panel-body" hx-get="/frag/race-calls?{{ qs }}" hx-trigger="load, sse:snapshot throttle:{{ throttle }}s, replay-tick from:body"></div>
     </article>
   </section>
@@ -54,6 +54,7 @@
     <article class="panel span-8 span-wide" id="panel-stream">
       <div class="panel-head">
         <h2 class="panel-title">Storyline Stream</h2>
+        <span class="panel-note">labels written by a language model</span>
         <span class="segmented" id="stream-mode">
           <button data-variant="" aria-pressed="true">Stream</button>
           <button data-variant="normalize" aria-pressed="false">100%</button>
@@ -74,24 +75,24 @@
       <div class="panel-chart"><div class="chart" data-chart="bump" data-time-axis="1" data-click="evidence"></div></div>
     </article>
     <article class="panel span-6 span-wide" id="panel-tone">
-      <div class="panel-head"><h2 class="panel-title">Tone by Outlet Lean</h2><span class="panel-note">hollow = n under 15; opinion excluded</span>{{ card.link("tone", qs) }}</div>
+      <div class="panel-head"><h2 class="panel-title">Tone by Outlet Lean</h2><span class="panel-note">hollow = n under 15; opinion excluded; tone from a language model; lean labels from AllSides</span>{{ card.link("tone", qs) }}</div>
       <div class="panel-chart"><div class="chart" data-chart="tone_by_lean" data-click="evidence"></div></div>
     </article>
   </section>
 
   <section class="band band-coverage" id="band-5" aria-label="Coverage">
     <article class="panel span-7 span-wide" id="panel-matrix">
-      <div class="panel-head"><h2 class="panel-title">Coverage by Lean</h2><span class="panel-note">share of each bucket's election coverage; blank = no stories in that bucket</span>{{ card.link("matrix", qs) }}</div>
+      <div class="panel-head"><h2 class="panel-title nowrap">Coverage by Lean</h2><span class="panel-note">share of each bucket's election coverage; blank = no stories in that bucket; lean labels from AllSides; sorted by spread between buckets, which does not show that one side covered a story more</span>{{ card.link("matrix", qs) }}</div>
       <div class="panel-chart"><div class="chart" data-chart="coverage_matrix" data-click="matrix"></div></div>
     </article>
     <article class="panel span-5 span-wide" id="panel-global">
-      <div class="panel-head"><h2 class="panel-title">Global Press</h2><span class="panel-note">non-English share</span>{{ card.link("global", qs) }}</div>
+      <div class="panel-head"><h2 class="panel-title">Global Press</h2><span class="panel-note">non-English share; translations by a language model</span>{{ card.link("global", qs) }}</div>
       <div class="grid grid-cols-2 gap-2 flex-1 min-h-0 p-2">
         <div class="min-h-0 overflow-y-auto"><div data-chart="global_press" data-click="evidence"></div></div>
         <div class="min-h-0 overflow-y-auto" hx-get="/frag/translated?{{ qs }}" hx-trigger="load, sse:snapshot throttle:{{ throttle }}s, replay-tick from:body"></div>
       </div>
     </article>
   </section>
-  <footer class="u-footer"><a class="text-link" href="/under">Under the hood</a></footer>
+  <footer class="u-footer"><span>Language models produce most of the relevance, topic, entity, tone, and race call data, and they write the storyline labels and briefs. They can be wrong. <a class="text-link" href="/methods">Methods</a> · <a class="text-link" href="/under">Under the hood</a></span></footer>
 </main>
 {% endblock %}

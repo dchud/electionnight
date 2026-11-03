@@ -17,7 +17,7 @@
         </div>
         <div class="criteria-wide">
           <h3 class="section-title">Lean labels</h3>
-          <p class="m-0">The label is the AllSides Media Bias Rating where one exists, with its citation and retrieval date. Ad Fontes bias and reliability appear where available. An outlet with no cited rating reads <span class="lean-neutral">Unrated</span>. The US left-right scale does not transfer abroad, so international and non-English outlets read <span class="lean-neutral">Non-US outlet</span>.</p>
+          <p class="m-0">The label is the AllSides Media Bias Rating where one exists and a person has confirmed it. Each one links to its AllSides page and gives the date it was read from search results, because allsides.com blocks direct fetches. <a class="text-link" href="https://www.allsides.com/media-bias/media-bias-ratings" target="_blank" rel="noopener noreferrer">AllSides Media Bias Ratings</a> by AllSides.com are licensed under <a class="text-link" href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>, for research or noncommercial use with attribution. This page abbreviates the five labels as L, LL, C, LR, and R. Any other US outlet reads <span class="lean-neutral">Unrated</span>. The US left-right scale does not transfer abroad, so international and non-English outlets read <span class="lean-neutral">Non-US outlet</span>.</p>
         </div>
         {% if flagged %}
         <div class="criteria-wide">
@@ -46,7 +46,6 @@
           <th data-sort="text"><button type="button">Country</button></th>
           <th data-sort="text"><button type="button">Lang</button></th>
           <th data-sort="number"><button type="button">Lean and citation</button></th>
-          <th data-sort="number"><button type="button">Ad Fontes</button></th>
           <th data-sort="text"><button type="button">Ownership</button></th>
           <th data-sort="text"><button type="button">Paywall</button></th>
           <th data-sort="number"><button type="button">Feeds</button></th>
@@ -71,15 +70,10 @@
           <td data-value="{{ row.lean_sort }}">
             {% if row.lean_url %}
             <span class="glyph" title="{{ row.lean_shown|lean_title }}">{{ row.lean_glyph }}</span> {{ row.lean_shown }}
-            <div class="panel-note"><a class="text-link" href="{{ row.lean_url }}" target="_blank" rel="noopener noreferrer">{{ row.lean_source or 'Rating' }}</a>{% if row.lean_retrieved_on %}, retrieved {{ row.lean_retrieved_on }}{% endif %}</div>
+            <div class="panel-note"><a class="text-link" href="{{ row.lean_url }}" target="_blank" rel="noopener noreferrer">{{ row.lean_source or 'Rating' }}</a>{% if row.lean_retrieved_on %}, from search results on {{ row.lean_retrieved_on }}{% endif %}</div>
             {% else %}
             <span class="lean-neutral">{{ row.lean_shown }}</span>
             {% endif %}
-          </td>
-          <td class="num" data-value="{{ row.adfontes_reliability if row.adfontes_reliability is not none else -1 }}">
-            {% if row.adfontes_bias is not none or row.adfontes_reliability is not none %}
-            {% if row.adfontes_url %}<a class="text-link" href="{{ row.adfontes_url }}" target="_blank" rel="noopener noreferrer">{% endif %}bias {{ '%.1f' % row.adfontes_bias if row.adfontes_bias is not none else '—' }}, reliability {{ '%.1f' % row.adfontes_reliability if row.adfontes_reliability is not none else '—' }}{% if row.adfontes_url %}</a>{% endif %}
-            {% else %}—{% endif %}
           </td>
           <td>{{ row.ownership or '—' }}</td>
           <td>{{ row.paywall or '—' }}</td>

@@ -129,6 +129,7 @@ different languages land near each other. A search uses the `query: ` prefix.
 Each vector has 384 values. DuckLake rejects fixed-size arrays, so
 `nlp.embeddings.vec` is stored as `FLOAT[]`, and a query casts it to
 `FLOAT[384]` to use array functions.
+[Wang et al. (2024)](https://arxiv.org/abs/2402.05672) describe the model.
 
 ### Dedupe
 
@@ -137,16 +138,20 @@ An item is compared with items seen within 36 hours.
 1. **Title.** A title is lowercased, stripped of punctuation and any trailing
    outlet name, and cut into words and word pairs, or character pairs for
    Chinese, Japanese, and Korean. Each token's 64-bit `xxh64` hash votes on
-   each bit of a 64-bit SimHash. A title of under 7 tokens gets no hash,
-   because short titles such as "Live updates" repeat across unrelated stories.
+   each bit of a 64-bit SimHash
+   ([Charikar 2002](https://doi.org/10.1145/509907.509965)). A title of under 7
+   tokens gets no hash, because short titles such as "Live updates" repeat
+   across unrelated stories.
    Formula (1) gives bit $k$ of the hash $H$, where $w$ runs over the title's
    tokens and $b_k(w)$ is bit $k$ of the token's `xxh64` hash.
-2. **Title match.** Two hashes match at a Hamming distance of 3 or less, if
-   they pass a place check, because a template can change only the state. Two
-   items fail that check only when both name states and share none, so an item
-   with no state passes it. An identical title that fails the check still
-   matches if the two texts reach a cosine of 0.95, because a copy of one story
-   can be tagged with each outlet's state.
+2. **Title match.** Two hashes match at a Hamming distance of 3 or less, the
+   setting that
+   [Manku, Jain, and Das Sarma (2007)](https://doi.org/10.1145/1242572.1242592)
+   report for 64-bit hashes of web pages, if they pass a place check, because a
+   template can change only the state. Two items fail that check only when both
+   name states and share none, so an item with no state passes it. An identical
+   title that fails the check still matches if the two texts reach a cosine of
+   0.95, because a copy of one story can be tagged with each outlet's state.
 3. **Embedding match.** Otherwise an item matches at a cosine of at least 0.95,
    on the same published day, if the two also pass the place check.
 
@@ -183,7 +188,11 @@ for each decision.
 
 ### Storylines
 
-Clustering is online and takes items in the order they were seen. An item joins
+Clustering is online and takes items in the order they were seen, as in
+single-pass event detection from the Topic Detection and Tracking work
+([Allan, Papka, and Lavrenko 1998](https://doi.org/10.1145/290941.290954);
+[Yang, Pierce, and Carbonell 1998](https://doi.org/10.1145/290941.290953)). An
+item joins
 the nearest storyline whose centroid has a cosine of at least 0.92 with it,
 among storylines with an item in the last 8 hours. Otherwise it starts a
 storyline. A join moves the centroid: $c$ becomes $(1 - 0.1) c + 0.1 v$, then
@@ -213,6 +222,12 @@ $$
 
 A stored `similarity` of 1.0 in `nlp.storyline_assign` is a placeholder for an
 item that started a storyline.
+
+A storyline's keywords go into its labeling prompt. A term's score is adapted
+from c-TF-IDF ([Grootendorst 2022](https://arxiv.org/abs/2203.05794)): its
+share of the tokens in the storyline's titles, times
+$\log(1 + (N + 1) / (d_t + 1))$, where $N$ counts the titles seen and $d_t$
+counts those holding the term.
 
 ### Article text
 
@@ -393,7 +408,9 @@ $$
 $$
 
 The code computes $t_\nu$ with the Cornish-Fisher expansion around the normal
-quantile $z = 1.959964$, which is within 0.001 for $\nu$ of 4 or more:
+quantile $z = 1.959964$, as given in
+[Abramowitz and Stegun (1964), eq. 26.7.5](https://personal.math.ubc.ca/~cbm/aands/page_949.htm),
+which is within 0.001 for $\nu$ of 4 or more:
 
 $$
 \begin{aligned}
@@ -433,6 +450,14 @@ bucket has no column in the matrix and is left out of divergence.
 $$
 \text{divergence}(s) = \max_b \text{share}(s, b) - \min_b \text{share}(s, b)
 $$
+
+A wide spread does not show that one side of the press covered a story more.
+The Left and Right buckets hold few outlets, so one outlet's stories can
+produce it.
+
+Lean labels are AllSides Media Bias Ratings. The
+[colophon](https://dchud.github.io/electionnight/colophon/) gives the citation
+and license.
 
 ### First to report
 

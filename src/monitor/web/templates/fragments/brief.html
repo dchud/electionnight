@@ -5,6 +5,7 @@
   <span class="panel-note">{{ brief.created_at|et_time }} · covers {{ brief.window_start|et_time }}–{{ brief.window_end|et_time }}</span>
 </div>
 <div class="brief">{{ brief.markdown|cited(brief.citation_map) }}</div>
+<p class="panel-note m-0">A citation names a story the model was given. Nothing checks that the story supports the sentence.</p>
 {% else %}
 <div class="empty">No brief has been written yet.</div>
 {% endif %}

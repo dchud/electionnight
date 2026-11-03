@@ -9,8 +9,9 @@ Method: one web search per outlet, reading AllSides pages as returned by
 search. Direct fetches of allsides.com returned HTTP 403 (WebFetch, plus one
 curl retry), so every AllSides label and confidence level below comes from
 search-result text, not from a page I loaded myself. I stopped there rather
-than work around the block. Ad Fontes values were fetched directly from each
-adfontesmedia.com page listed in the CSV. The seed lean_hint was used only for
+than work around the block. Ad Fontes values were fetched directly from
+adfontesmedia.com pages, and they are no longer in the CSV. The seed lean_hint
+was used only for
 the comparison column, never to fill a label.
 
 AllSides confidence is low or initial for most state and local outlets (see

@@ -100,3 +100,10 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
   Lines that end at one rank in different bins can overlap, so each rank names
   only the line that ended last. Hover names the other lines, even when their
   ends are far apart.
+- **Ad Fontes.** Spec sections 5.3, 5.4, and 14.4 use Ad Fontes Media bias and
+  reliability scores. The config and the reference pages carry none, and the
+  criteria on `/sources` do not name it. Its terms of use bar AI agents from
+  extracting its content and grant no right to republish it, and no metric or
+  chart read the scores. The lake table keeps its three columns. A lake that
+  loaded the earlier file keeps those values in older rows, because the lake is
+  append-only.

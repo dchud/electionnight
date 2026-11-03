@@ -6,6 +6,7 @@ import sqlite3
 import threading
 import time
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -43,6 +44,8 @@ ARTICLE_TEXT = (
     + "Filler sentence about the polls. " * 200
     + LONG_TAIL
 )
+
+ROOT = Path(__file__).resolve().parents[1]
 ALERT = "<script>alert(1)</script>"
 
 
@@ -141,9 +144,6 @@ def seed(settings) -> None:
                 "lean_source": "AllSides",
                 "lean_source_url": "https://www.allsides.com/left",
                 "lean_retrieved_on": "2026-10-31",
-                "adfontes_bias": -7.8,
-                "adfontes_reliability": 40.9,
-                "adfontes_url": "https://adfontesmedia.com/left",
                 "ownership": "Family trust",
                 "paywall": "metered",
                 "enabled": True,
@@ -1410,6 +1410,7 @@ def test_story_without_a_label_or_summary_renders(client):
     text = client.get("/story/s4").text
     assert "Unlabeled storyline" in text
     assert "no summary" in text
+    assert "Written by a language model." not in text
 
 
 def test_unknown_story_is_a_clean_404(client):
@@ -1769,6 +1770,85 @@ def test_evidence_can_drop_the_window_and_the_relevance_filter(client):
 # Sources
 
 
+def panel_html(text, panel_id):
+    start = text.index(f'id="{panel_id}"')
+    return text[start : text.index("</article>", start)]
+
+
+@pytest.mark.parametrize(
+    "panel_id,note",
+    [
+        ("panel-wire", "lean labels from AllSides"),
+        ("panel-wire", "translations by a language model"),
+        ("panel-rising", "text written by a language model"),
+        ("panel-brief", "written by a language model"),
+        ("panel-calls", "extracted by a language model"),
+        ("panel-stream", "labels written by a language model"),
+        ("panel-tone", "tone from a language model"),
+        ("panel-tone", "lean labels from AllSides"),
+        ("panel-matrix", "lean labels from AllSides"),
+        ("panel-global", "translations by a language model"),
+    ],
+)
+def test_home_panels_label_model_text_and_the_lean_source(
+    client, panel_id, note
+):
+    assert note in panel_html(client.get("/").text, panel_id)
+
+
+def test_home_footer_states_what_language_models_produce(client):
+    text = client.get("/").text
+    assert "Language models produce most of the relevance" in text
+    assert "They can be wrong." in text
+
+
+def test_a_brief_says_what_a_citation_shows():
+    template = ROOT / "src/monitor/web/templates/fragments/brief.html"
+    assert "Nothing checks that the story supports" in template.read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize("page", ["pages/state.html", "pages/entity.html"])
+def test_state_and_entity_pages_label_model_text(page):
+    text = (ROOT / "src/monitor/web/templates" / page).read_text(
+        encoding="utf-8"
+    )
+    assert "extracted by a language model" in text
+    assert "labels written by a language model" in text
+
+
+def test_article_labels_translation_and_model_output(client):
+    assert "Translated by a language model." in client.get("/article/es1").text
+    text = client.get("/article/a1").text
+    assert "Translated by a language model." not in text
+    assert "Extracted by a language model." in text
+
+
+def test_state_races_show_the_rating_publisher_as_text(client, clean_ui):
+    frag = client.get("/frag/section/state/GA/races").text
+    assert '<span class="panel-note">Cook</span>' in frag
+
+
+def test_coverage_by_lean_states_its_sort_and_limit(client):
+    assert (
+        "sorted by spread between buckets, which does not show that one side "
+        "covered a story more" in client.get("/").text
+    )
+
+
+def test_story_page_labels_its_model_written_text(client):
+    assert "Written by a language model." in client.get("/story/s1").text
+
+
+def test_sources_page_has_the_allsides_license_and_no_ad_fontes(client):
+    text = client.get("/sources").text
+    assert "creativecommons.org/licenses/by-nc/4.0/" in text
+    assert "from search results on" in text
+    assert "ad fontes" not in text.lower()
+    assert "adfontes" not in text.lower()
+
+
 def test_sources_table_has_every_column_and_anchor(client):
     text = client.get("/sources").text
     for heading in (
@@ -1778,7 +1858,6 @@ def test_sources_table_has_every_column_and_anchor(client):
         "Country",
         "Lang",
         "Lean and citation",
-        "Ad Fontes",
         "Ownership",
         "Paywall",
         "Feeds",
@@ -1790,7 +1869,6 @@ def test_sources_table_has_every_column_and_anchor(client):
         assert f">{heading}</button>" in text
     for source_id in ("wire", "left-daily", "kommersant"):
         assert f'id="{source_id}"' in text
-    assert "bias -7.8, reliability 40.9" in text
     assert "Family trust" in text
 
 
@@ -1806,7 +1884,7 @@ def test_every_lean_label_has_a_citation_or_a_neutral_reading(client):
             assert "Unrated" in lean_cell or "Non-US outlet" in lean_cell
         else:
             assert "https://www.allsides.com/" in lean_cell
-            assert "retrieved 2026-" in lean_cell
+            assert "from search results on 2026-" in lean_cell
 
 
 def test_rated_outlet_without_a_valid_citation_reads_unrated():

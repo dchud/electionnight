@@ -62,3 +62,6 @@ nav:
   - Operating:
       - Run of show: run_of_show.md
       - Verification log: verify_log.md
+  - About:
+      - Colophon: colophon.md
+      - Third-party notices: third_party_notices.md

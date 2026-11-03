@@ -33,3 +33,10 @@ on this site. A "Live view" line names a page of the running dashboard.
   to do when something fails.
 - [Verification log](verify_log.md): facts checked during the build, and where
   the specification differs.
+
+## About
+
+- [Colophon](colophon.md): the tech stack, the data sources, and the published
+  work the monitor uses.
+- [Third-party notices](third_party_notices.md): what the MIT license covers,
+  and the licenses of everything else in the repository.

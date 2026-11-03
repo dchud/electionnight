@@ -27,12 +27,12 @@
       <div class="panel-body" hx-get="{{ base }}comentions?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/entity_comentions.html" %}</div>
     </article>
     <article class="panel span-4 page-panel-tall">
-      <div class="panel-head"><h2 class="panel-title">Storylines</h2></div>
+      <div class="panel-head"><h2 class="panel-title">Storylines</h2><span class="panel-note">labels written by a language model</span></div>
       <div class="panel-body" hx-get="{{ base }}storylines?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/entity_storylines.html" %}</div>
     </article>
     <article class="panel span-4 page-panel-tall">
       <div class="panel-head"><h2 class="panel-title">Race-call claims</h2></div>
-      <div class="claims-banner">Claims as reported by news outlets; not official results.</div>
+      <div class="claims-banner">Claims as reported by news outlets and extracted by a language model; not official results.</div>
       <div class="panel-body" hx-get="{{ base }}calls?{{ qs }}" hx-trigger="{{ live }}">{% include "fragments/entity_calls.html" %}</div>
     </article>
     <article class="panel span-12 page-panel-xl">
