@@ -332,6 +332,31 @@ def test_a_sample_names_a_file_without_its_directory(client):
     assert ".parquet" in section
 
 
+def test_the_newest_rows_are_one_table_with_a_line_per_row(client):
+    html = client.get("/under/lake?table=nlp.embeddings").text
+    section = html[html.index("Newest rows") :].split("Show query")[0]
+    assert section.count("<table") == 1
+    head, body = section.split("</thead>")
+    for column in ("item_id", "_snapshot", "_file"):
+        assert f"<th>{column}</th>" in head
+    columns = head.count("<th>")
+    lines = body.split("</tbody>")[0].split("<tr>")[1:]
+    assert lines
+    assert all(line.count("<td") == columns for line in lines)
+
+
+def test_the_key_scan_query_sits_with_the_key_count(client):
+    html = client.get("/under/lake?table=nlp.embeddings").text
+    section = html[html.index('id="detail"') :]
+    assert (
+        section.index("Distinct keys, scan")
+        < section.index("Show query for distinct keys")
+        < section.index("Newest rows")
+    )
+    assert "Show query for newest rows" in section
+    assert "for distinct keys" not in section[section.index("Newest rows") :]
+
+
 def test_sample_cell_formats_a_list_and_a_float():
     assert sample_cell({"length": 2, "first": [0.123456, 1.5]}) == (
         "2 values; first: 0.1235, 1.5"

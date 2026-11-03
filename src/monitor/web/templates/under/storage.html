@@ -58,9 +58,9 @@
       </tbody>
     </table>
     </div>
-    {{ u.show_query(columns.ran.query, "storage-columns") }}
+    {{ u.show_query(columns.ran.query, "storage-columns", of="columns") }}
     {% endif %}
-    {{ u.show_query(files.query, "storage-files") }}
+    {{ u.show_query(files.query, "storage-files", of="files") }}
   </div>
 </section>
 
