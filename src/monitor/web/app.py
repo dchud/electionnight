@@ -14,10 +14,11 @@ from zoneinfo import ZoneInfo
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
+from starlette.types import Scope
 
 from monitor.llm.citations import split_sentences
 from monitor.logs import configure, get
@@ -127,6 +128,15 @@ def create_templates() -> Jinja2Templates:
     return templates
 
 
+class CheckedStaticFiles(StaticFiles):
+    """Files a browser checks before reuse, so a reload shows an edit."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 class Web:
     """Everything a route needs."""
 
@@ -210,7 +220,7 @@ def create_app(
     app.state.web = Web(settings, load_embedding_model)
     app.mount(
         "/static",
-        StaticFiles(directory=str(WEB_DIR / "static")),
+        CheckedStaticFiles(directory=str(WEB_DIR / "static")),
         name="static",
     )
     app.include_router(pages.router)
