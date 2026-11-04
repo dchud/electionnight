@@ -99,6 +99,11 @@ the spec's text. `monitor verify` rewrites rows V1 through V7.
   strip, and sections 14.6 and 17.2 have it reduce the main page's panels.
   Projector mode changes type size and colors and hides secondary controls. The
   strip and every panel stay on the page.
+- **Rising rule.** Spec section 13 has a storyline rise at a score of at least
+  2 and at least 3 stories. With a join threshold of 0.92, stories rarely
+  cluster, and that rule showed cards at 2 of 41 checks over 10 hours on
+  election day. The rule is a score of at least 1 and at least 2 stories, which
+  showed cards at 11 of those 41 checks.
 - **Stream colors.** No palette of 10 hues avoiding party blue and red passes
   the colorblind checks. The first 6 are validated; the rest rely on direct
   labels and hover.

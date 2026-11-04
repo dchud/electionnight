@@ -354,7 +354,9 @@ def test_split_sentences_keeps_citations_attached():
 def test_velocity_score_matches_definition():
     assert analytics.velocity_score(6, 16) == pytest.approx((6 - 2) / 3**0.5)
     assert analytics.is_rising(6, 16) is True
-    assert analytics.is_rising(2, 0) is False
+    assert analytics.is_rising(1, 0) is False
+    assert analytics.is_rising(2, 0) is True
+    assert analytics.is_rising(2, 16) is False
     assert analytics.is_rising(3, 80) is False
 
 
