@@ -474,3 +474,14 @@ def test_wire_chips_spell_out_their_codes():
 )
 def test_chip_words(function, value, expected):
     assert function(value) == expected
+
+
+@pytest.mark.parametrize(
+    "path", ["/static/css/app.css", "/static/js/charts.js"]
+)
+def test_a_browser_checks_a_static_file_before_reusing_it(client, path):
+    first = client.get(path)
+    assert first.headers["cache-control"] == "no-cache"
+    again = client.get(path, headers={"If-None-Match": first.headers["etag"]})
+    assert again.status_code == 304
+    assert again.headers["cache-control"] == "no-cache"
