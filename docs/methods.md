@@ -368,8 +368,8 @@ e = t \cdot \frac{15}{120}
 \text{score} = \frac{o - e}{\sqrt{e + 1}}
 $$
 
-A storyline is rising when the score is at least 2 and $o$ is at
-least 3. Entities get no velocity score. A storyline is new when its
+A storyline is rising when the score is at least 1 and $o$ is at
+least 2. Entities get no velocity score. A storyline is new when its
 `first_seen_at` is within 30 minutes. Rising Storylines lists only storylines
 that meet the rule. It also requires that a storyline's status was active at
 the time shown and that its label is not empty, and it keeps the top 6 by

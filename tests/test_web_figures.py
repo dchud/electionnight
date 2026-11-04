@@ -1011,8 +1011,7 @@ def test_rising_lists_only_storylines_that_are_rising(lake):
     lake.story("down", "Going down")
     for _ in range(5):
         lake.item(NOW - timedelta(minutes=5), storyline="up")
-    for _ in range(2):
-        lake.item(NOW - timedelta(minutes=5), storyline="flat")
+    lake.item(NOW - timedelta(minutes=5), storyline="flat")
     for _ in range(40):
         lake.item(NOW - timedelta(minutes=60), storyline="down")
     with client_for(lake) as client:
